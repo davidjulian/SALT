@@ -633,7 +633,7 @@ const netTEFlux =
 </div>
            
         <div className="mt-4">
-  <h2 className="text-base font-semibold mb-2">TEST Paracellular Pathway</h2>
+  <h2 className="text-base font-semibold mb-2">Paracellular Pathway</h2>
   <table className="min-w-full table-auto text-left mb-2">
     <tbody>
       <tr>
