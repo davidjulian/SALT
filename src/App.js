@@ -623,8 +623,10 @@ const netTEFlux =
 )}
 
 <div className="flex h-screen">
-      <div className="w-1/3 p-4 border-r overflow-auto">
-<div className="flex space-x-2 mb-4">
+<div className="w-1/3 p-4 border-r overflow-auto">
+  <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
+    SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
+  </div><div className="flex space-x-2 mb-4">
   <Button onClick={() => setShowAbout(true)}>About</Button>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
 <Button variant="outline" onClick={() => setTransporters(INITIAL_TRANSPORTERS.map(t => ({ ...t })))}>Reset</Button>
