@@ -529,8 +529,9 @@ const netTEFlux =
   {showAbout && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh]">
-      <h2 className="text-2xl font-bold mb-4">About the Secretion and Absorption Learning Tool</h2>
+      <h2 className="text-2xl font-bold mb-4">SALT: Secretion and Absorption Learning Tool</h2>
       <div className="mb-3 text-sm text-gray-700">
+  This app simulates and visualizes transmembrane and transepithelial fluxes of key solutes and water across an epithelial cell layer, allowing instructors and learners to explore how membrane transporters, paracellular pathways, and compartment properties shape solute and water movement.
   Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a>
       </div>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
