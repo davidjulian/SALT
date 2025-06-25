@@ -530,11 +530,12 @@ const netTEFlux =
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh]">
       <h2 className="text-2xl font-bold mb-4">SALT: Secretion and Absorption Learning Tool</h2>
-      <div className="mb-3 text-sm text-gray-700">
-  <li>This app simulates and visualizes transmembrane and transepithelial fluxes of key solutes and water across an epithelial cell layer, allowing instructors and learners to explore how membrane transporters, paracellular pathways, and compartment properties shape solute and water movement.</li>
-  <li>Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a></li>
-      </div>
-      <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
+      <h3 className="text-lg font-semibold mt-4 mb-1">About SALT</h3>
+      <ul className="list-disc ml-6 mb-3 text-sm">
+        <li>This app simulates and visualizes transmembrane and transepithelial fluxes of key solutes and water across an epithelial cell layer, allowing instructors and learners to explore how membrane transporters, paracellular pathways, and compartment properties shape solute and water movement.</li>
+        <li>Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a></li>
+      </ul>
+    <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
         <li>Na⁺-coupled transporters (SGLT2, ENaC, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
