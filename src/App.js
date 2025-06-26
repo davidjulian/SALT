@@ -770,7 +770,7 @@ const netTEFlux =
                   checked={waterModel === 'simple'}
                   onChange={() => setWaterModel('simple')}
                 />{' '}
-                Simple (ICF always equilibrates with basolateral ECF)
+                Simple (water concentrations always equilibrate across cell membranes)
               </label>
               <label className="block mb-1">
                 <input
@@ -778,7 +778,7 @@ const netTEFlux =
                   checked={waterModel === 'detailed'}
                   onChange={() => setWaterModel('detailed')}
                 />{' '}
-                Detailed (ICF and basolateral ECF can differ if apical or basolateral membranes are water-impermeable)
+                Detailed (ICF and basolateral ECF water concentrations can differ if apical or basolateral membranes and the paracellular pathway are water-impermeable)
               </label>
             </div>
           </div>
