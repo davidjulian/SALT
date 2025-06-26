@@ -160,10 +160,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   // Calculate all apical and basolateral transmembrane fluxes
   tList.forEach(t => {
-    if (t.id === 'NKCC2') {
-      const romkSame = tList.some(u => u.id === 'ROMK' && u.placement === t.placement && t.placement !== 'none');
-      if (!romkSame) return;
-    }
+   // if (t.id === 'NKCC2') {
+   //   const romkSame = tList.some(u => u.id === 'ROMK' && u.placement === t.placement && t.placement !== 'none');
+   //   if (!romkSame) return;
+   // }
     if (t.stoich['Na+'] && !hasNaKATPase) return;
     if (t.placement === 'none') return;
 
@@ -234,63 +234,101 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
 
   // --- Transepithelial Fluxes using ONLY current tick values ---
-  const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT2'], ['GLUT2'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT2','ENaC','NCC','NKCC2'], ['NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC2','NCC'], ['NKCC2','NCC'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const caTransEpiFlux = transepithelialFlux('Ca2+', ['NCX1','PMCA'], ['NCX1','PMCA'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
 
-  // K+ logic (HKATPase or other)
-  const hkAtpaseSides = placementsForTick('HKATPase', tList);
-  let kTransEpiFlux = 0;
-  if (hkAtpaseSides.length > 0) {
-    const apicalHK = tList.some(t => t.id === 'HKATPase' && t.placement === 'apical');
-    const basolateralHK = tList.some(t => t.id === 'HKATPase' && t.placement === 'basolateral');
-    if (apicalHK) kTransEpiFlux += apicalFlux['K+'] ?? 0;
-    if (basolateralHK) kTransEpiFlux += basolateralFlux['K+'] ?? 0;
-  }
-  if (kTransEpiFlux === 0) {
-    kTransEpiFlux = transepithelialFlux('K+', ['NKCC2','ROMK'], ['ROMK','NaKATPase'], true, apicalFlux, basolateralFlux, hasNaKATPase);
-  }
+// --- Compute Transepithelial Fluxes for Output ---
+const transepiFluxData = [];
 
-  // Transepithelial H+ and HCO3- logic (skipped here for brevity; add as above if desired)
-
-  // Compose transepiFluxDataNoH2O
-  const transepiFluxDataNoH2O = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
-    switch (ion) {
-      case 'Glucose': return { ion, transepithelial: glucoseTransEpiFlux };
-      case 'Na+':     return { ion, transepithelial: naTransEpiFlux };
-      case 'K+':      return { ion, transepithelial: kTransEpiFlux };
-      case 'Cl-':     return { ion, transepithelial: clTransEpiFlux };
-      case 'Ca2+':    return { ion, transepithelial: caTransEpiFlux };
-      default:        return { ion, transepithelial: 0 };
-    }
+// Na+
+transepiFluxData.push({
+  ion: 'Na+',
+  transepithelial: transepithelialFlux(
+    'Na+',
+    ['SGLT2', 'ENaC', 'NCC', 'NKCC2'],
+    ['NaKATPase'],
+    true,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  ) + (paraFlux['Na+'] || 0)
+});
+// K+
+transepiFluxData.push({
+  ion: 'K+',
+  transepithelial: transepithelialFlux(
+    'K+',
+    ['NKCC2', 'ROMK'],
+    ['ROMK', 'NaKATPase'],
+    true,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  ) + (paraFlux['K+'] || 0)
+});
+// Cl-
+transepiFluxData.push({
+  ion: 'Cl-',
+  transepithelial: transepithelialFlux(
+    'Cl-',
+    ['NKCC2', 'NCC'],
+    ['NKCC2', 'NCC'],
+    false,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  ) + (paraFlux['Cl-'] || 0)
+});
+// Glucose
+transepiFluxData.push({
+  ion: 'Glucose',
+  transepithelial: transepithelialFlux(
+    'Glucose',
+    ['SGLT2'],
+    ['GLUT2'],
+    true,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  )
+});
+// Ca2+
+transepiFluxData.push({
+  ion: 'Ca2+',
+  transepithelial: transepithelialFlux(
+    'Ca2+',
+    ['NCX1', 'PMCA'],
+    ['NCX1', 'PMCA'],
+    false,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  )
+});
+// Add HCO3- if you want (paracellular)
+if (Object.prototype.hasOwnProperty.call(paraFlux, 'HCO3-')) {
+  transepiFluxData.push({
+    ion: 'HCO3-',
+    transepithelial: paraFlux['HCO3-'] || 0
   });
+}
 
-  // Add paracellular fluxes
-  if (paracellularType !== 'none') {
-    transepiFluxDataNoH2O.forEach(row => {
-      if (
-        (paracellularType === 'cation' && ['Na+','K+'].includes(row.ion)) ||
-        (paracellularType === 'anion' && ['Cl-','HCO3-'].includes(row.ion))
-      ) {
-        row.transepithelial += paraFlux[row.ion] || 0;
-      }
-    });
+// Water pathway logic: detect if AQPs on opposite membranes
+const aqp2Sides = placementsForTick('AQP2', tList);
+const aqp3Sides = placementsForTick('AQP3', tList);
+let h2oPathway = false;
+for (let side2 of aqp2Sides) {
+  for (let side3 of aqp3Sides) {
+    if (side2 !== side3) h2oPathway = true;
   }
+}
 
-  // Water pathway logic: detect if AQPs on opposite membranes
-  const aqp2Sides = placementsForTick('AQP2', tList);
-  const aqp3Sides = placementsForTick('AQP3', tList);
-  let h2oPathway = false;
-  for (let side2 of aqp2Sides) {
-    for (let side3 of aqp3Sides) {
-      if (side2 !== side3) h2oPathway = true;
-    }
-  }
-
-  // Water flux calculation
-  let h2oTransEpiFlux = 0;
-const netTEFluxNum = transepiFluxDataNoH2O.reduce((sum, row) => sum + row.transepithelial, 0);
+// Water flux calculation
+let h2oTransEpiFlux = 0;
+const netTEFluxNum = transepiFluxData.filter(row => row.ion !== 'H2O').reduce((sum, row) => sum + row.transepithelial, 0);
 
 const isParaCationWaterPath = paracellularType === 'cation';
 
@@ -298,39 +336,34 @@ const isParaCationWaterPath = paracellularType === 'cation';
 if ((h2oPathway || isParaCationWaterPath) && ecfModel === 'infinite' && waterModel === 'simple') {
   h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
 }
-
 // If finite/detailed, still allow paracellular H2O flux due to concentration difference
 if (paracellularType === 'cation' && !(ecfModel === 'infinite' && waterModel === 'simple')) {
   h2oTransEpiFlux += paraFlux['H2O'] || 0;
 }
 
-  // Compose transepiFluxData for display
-  const transepiFluxData = [
-    ...transepiFluxDataNoH2O,
-    { ion: 'H2O', transepithelial: h2oTransEpiFlux }
-  ];
+// Assign "virtual" TM water fluxes for infinite/simple mode & pathway
+if (ecfModel === 'infinite' && waterModel === 'simple' && h2oPathway) {
+  apicalFlux['H2O'] = h2oTransEpiFlux;
+  basolateralFlux['H2O'] = -h2oTransEpiFlux;
+}
 
-  // Assign "virtual" TM water fluxes for infinite/simple mode & pathway
-  if (ecfModel === 'infinite' && waterModel === 'simple' && h2oPathway) {
-    apicalFlux['H2O'] = h2oTransEpiFlux;
-    basolateralFlux['H2O'] = -h2oTransEpiFlux;
-  }
-
-  // Water/osmolality modeling (as before)
-  if (ecfModel === 'infinite') {
-    newICF['H2O'] = basolateralECF['H2O'];
-  }
-  if (ecfModel === 'finite') {
-    if (waterModel === 'simple') {
-      const blOsm = osmolality(basolateralECF);
-      const icfOsm = osmolality(newICF);
-      if (blOsm !== icfOsm) {
-        newICF['H2O'] += (blOsm - icfOsm);
-        newICF['H2O'] = Math.max(newICF['H2O'], 0);
-      }
+// Water/osmolality modeling (as before)
+if (ecfModel === 'infinite') {
+  newICF['H2O'] = basolateralECF['H2O'];
+}
+if (ecfModel === 'finite') {
+  if (waterModel === 'simple') {
+    const blOsm = osmolality(basolateralECF);
+    const icfOsm = osmolality(newICF);
+    if (blOsm !== icfOsm) {
+      newICF['H2O'] += (blOsm - icfOsm);
+      newICF['H2O'] = Math.max(newICF['H2O'], 0);
     }
-    // else: allow ICF and BL ECF osmolality to differ
   }
+  // else: allow ICF and BL ECF osmolality to differ
+}
+
+transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
 
   // Push results
   setResult({
@@ -373,157 +406,12 @@ if (paracellularType === 'cation' && !(ecfModel === 'infinite' && waterModel ===
   const placementsFor = id => transporters.filter(t => t.id === id && t.placement !== 'none').map(t => t.placement);
   const hasNaKATPase = transporters.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
 
-  function transepithelialFlux(ion, entryIds, exitIds, requirePump = false) {
-    if (requirePump && !hasNaKATPase) return 0;
-    const entrySides = [].concat(...entryIds.map(id => placementsFor(id)));
-    const exitSides = [].concat(...exitIds.map(id => placementsFor(id)));
-    for (let side1 of entrySides) {
-      for (let side2 of exitSides) {
-        if (side1 !== side2) {
-          const entryFlux = side1 === 'apical' ? (result?.apicalFlux[ion] ?? 0) : (result?.basolateralFlux[ion] ?? 0);
-          const exitFlux  = side2 === 'apical' ? (result?.apicalFlux[ion] ?? 0) : (result?.basolateralFlux[ion] ?? 0);
-          if (entryFlux > 0 && exitFlux < 0) {
-            return Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-          } else if (entryFlux < 0 && exitFlux > 0) {
-            return -Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-          }
-        }
-      }
-    }
-    return 0;
-  }
-
-  const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT2'], ['GLUT2'], true);
-  const naTransEpiFlux     = transepithelialFlux('Na+',    ['SGLT2','ENaC','NCC','NKCC2'], ['NaKATPase'], true);
-  const clTransEpiFlux     = transepithelialFlux('Cl-',    ['NKCC2','NCC'], ['NKCC2','NCC']);
-  const caTransEpiFlux     = transepithelialFlux('Ca2+',   ['NCX1','PMCA'], ['NCX1','PMCA']);
-
-// For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
-const hkAtpaseSides = placementsFor('HKATPase');
-let kTransEpiFlux = 0;
-if (hkAtpaseSides.length > 0 && result) {
-  const apicalHK = transporters.some(t => t.id === 'HKATPase' && t.placement === 'apical');
-  const basolateralHK = transporters.some(t => t.id === 'HKATPase' && t.placement === 'basolateral');
-  if (apicalHK) kTransEpiFlux += result.apicalFlux['K+'] ?? 0;
-  if (basolateralHK) kTransEpiFlux += result.basolateralFlux['K+'] ?? 0;
-}
-// Add other K+ pathways (NKCC2, ROMK) if present on opposite membranes as before:
-if (kTransEpiFlux === 0) {
-  kTransEpiFlux = transepithelialFlux('K+', ['NKCC2','ROMK'], ['ROMK','NaKATPase'], true);
-}
-  
-// Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
-const hExtruders = transporters.filter(t => ['NHE3','HATPase','HKATPase'].includes(t.id) && t.placement !== 'none');
-const nbcTrans = transporters.filter(t => t.id === 'NBCe1' && t.placement !== 'none');
-const requirePump = hasNaKATPase;
-
-let hTransEpiFlux = 0;
-let hco3TransEpiFlux = 0;
-if (requirePump && hExtruders.length > 0 && nbcTrans.length > 0) {
-  // For every combination of H+ extruder and NBCe1 on opposite membranes
-  let fluxPairs = [];
-  for (let t of hExtruders) {
-    for (let nbc of nbcTrans) {
-      if (t.placement !== nbc.placement) {
-        // Use max possible rate as the limiting step
-        let extruderRate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
-        let nbcRate = (nbc.kinetics.maxRate / (nbc.kinetics.Km + 1)) * nbc.density * 3; // NBCe1 moves 3 HCO3-
-        // Direction: If H+ extruder is apical, it's acid secretion; if basolateral, acid reabsorption
-        let limiting = Math.min(Math.abs(extruderRate), Math.abs(nbcRate));
-        if (t.placement === 'apical' && nbc.placement === 'basolateral') {
-          // Acid secretion, base reabsorption
-          fluxPairs.push({ h: -limiting, hco3: limiting });
-        } else if (t.placement === 'basolateral' && nbc.placement === 'apical') {
-          // Acid reabsorption, base secretion
-          fluxPairs.push({ h: limiting, hco3: -limiting });
-        }
-      }
-    }
-  }
-  // Sum (allowing for more than one pair), but only use the largest (for teaching clarity, usually only one pair will be present)
-  if (fluxPairs.length > 0) {
-    hTransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.h, 0);
-    hco3TransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.hco3, 0);
-  }
-}
-
-  const transepiFluxDataNoH2O = result
-    ? Object.keys(result.netFlux).filter(ion => ion !== 'H2O').map(ion => {
-        switch (ion) {
-          case 'Glucose': return { ion, transepithelial: glucoseTransEpiFlux };
-          case 'Na+':     return { ion, transepithelial: naTransEpiFlux };
-          case 'K+':      return { ion, transepithelial: kTransEpiFlux };
-          case 'Cl-':     return { ion, transepithelial: clTransEpiFlux };
-          case 'Ca2+':    return { ion, transepithelial: caTransEpiFlux };
-          case 'HCO3-':   return { ion, transepithelial: hco3TransEpiFlux };
-          case 'H+':      return { ion, transepithelial: hTransEpiFlux };
-          default:        return { ion, transepithelial: 0 };
-        }
-      })
-    : [];
-
-  // Inject paracellular fluxes into transepiFluxDataNoH2O
-const paraFlux = result?.paraFlux || {};
-  if (paracellularType !== 'none') {
-  transepiFluxDataNoH2O.forEach(row => {
-    if (
-      (paracellularType === 'cation' && ['Na+','K+'].includes(row.ion)) ||
-      (paracellularType === 'anion' && ['Cl-','HCO3-'].includes(row.ion))
-    ) {
-      row.transepithelial += paraFlux[row.ion] || 0;
-    }
-  });
-}
-  const aqp2Sides = placementsFor('AQP2');
-  const aqp3Sides = placementsFor('AQP3');
-  let h2oPathway = false;
-  for (let side2 of aqp2Sides) {
-    for (let side3 of aqp3Sides) {
-      if (side2 !== side3) h2oPathway = true;
-    }
-  }
-
-let h2oTransEpiFlux = 0;
-
-if (h2oPathway && result) {
-  const soluteTransEpiNet = transepiFluxDataNoH2O
-    .reduce((sum, row) => sum + row.transepithelial, 0);
-
-  // In infinite ECF/simple water mode, water "follows solute"
-  if (ecfModel === 'infinite' && waterModel === 'simple') {
-    // Link water TE flux to solute TE flux (isosmotic absorption)
-    h2oTransEpiFlux = 0.5 * Math.sign(soluteTransEpiNet) * Math.min(Math.abs(soluteTransEpiNet), 5);
-  } else {
-    // In finite/detailed mode, only allow if actual driving force exists
-    h2oTransEpiFlux = 0;
-  }
-}
-
-// Paracellular water flux, add if enabled
-if (paracellularType === 'cation') {
-  h2oTransEpiFlux += paraFlux['H2O'] || 0;
-}
-  
-  const transepiFluxData = [
-    ...transepiFluxDataNoH2O,
-    { ion: 'H2O', transepithelial: h2oTransEpiFlux }
-  ];
-
-  const netTEFluxNum =
-  transepiFluxData
-    .filter(row => row.ion !== 'H2O')
-    .reduce((sum, row) => sum + row.transepithelial, 0);
-  
-const modalTransporter = transporters.find(t => t.id === modalTransporterId);
-const netTEFlux =
-  transepiFluxData
-    .filter(row => row.ion !== 'H2O')
-    .reduce((sum, row) => sum + row.transepithelial, 0)
-    .toFixed(3);
-  
-  // --- Render ---
-
-  return (
+// --- Render ---
+const netTEFlux = result?.transepiFluxData
+  ?.filter(row => row.ion !== 'H2O')
+  .reduce((sum, row) => sum + row.transepithelial, 0)
+  .toFixed(3);
+ 
 <>
   {/* About Modal */}
   {showAbout && (
