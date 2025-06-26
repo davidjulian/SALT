@@ -582,94 +582,96 @@ return (
   </div>
 )}
 
-{showInfoModal && modalTransporter && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
-      <h2 className="text-xl font-bold mb-2">{modalTransporter.name}</h2>
-     <div className="mb-2 text-sm">
-  <div>
-    {(() => {
-      switch (modalTransporter.id) {
-        case 'AQP2':
-          return <><b>Aquaporin 2</b>: enables rapid H₂O movement.<br/></>;
-        case 'AQP3':
-          return <><b>Aquaporin 3</b>: enables rapid H₂O movement.<br/></>;
-        case 'ENaC':
-          return <><b>Epithelial sodium channel</b>: allows passive Na⁺ entry.<br/></>;
-        case 'GLUT2':
-          return <><b>Glucose transporter 2</b>: allows passive glucose exit.<br/></>;
-        case 'HATPase':
-          return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
-        case 'HKATPase':
-          return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
-        case 'NBCe1':
-          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: symports Na⁺ and HCO₃⁻ out.<br/></>;
-        case 'NCC':
-          return <><b>Sodium-chloride cotransporter</b>: symports Na⁺ and Cl⁻ in.<br/></>;
-        case 'NCX1':
-          return <><b>Sodium-calcium exchanger</b>: antiports 3 Na⁺ in for 1 Ca²⁺ out.<br/></>;
-        case 'NHE3':
-          return <><b>Sodium–hydrogen exchanger 3</b>: antiports Na⁺ in for H⁺ out.<br/></>;
-        case 'NKCC2':
-          return <><b>Sodium-potassium-chloride cotransporter</b>: symports Na⁺, K⁺, and 2 Cl⁻ in.<br/></>;
-        case 'NaKATPase':
-          return <><b>Sodium–potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
-        case 'PMCA':
-          return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
-        case 'ROMK':
-          return <><b>Renal outer medullary potassium channel</b>: allows passive K⁺ exit, inhibited by internal ATP.<br/></>;
-        case 'SGLT2':
-          return <><b>Sodium/glucose cotransporter 2</b>: symports Na⁺ and glucose in.<br/></>;
-        default:
-          return null;
-      }
-    })()}
-  </div>
-  
-  <div>
-    <b>Stoichiometry:</b>{" "}
-    {Object.entries(modalTransporter.stoich)
-      .map(([ion, coeff]) => `${ion} ${coeff >= 0 ? "+" : ""}${coeff}`)
-      .join(", ")}
-  </div>
-</div> 
-      
-      <div className="mb-2">
-        <label className="block text-sm">Density:</label>
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          value={modalTransporter.density}
-          onChange={e => updateTransporter(modalTransporter.id, "density", parseFloat(e.target.value))}
-          className="border rounded p-1 w-full"
-        />
+{showInfoModal && (() => {
+  const modalTransporter = transporters.find(t => t.id === modalTransporterId);
+  if (!modalTransporter) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
+        <h2 className="text-xl font-bold mb-2">{modalTransporter.name}</h2>
+        <div className="mb-2 text-sm">
+          <div>
+            {(() => {
+              switch (modalTransporter.id) {
+                case 'AQP2':
+                  return <><b>Aquaporin 2</b>: enables rapid H₂O movement.<br/></>;
+                case 'AQP3':
+                  return <><b>Aquaporin 3</b>: enables rapid H₂O movement.<br/></>;
+                case 'ENaC':
+                  return <><b>Epithelial sodium channel</b>: allows passive Na⁺ entry.<br/></>;
+                case 'GLUT2':
+                  return <><b>Glucose transporter 2</b>: allows passive glucose exit.<br/></>;
+                case 'HATPase':
+                  return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
+                case 'HKATPase':
+                  return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
+                case 'NBCe1':
+                  return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: symports Na⁺ and HCO₃⁻ out.<br/></>;
+                case 'NCC':
+                  return <><b>Sodium-chloride cotransporter</b>: symports Na⁺ and Cl⁻ in.<br/></>;
+                case 'NCX1':
+                  return <><b>Sodium-calcium exchanger</b>: antiports 3 Na⁺ in for 1 Ca²⁺ out.<br/></>;
+                case 'NHE3':
+                  return <><b>Sodium–hydrogen exchanger 3</b>: antiports Na⁺ in for H⁺ out.<br/></>;
+                case 'NKCC2':
+                  return <><b>Sodium-potassium-chloride cotransporter</b>: symports Na⁺, K⁺, and 2 Cl⁻ in.<br/></>;
+                case 'NaKATPase':
+                  return <><b>Sodium–potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
+                case 'PMCA':
+                  return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
+                case 'ROMK':
+                  return <><b>Renal outer medullary potassium channel</b>: allows passive K⁺ exit, inhibited by internal ATP.<br/></>;
+                case 'SGLT2':
+                  return <><b>Sodium/glucose cotransporter 2</b>: symports Na⁺ and glucose in.<br/></>;
+                default:
+                  return null;
+              }
+            })()}
+          </div>
+          <div>
+            <b>Stoichiometry:</b>{" "}
+            {Object.entries(modalTransporter.stoich)
+              .map(([ion, coeff]) => `${ion} ${coeff >= 0 ? "+" : ""}${coeff}`)
+              .join(", ")}
+          </div>
+        </div>
+        <div className="mb-2">
+          <label className="block text-sm">Density:</label>
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={modalTransporter.density}
+            onChange={e => updateTransporter(modalTransporter.id, "density", parseFloat(e.target.value))}
+            className="border rounded p-1 w-full"
+          />
+        </div>
+        <div className="mb-2">
+          <label className="block text-sm">Vmax:</label>
+          <input
+            type="number"
+            step="0.1"
+            value={modalTransporter.kinetics.maxRate}
+            onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, maxRate: parseFloat(e.target.value) })}
+            className="border rounded p-1 w-full"
+          />
+        </div>
+        <div className="mb-2">
+          <label className="block text-sm">Km:</label>
+          <input
+            type="number"
+            step="0.1"
+            value={modalTransporter.kinetics.Km}
+            onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, Km: parseFloat(e.target.value) })}
+            className="border rounded p-1 w-full"
+          />
+        </div>
+        <Button className="mt-2" onClick={() => setShowInfoModal(false)}>Close</Button>
       </div>
-      <div className="mb-2">
-        <label className="block text-sm">Vmax:</label>
-        <input
-          type="number"
-          step="0.1"
-          value={modalTransporter.kinetics.maxRate}
-          onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, maxRate: parseFloat(e.target.value) })}
-          className="border rounded p-1 w-full"
-        />
-      </div>
-      <div className="mb-2">
-        <label className="block text-sm">Km:</label>
-        <input
-          type="number"
-          step="0.1"
-          value={modalTransporter.kinetics.Km}
-          onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, Km: parseFloat(e.target.value) })}
-          className="border rounded p-1 w-full"
-        />
-      </div>
-      <Button className="mt-2" onClick={() => setShowInfoModal(false)}>Close</Button>
     </div>
-  </div>
-)
-}
+  );
+})()}
+
 
       </div>
       <div className="flex-1 p-4 flex flex-col">
