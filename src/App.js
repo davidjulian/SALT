@@ -57,6 +57,27 @@ const INITIAL_CONCENTRATIONS = {
   basolateralECF:{ 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5,  'H2O':100 }
 };
 
+function computeTepSign(result) {
+  if (!result || !result.transepiFluxData) return 0;
+  // Assign charge: positive for cations, negative for anions
+  const ionCharge = {
+    'Na+': 1,
+    'K+': 1,
+    'Ca2+': 2,
+    'Cl-': -1,
+    'HCO3-': -1,
+    'H+': 1,
+    // Glucose and H2O are neutral
+  };
+  let chargeSum = 0;
+  result.transepiFluxData.forEach(row => {
+    if (ionCharge[row.ion]) {
+      chargeSum += row.transepithelial * ionCharge[row.ion];
+    }
+  });
+  return -chargeSum;
+}
+
 export default function App() {
   // State
   const [showAbout, setShowAbout] = useState(false);
@@ -76,30 +97,6 @@ const [ecfPoolSize, setEcfPoolSize] = useState(10); // unitless
   const [paraCationPerm, setParaCationPerm] = useState(1.0); // default value
   const [paraAnionPerm, setParaAnionPerm] = useState(1.0);   // default value
   const [showParaInfo, setShowParaInfo] = useState(false);
-
-  // --- Automatically run simulation on page load ---
-  useEffect(() => {
-  calculateFluxesAndConcs(transporters);
-  // eslint-disable-next-line
-}, [
-  transporters,
-  paracellularType,
-  paraCationPerm,
-  paraAnionPerm,
-  ecfModel,
-  ecfPoolSize
-]);
-
-  useEffect(() => {
-  // If a water channel is now open and was previously closed, force a recalc
-  if (
-    transporters.some(t => (t.id === 'AQP2' || t.id === 'AQP3') && t.placement !== 'none')
-    && result && result.transepiFluxData && !result.transepiFluxData.some(row => row.ion === 'H2O' && row.transepithelial !== 0)
-  ) {
-    calculateFluxesAndConcs(transporters);
-  }
-}, [transporters, result]);
-
 
   const updateTransporter = (id, field, value) => {
     setTransporters(ts =>
@@ -121,27 +118,30 @@ function placementsForTick(id, tList) {
   return tList.filter(t => t.id === id && t.placement !== 'none').map(t => t.placement);
 }
 
-// Refactored transepithelialFlux
+// TransepithelialFlux
 function transepithelialFlux(ion, entryIds, exitIds, requirePump, apicalFlux, basolateralFlux, tList, hasNaKATPase) {
   if (requirePump && !hasNaKATPase) return 0;
   const entrySides = [].concat(...entryIds.map(id => placementsForTick(id, tList)));
   const exitSides = [].concat(...exitIds.map(id => placementsForTick(id, tList)));
+  // Calculate all (entrySide, exitSide) pairs where entrySide ≠ exitSide
+  let flux = 0;
   for (let side1 of entrySides) {
     for (let side2 of exitSides) {
-      if (side1 !== side2) {
-        const entryFlux = side1 === 'apical' ? (apicalFlux[ion] ?? 0) : (basolateralFlux[ion] ?? 0);
-        const exitFlux  = side2 === 'apical' ? (apicalFlux[ion] ?? 0) : (basolateralFlux[ion] ?? 0);
-        if (entryFlux > 0 && exitFlux < 0) {
-          return Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-        } else if (entryFlux < 0 && exitFlux > 0) {
-          return -Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-        }
+      if (side1 === side2) continue;
+      // Define net flux direction: positive = from side1 to side2
+      const fromFlux = side1 === 'apical' ? (apicalFlux[ion] ?? 0) : (basolateralFlux[ion] ?? 0);
+      const toFlux   = side2 === 'apical' ? (apicalFlux[ion] ?? 0) : (basolateralFlux[ion] ?? 0);
+      // Find the minimum flux magnitude that can complete the circuit
+      // (This logic assumes steady-state, could be improved, but works for teaching)
+      if (fromFlux > 0 && toFlux < 0) {
+        flux += Math.min(Math.abs(fromFlux), Math.abs(toFlux));
+      } else if (fromFlux < 0 && toFlux > 0) {
+        flux -= Math.min(Math.abs(fromFlux), Math.abs(toFlux));
       }
     }
   }
-  return 0;
+  return flux;
 }
-
 const calculateFluxesAndConcs = (tList = transporters) => {
   // Use current ECF concentrations (mutable if finite)
   let apicalECF, basolateralECF;
@@ -158,12 +158,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
 
-  // Calculate all apical and basolateral transmembrane fluxes
+  // 1. Calculate apical and basolateral TM fluxes for all ions except H2O
   tList.forEach(t => {
-   // if (t.id === 'NKCC2') {
-   //   const romkSame = tList.some(u => u.id === 'ROMK' && u.placement === t.placement && t.placement !== 'none');
-   //   if (!romkSame) return;
-   // }
     if (t.stoich['Na+'] && !hasNaKATPase) return;
     if (t.placement === 'none') return;
 
@@ -176,7 +172,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
     }
     Object.entries(t.stoich).forEach(([ion, coeff]) => {
-      // Only allow water transmembrane flux if a water gradient exists!
+      // Do NOT assign H2O in the loop for simple/infinite model, only do it below
+      if (ion === 'H2O' && ecfModel === 'infinite' && waterModel === 'simple') return;
+
+      // For detailed/finite model, assign water as usual
       if (ion === 'H2O') {
         let gradient = 0;
         if (t.placement === 'apical') {
@@ -194,26 +193,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   });
 
-  const netFlux = {};
-  Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
-
-  // --- Update ECF concentrations if "finite" model is selected ---
-  if (ecfModel === 'finite') {
-    Object.keys(apicalECF).forEach(ion => {
-      apicalECF[ion] -= apicalFlux[ion] / ecfPoolSize;
-      if (apicalECF[ion] < 0) apicalECF[ion] = 0;
-    });
-    Object.keys(basolateralECF).forEach(ion => {
-      basolateralECF[ion] += basolateralFlux[ion] / ecfPoolSize;
-      if (basolateralECF[ion] < 0) basolateralECF[ion] = 0;
-    });
-  }
-
-  const newICF = { ...INITIAL_CONCENTRATIONS.icf };
-  Object.entries(netFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
-  newICF['H+'] = Math.max(newICF['H+'], 1e-8);
-
-  // --- Paracellular Pathway Fluxes ---
+  // 2. Paracellular Pathway Fluxes
   const paraFlux = {};
   Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
 
@@ -231,141 +211,85 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       paraFlux[ion] = paraAnionPerm * (cap - blp);
     });
   }
-  Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
+  // Update netFlux to include paracellular
+  const netFlux = {};
+  Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion] + (paraFlux[ion] || 0); });
 
-  // --- Transepithelial Fluxes using ONLY current tick values ---
-
-// --- Compute Transepithelial Fluxes for Output ---
-const transepiFluxData = [];
-
-// Na+
-transepiFluxData.push({
-  ion: 'Na+',
-  transepithelial: transepithelialFlux(
-    'Na+',
-    ['SGLT2', 'ENaC', 'NCC', 'NKCC2'],
-    ['NaKATPase'],
-    true,
-    apicalFlux,
-    basolateralFlux,
-    tList,
-    hasNaKATPase
-  ) + (paraFlux['Na+'] || 0)
-});
-// K+
-transepiFluxData.push({
-  ion: 'K+',
-  transepithelial: transepithelialFlux(
-    'K+',
-    ['NKCC2', 'ROMK'],
-    ['ROMK', 'NaKATPase'],
-    true,
-    apicalFlux,
-    basolateralFlux,
-    tList,
-    hasNaKATPase
-  ) + (paraFlux['K+'] || 0)
-});
-// Cl-
-transepiFluxData.push({
-  ion: 'Cl-',
-  transepithelial: transepithelialFlux(
-    'Cl-',
-    ['NKCC2', 'NCC'],
-    ['NKCC2', 'NCC'],
-    false,
-    apicalFlux,
-    basolateralFlux,
-    tList,
-    hasNaKATPase
-  ) + (paraFlux['Cl-'] || 0)
-});
-// Glucose
-transepiFluxData.push({
-  ion: 'Glucose',
-  transepithelial: transepithelialFlux(
-    'Glucose',
-    ['SGLT2'],
-    ['GLUT2'],
-    true,
-    apicalFlux,
-    basolateralFlux,
-    tList,
-    hasNaKATPase
-  )
-});
-// Ca2+
-transepiFluxData.push({
-  ion: 'Ca2+',
-  transepithelial: transepithelialFlux(
-    'Ca2+',
-    ['NCX1', 'PMCA'],
-    ['NCX1', 'PMCA'],
-    false,
-    apicalFlux,
-    basolateralFlux,
-    tList,
-    hasNaKATPase
-  )
-});
-// Add HCO3- if you want (paracellular)
-if (Object.prototype.hasOwnProperty.call(paraFlux, 'HCO3-')) {
-  transepiFluxData.push({
-    ion: 'HCO3-',
-    transepithelial: paraFlux['HCO3-'] || 0
-  });
-}
-
-// Water pathway logic: detect if AQPs on opposite membranes
-const aqp2Sides = placementsForTick('AQP2', tList);
-const aqp3Sides = placementsForTick('AQP3', tList);
-let h2oPathway = false;
-for (let side2 of aqp2Sides) {
-  for (let side3 of aqp3Sides) {
-    if (side2 !== side3) h2oPathway = true;
+  // 3. Update ECF concentrations if "finite" model is selected
+  if (ecfModel === 'finite') {
+    Object.keys(apicalECF).forEach(ion => {
+      apicalECF[ion] -= apicalFlux[ion] / ecfPoolSize;
+      if (apicalECF[ion] < 0) apicalECF[ion] = 0;
+    });
+    Object.keys(basolateralECF).forEach(ion => {
+      basolateralECF[ion] += basolateralFlux[ion] / ecfPoolSize;
+      if (basolateralECF[ion] < 0) basolateralECF[ion] = 0;
+    });
   }
-}
 
-// Water flux calculation
-let h2oTransEpiFlux = 0;
-const netTEFluxNum = transepiFluxData.filter(row => row.ion !== 'H2O').reduce((sum, row) => sum + row.transepithelial, 0);
+  const newICF = { ...INITIAL_CONCENTRATIONS.icf };
+  Object.entries(netFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
+  newICF['H+'] = Math.max(newICF['H+'], 1e-8);
 
-const isParaCationWaterPath = paracellularType === 'cation';
-
-// Water follows solute for teaching: infinite ECF + simple water model + any pathway
-if ((h2oPathway || isParaCationWaterPath) && ecfModel === 'infinite' && waterModel === 'simple') {
-  h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
-}
-// If finite/detailed, still allow paracellular H2O flux due to concentration difference
-if (paracellularType === 'cation' && !(ecfModel === 'infinite' && waterModel === 'simple')) {
-  h2oTransEpiFlux += paraFlux['H2O'] || 0;
-}
-
-// Assign "virtual" TM water fluxes for infinite/simple mode & pathway
-if (ecfModel === 'infinite' && waterModel === 'simple' && h2oPathway) {
-  apicalFlux['H2O'] = h2oTransEpiFlux;
-  basolateralFlux['H2O'] = -h2oTransEpiFlux;
-}
-
-// Water/osmolality modeling (as before)
-if (ecfModel === 'infinite') {
-  newICF['H2O'] = basolateralECF['H2O'];
-}
-if (ecfModel === 'finite') {
-  if (waterModel === 'simple') {
-    const blOsm = osmolality(basolateralECF);
-    const icfOsm = osmolality(newICF);
-    if (blOsm !== icfOsm) {
-      newICF['H2O'] += (blOsm - icfOsm);
-      newICF['H2O'] = Math.max(newICF['H2O'], 0);
+  // 4. Build TE fluxes for all ions except H2O
+  const transepiFluxData = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
+    const apical = apicalFlux[ion] ?? 0;
+    const basolateral = basolateralFlux[ion] ?? 0;
+    let teFlux = 0;
+    if (apical > 0 && basolateral < 0) {
+      teFlux = Math.min(apical, Math.abs(basolateral));
+    } else if (apical < 0 && basolateral > 0) {
+      teFlux = -Math.min(Math.abs(apical), basolateral);
     }
+    // Add paracellular flux if present
+    return {
+      ion,
+      transepithelial: teFlux + (paraFlux[ion] || 0)
+    };
+  });
+
+  // 5. H2O logic: handled in one place for the simple/infinite model
+  // Identify AQP placements
+  const aqp2Sides = placementsForTick('AQP2', tList);
+  const aqp3Sides = placementsForTick('AQP3', tList);
+  const hasAQP2_apical = aqp2Sides.includes('apical');
+  const hasAQP2_bl = aqp2Sides.includes('basolateral');
+  const hasAQP3_apical = aqp3Sides.includes('apical');
+  const hasAQP3_bl = aqp3Sides.includes('basolateral');
+  const hasTranscellularH2O = (hasAQP2_apical && hasAQP3_bl) || (hasAQP2_bl && hasAQP3_apical);
+  const hasParacellularH2O = paracellularType === 'cation';
+
+  // Always reset TM H2O fluxes at the start of every tick
+  apicalFlux['H2O'] = 0;
+  basolateralFlux['H2O'] = 0;
+
+  // Compute TE H2O
+  let h2oTransEpiFlux = 0;
+  if (
+    (hasTranscellularH2O || hasParacellularH2O) &&
+    ecfModel === 'infinite' && waterModel === 'simple'
+  ) {
+    // Net TE water flux follows net sum of all non-water solute TE fluxes (teaching model)
+    const netTEFluxNum = transepiFluxData.reduce((sum, row) => sum + row.transepithelial, 0);
+    h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
+
+    apicalFlux['H2O'] = h2oTransEpiFlux;
+    basolateralFlux['H2O'] = -h2oTransEpiFlux;
+  } else if (hasParacellularH2O && !(ecfModel === 'infinite' && waterModel === 'simple')) {
+    // For finite/detailed model, only paracellular H2O flux
+    h2oTransEpiFlux = paraFlux['H2O'] || 0;
+    apicalFlux['H2O'] = h2oTransEpiFlux;
+    basolateralFlux['H2O'] = -h2oTransEpiFlux;
+  } else {
+    h2oTransEpiFlux = 0;
+    apicalFlux['H2O'] = 0;
+    basolateralFlux['H2O'] = 0;
   }
-  // else: allow ICF and BL ECF osmolality to differ
-}
 
-transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
+  // Add H2O to the TE flux data
+  transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
 
-  // Push results
+  // 6. Store results
   setResult({
     apicalFlux,
     basolateralFlux,
@@ -379,7 +303,6 @@ transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
     transepiFluxData
   });
 };
-
 
   // --- Derived Data for Display ---
   const icfH = result?.concentrations?.icf['H+'] ?? INITIAL_CONCENTRATIONS.icf['H+'];
@@ -411,7 +334,14 @@ const netTEFlux = result?.transepiFluxData
   ?.filter(row => row.ion !== 'H2O')
   .reduce((sum, row) => sum + row.transepithelial, 0)
   .toFixed(3);
-  
+
+const tepNetCharge = computeTepSign(result);
+let tepIndicator = "Neutral";
+if (tepNetCharge > 2) tepIndicator = "Apical positive (large)";
+else if (tepNetCharge > 0.1) tepIndicator = "Apical positive";
+else if (tepNetCharge < -2) tepIndicator = "Apical negative (large)";
+else if (tepNetCharge < -0.1) tepIndicator = "Apical negative";
+
 return (
 <>
 {/* About Modal */}
@@ -774,9 +704,14 @@ return (
 
       </div>
       <div className="flex-1 p-4 flex flex-col">
-       
+  <Button
+  className="my-3"
+  onClick={() => calculateFluxesAndConcs(transporters)}
+>
+  Calculate
+</Button>      
  {result && (
-          <div className="mt-4 space-y-6 overflow-auto">
+           <div className="mt-4 space-y-6 overflow-auto">
             <div>
               <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
               <ResponsiveContainer width="100%" height={180}>
@@ -804,6 +739,18 @@ return (
                 </BarChart>
               </ResponsiveContainer>
             </div>
+<div className="mt-2 flex items-center space-x-2">
+  <span className="font-semibold">Transepithelial Potential:</span>
+  <span
+    className={
+      tepNetCharge > 0.1 ? "text-red-700 font-bold" :
+      tepNetCharge < -0.1 ? "text-blue-700 font-bold" :
+      "text-gray-500"
+    }
+  >
+    {tepIndicator}
+  </span>
+</div>
 
             <div>
               <h3 className="font-semibold mb-2">
