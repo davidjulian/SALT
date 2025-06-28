@@ -46,16 +46,18 @@ const INITIAL_CONCENTRATIONS = {
 const INITIAL_TRANSPORTERS = [
   { id: 'AQP2',     name: 'AQP2',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'AQP3',     name: 'AQP3',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'ClC-Kb',  name: 'ClC-Kb',  type: 'channel',    stoich: { 'Cl-': -1 },        kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 }, 
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
   { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
   { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NKCC2',    name: 'NKCC2',      type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'Pendrin', name: 'Pendrin', type: 'exchanger',  stoich: { 'Cl-': -1, 'HCO3-': 1 }, kinetics: { maxRate: 0.4, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
   { id: 'ROMK',     name: 'ROMK',       type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'SGLT2',    name: 'SGLT2',      type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
@@ -103,6 +105,51 @@ function computeTepSign(result) {
   });
   return -chargeSum;
 }
+// --- General-purpose Tooltip with consistent styling ---
+const StyledTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div className="bg-white border rounded shadow p-2 text-xs">
+      <div className="font-bold mb-1">{label}</div>
+      {payload.map((entry, idx) => (
+        <div key={idx}>
+          <span style={{ color: entry.color }}>{entry.name}:</span>{" "}
+          {Number(entry.value).toFixed(2)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// --- Custom Tooltip for Concentrations Chart (Apical, ICF, Basolateral order) ---
+const ConcentrationTooltip = ({ active, payload, label }) => {
+  if (!active || !payload) return null;
+  // Desired order for bars and tooltip
+  const order = [
+    { key: "apicalECF", name: "Apical ECF" },
+    { key: "icf", name: "ICF" },
+    { key: "basolateralECF", name: "Basolateral ECF" }
+  ];
+  // Find and order payload items
+  const ordered = order
+    .map(({ key, name }) => {
+      const entry = payload.find(item => item.dataKey === key);
+      return entry ? { ...entry, displayName: name } : null;
+    })
+    .filter(Boolean);
+
+  return (
+    <div className="bg-white border rounded shadow p-2 text-xs">
+      <div className="font-bold mb-1">{label}</div>
+      {ordered.map((entry, idx) => (
+        <div key={idx}>
+          <span style={{ color: entry.color }}>{entry.displayName}:</span>{" "}
+          {Number(entry.value).toFixed(2)}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 // =====================
 // MAIN APP COMPONENT
@@ -123,6 +170,31 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [result, setResult] = useState(null);
   const [isStale, setIsStale] = useState(true);
+
+  // Add ICF memory between calculations
+  const [icf, setIcf] = useState({ ...INITIAL_CONCENTRATIONS.icf });
+
+  const handleResetECF = () => {
+    setApicalECF({ ...INITIAL_CONCENTRATIONS.apicalECF });
+    setBasolateralECF({ ...INITIAL_CONCENTRATIONS.basolateralECF });
+    setIcf({ ...INITIAL_CONCENTRATIONS.icf }); // <-- reset ICF also!
+    setIsStale(true);
+  };
+
+const handleCalculate = () => {
+  calculateFluxesAndConcs(
+    transporters,
+    apicalECF,
+    basolateralECF,
+    paracellularType,
+    paraCationPerm,
+    paraAnionPerm,
+    icf,          // <-- pass icf state
+    setResult,
+    setIcf        // <-- so calc can update icf
+  );
+  setIsStale(false);
+};
 
   // --- UI HANDLERS ---
   const updateTransporter = (id, field, value) => {
@@ -147,147 +219,295 @@ export default function App() {
     setIsStale(true);
   };
 
-  const handleResetECF = () => {
-    setApicalECF({ ...INITIAL_CONCENTRATIONS.apicalECF });
-    setBasolateralECF({ ...INITIAL_CONCENTRATIONS.basolateralECF });
-    setIsStale(true);
-  };
-
-  const handleCalculate = () => {
-    calculateFluxesAndConcs(
-      transporters,
-      apicalECF,
-      basolateralECF,
-      paracellularType,
-      paraCationPerm,
-      paraAnionPerm,
-      setResult
-    );
-    setIsStale(false);
-  };
-
-  // =============================
-  // CALCULATION LOGIC (INFINITE ECF ONLY!)
+   // =============================
+  // CALCULATION LOGIC
   // =============================
 
-  function calculateFluxesAndConcs(
-    tList,
-    apicalECF,
-    basolateralECF,
-    paracellularType,
-    paraCationPerm,
-    paraAnionPerm,
-    setResult
-  ) {
-    const apicalFlux = {};
-    const basolateralFlux = {};
-    Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
+function calculateFluxesAndConcs(
+  tList,
+  apicalECF,
+  basolateralECF,
+  paracellularType,
+  paraCationPerm,
+  paraAnionPerm,
+  icf,            // <-- take icf from state
+  setResult,
+  setIcf
+) {
+  // -------------- PARAMETERS --------------
+  const maxSteps = 1000;            // Maximum iterations to prevent infinite loops
+  const fluxThreshold = 1e-6;       // Stop when all net fluxes are below this (steady state)
+  const dt = 0.1;                   // "Time" step for each update; keep ≤1 for stability
 
-    const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
+  // -------------- INITIALIZE --------------
+  let newICF = { ...icf };
 
-    // 1. Calculate apical and basolateral TM fluxes for all ions except H2O
-    tList.forEach(t => {
-      if (t.stoich['Na+'] && !hasNaKATPase) return;
-      if (t.placement === 'none') return;
+  // Internal function to calculate fluxes for current ICF
+  function getFluxes(currentICF) {
+  // Step 1. Calculate TM fluxes
+  const apicalFlux = {};
+  const basolateralFlux = {};
+  Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
-      let rate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
-      if (t.id === 'NHE3') {
-        const h = INITIAL_CONCENTRATIONS.icf['H+'];
-        const pH = -Math.log10(h);
-        const pH50 = 7.2;
-        const sigma = 0.05;
-        rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
-      }
-      Object.entries(t.stoich).forEach(([ion, coeff]) => {
-        if (ion === 'H2O') return;
-        const delta = rate * coeff;
-        if (t.placement === 'apical') apicalFlux[ion] += delta;
-        else basolateralFlux[ion] += delta;
-      });
+  // TRANSPORTER FLUXES (all saturable/MM)
+  tList.forEach(t => {
+    if (t.placement === 'none') return;
+
+    let rate = 0;
+    let fromComp = null, toComp = null;
+
+    if (t.placement === 'apical') {
+      fromComp = apicalECF;
+      toComp = currentICF;
+    } else if (t.placement === 'basolateral') {
+      fromComp = basolateralECF;
+      toComp = currentICF;
+    }
+
+    // --- MM or multi-site limiting MM for all transporter types ---
+
+    // SGLT2: 2-site MM for Na+ and Glucose
+    if (t.id === 'SGLT2') {
+      // Limiting substrate for co-transport
+      const naSub = Math.max(0, fromComp['Na+']);
+      const gluSub = Math.max(0, fromComp['Glucose']);
+      const limiting = Math.min(naSub, gluSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // NKCC2: 3-site MM for Na+, K+, 2Cl-
+    else if (t.id === 'NKCC2') {
+      const naSub = Math.max(0, fromComp['Na+']);
+      const kSub  = Math.max(0, fromComp['K+']);
+      const clSub = Math.max(0, fromComp['Cl-']);
+      const limiting = Math.min(naSub, kSub, clSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // NCC: 2-site MM for Na+, Cl-
+    else if (t.id === 'NCC') {
+      const naSub = Math.max(0, fromComp['Na+']);
+      const clSub = Math.max(0, fromComp['Cl-']);
+      const limiting = Math.min(naSub, clSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // NBCe1: 2-site MM for Na+, HCO3-
+    else if (t.id === 'NBCe1') {
+      const naSub   = Math.max(0, fromComp['Na+']);
+      const hco3Sub = Math.max(0, fromComp['HCO3-']);
+      const limiting = Math.min(naSub, hco3Sub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // GLUT2: MM for Glucose (facilitated diffusion, both directions)
+    else if (t.id === 'GLUT2') {
+      // Bi-directional facilitated diffusion, saturable in both directions
+      const grad = toComp['Glucose'] - fromComp['Glucose'];
+      const absGrad = Math.abs(grad);
+      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+    }
+    // ENaC: MM for Na+ (channel)
+    else if (t.id === 'ENaC') {
+      const grad = fromComp['Na+'] - toComp['Na+'];
+      const absGrad = Math.abs(grad);
+      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+    }
+    // ROMK: MM for K+ (channel)
+    else if (t.id === 'ROMK') {
+      const grad = toComp['K+'] - fromComp['K+'];
+      const absGrad = Math.abs(grad);
+      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+    }
+    // NaKATPase: 2-site MM limited by both ICF Na+ and ECF K+
+    else if (t.id === 'NaKATPase') {
+      const na_icf = toComp['Na+'];
+      const k_ecf = fromComp['K+'];
+      // Use Km for both (could set separate Km values if needed)
+      const Km_Na = t.kinetics.Km || 10;
+      const Km_K = t.kinetics.Km || 1.5; // physiologic Km for K+ is ~1-2 mM
+      const lim_Na = na_icf / (Km_Na + na_icf);
+      const lim_K = k_ecf / (Km_K + k_ecf);
+      rate = t.kinetics.maxRate * Math.min(lim_Na, lim_K) * t.density;
+  }
+    // NHE3: 2-site MM for Na+ (in) and H+ (out)
+    else if (t.id === 'NHE3') {
+      const naSub = Math.max(0, fromComp['Na+']);
+      const hSub  = Math.max(0, toComp['H+']);
+      const limiting = Math.min(naSub, hSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+      // add pH sensitivity (optional)
+      const h = toComp['H+'];
+      const pH = -Math.log10(h);
+      const pH50 = 7.2;
+      const sigma = 0.05;
+      rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
+    }
+    // NCX1: 2-site MM for Na+ (in) and Ca2+ (out)
+    else if (t.id === 'NCX1') {
+      const naSub = Math.max(0, fromComp['Na+']);
+      const caSub = Math.max(0, toComp['Ca2+']);
+      const limiting = Math.min(naSub, caSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // HKATPase: 2-site MM for K+ and H+
+    else if (t.id === 'HKATPase') {
+      const kSub = Math.max(0, fromComp['K+']);
+      const hSub = Math.max(0, toComp['H+']);
+      const limiting = Math.min(kSub, hSub);
+      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }
+    // HATPase: MM for H+
+    else if (t.id === 'HATPase') {
+      const hSub = Math.max(0, toComp['H+']);
+      rate = t.kinetics.maxRate * hSub / (t.kinetics.Km + hSub) * t.density;
+    }
+    // PMCA: MM for Ca2+
+    else if (t.id === 'PMCA') {
+      const caSub = Math.max(0, toComp['Ca2+']);
+      rate = t.kinetics.maxRate * caSub / (t.kinetics.Km + caSub) * t.density;
+    }
+    // AQP2/AQP3: handled later (water)
+    else if (t.id === 'AQP2' || t.id === 'AQP3') {
+      rate = 0;
+    }
+   // Pendrin: 2-site MM for Cl- and HCO3-
+  else if (t.id === 'Pendrin') {
+    const clSub   = Math.max(0, fromComp['Cl-']);
+    const hco3Sub = Math.max(0, toComp['HCO3-']);
+    const limiting = Math.min(clSub, hco3Sub);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+    }   
+    // Fallback: single-site MM for main ion
+    else {
+      let mainIon = Object.keys(t.stoich)[0];
+      const substrate = Math.max(0, fromComp[mainIon]);
+      rate = t.kinetics.maxRate * substrate / (t.kinetics.Km + substrate) * t.density;
+    }
+
+    // Apply stoichiometry to fluxes
+    Object.entries(t.stoich).forEach(([ion, coeff]) => {
+      if (ion === 'H2O') return;
+      const delta = rate * coeff;
+      if (t.placement === 'apical') apicalFlux[ion] += delta;
+      else if (t.placement === 'basolateral') basolateralFlux[ion] += delta;
     });
+  });
 
-    // 2. Paracellular Pathway Fluxes
-    const paraFlux = {};
-    Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
+  // Step 2. Paracellular Pathway Fluxes (unchanged)
+  const paraFlux = {};
+  Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
 
-    if (paracellularType === 'cation') {
-      ['Na+','K+','H2O'].forEach(ion => {
-        const cap = apicalECF[ion];
-        const blp = basolateralECF[ion];
-        paraFlux[ion] = paraCationPerm * (cap - blp);
-      });
-    }
-    if (paracellularType === 'anion') {
-      ['Cl-','HCO3-'].forEach(ion => {
-        const cap = apicalECF[ion];
-        const blp = basolateralECF[ion];
-        paraFlux[ion] = paraAnionPerm * (cap - blp);
-      });
-    }
-
-    // 3. Net fluxes
-    const netFlux = {};
-    Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion] + (paraFlux[ion] || 0); });
-
-    // 4. ICF concentrations (not changed in infinite mode)
-    const newICF = { ...INITIAL_CONCENTRATIONS.icf };
-    Object.entries(netFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
-    newICF['H+'] = Math.max(newICF['H+'], 1e-8);
-
-    // 5. Transepithelial fluxes (for display)
-    const transepiFluxData = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
-      const apical = apicalFlux[ion] ?? 0;
-      const basolateral = basolateralFlux[ion] ?? 0;
-      let teFlux = 0;
-      if (apical > 0 && basolateral < 0) {
-        teFlux = Math.min(apical, Math.abs(basolateral));
-      } else if (apical < 0 && basolateral > 0) {
-        teFlux = -Math.min(Math.abs(apical), basolateral);
-      }
-      // Add paracellular flux if present
-      return {
-        ion,
-        transepithelial: teFlux + (paraFlux[ion] || 0)
-      };
+  if (paracellularType === 'cation') {
+    ['Na+','K+','H2O'].forEach(ion => {
+      const cap = apicalECF[ion];
+      const blp = basolateralECF[ion];
+      paraFlux[ion] = paraCationPerm * (cap - blp);
     });
-
-    // 6. H2O logic: handled in one place for simple/infinite model
-    const aqp2Sides = placementsForTick('AQP2', tList);
-    const aqp3Sides = placementsForTick('AQP3', tList);
-    const hasAQP2_apical = aqp2Sides.includes('apical');
-    const hasAQP2_bl = aqp2Sides.includes('basolateral');
-    const hasAQP3_apical = aqp3Sides.includes('apical');
-    const hasAQP3_bl = aqp3Sides.includes('basolateral');
-    const hasTranscellularH2O = (hasAQP2_apical && hasAQP3_bl) || (hasAQP2_bl && hasAQP3_apical);
-    const hasParacellularH2O = paracellularType === 'cation';
-
-    apicalFlux['H2O'] = 0;
-    basolateralFlux['H2O'] = 0;
-
-    let h2oTransEpiFlux = 0;
-    if ((hasTranscellularH2O || hasParacellularH2O)) {
-      const netTEFluxNum = transepiFluxData.reduce((sum, row) => sum + row.transepithelial, 0);
-      h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
-      apicalFlux['H2O'] = h2oTransEpiFlux;
-      basolateralFlux['H2O'] = -h2oTransEpiFlux;
-    }
-
-    transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
-
-    setResult({
-      apicalFlux,
-      basolateralFlux,
-      netFlux,
-      concentrations: {
-        apicalECF,
-        icf: newICF,
-        basolateralECF
-      },
-      paraFlux,
-      transepiFluxData
+  }
+  if (paracellularType === 'anion') {
+    ['Cl-','HCO3-'].forEach(ion => {
+      const cap = apicalECF[ion];
+      const blp = basolateralECF[ion];
+      paraFlux[ion] = paraAnionPerm * (cap - blp);
     });
   }
 
+  // Step 3. Net fluxes
+  const netFlux = {};
+  Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion] + (paraFlux[ion] || 0); });
+
+  return { apicalFlux, basolateralFlux, paraFlux, netFlux };
+}
+
+
+  // -------------- ITERATION LOOP --------------
+  let step = 0;
+  let done = false;
+  let finalFluxes = null;
+
+  while (!done && step < maxSteps) {
+    const { apicalFlux, basolateralFlux, paraFlux, netFlux } = getFluxes(newICF);
+
+    // Update ICF for next step (Euler)
+    let maxChange = 0;
+    const updatedICF = { ...newICF };
+    Object.entries(netFlux).forEach(([ion, flux]) => {
+      updatedICF[ion] += flux * dt;
+      maxChange = Math.max(maxChange, Math.abs(flux * dt));
+    });
+    updatedICF['H+'] = Math.max(updatedICF['H+'], 1e-8);
+
+    // Clamp all concentrations to >= 0
+    Object.keys(updatedICF).forEach(ion => {
+      updatedICF[ion] = Math.max(0, updatedICF[ion]);
+    });
+    
+    // Test for steady state (all fluxes very small)
+    if (maxChange < fluxThreshold) {
+      done = true;
+      finalFluxes = { apicalFlux, basolateralFlux, paraFlux, netFlux };
+    }
+    newICF = updatedICF;
+    step++;
+  }
+
+  // -------------- FINAL DISPLAY FLUXES --------------
+  // If loop exited before convergence, get final fluxes anyway
+  if (!finalFluxes) finalFluxes = getFluxes(newICF);
+
+  // Step 5. Transepithelial fluxes (for display)
+  const transepiFluxData = Object.keys(finalFluxes.netFlux).filter(ion => ion !== 'H2O').map(ion => {
+    const apical = finalFluxes.apicalFlux[ion] ?? 0;
+    const basolateral = finalFluxes.basolateralFlux[ion] ?? 0;
+    let teFlux = 0;
+    if (apical > 0 && basolateral < 0) {
+      teFlux = Math.min(apical, Math.abs(basolateral));
+    } else if (apical < 0 && basolateral > 0) {
+      teFlux = -Math.min(Math.abs(apical), basolateral);
+    }
+    // Add paracellular flux if present
+    return {
+      ion,
+      transepithelial: teFlux + (finalFluxes.paraFlux[ion] || 0)
+    };
+  });
+
+  // Step 6. Water flux logic (unchanged)
+  const aqp2Sides = placementsForTick('AQP2', tList);
+  const aqp3Sides = placementsForTick('AQP3', tList);
+  const hasAQP2_apical = aqp2Sides.includes('apical');
+  const hasAQP2_bl = aqp2Sides.includes('basolateral');
+  const hasAQP3_apical = aqp3Sides.includes('apical');
+  const hasAQP3_bl = aqp3Sides.includes('basolateral');
+  const hasTranscellularH2O = (hasAQP2_apical && hasAQP3_bl) || (hasAQP2_bl && hasAQP3_apical);
+  const hasParacellularH2O = paracellularType === 'cation';
+
+  finalFluxes.apicalFlux['H2O'] = 0;
+  finalFluxes.basolateralFlux['H2O'] = 0;
+
+  let h2oTransEpiFlux = 0;
+  if ((hasTranscellularH2O || hasParacellularH2O)) {
+    const netTEFluxNum = transepiFluxData.reduce((sum, row) => sum + row.transepithelial, 0);
+    h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
+    finalFluxes.apicalFlux['H2O'] = h2oTransEpiFlux;
+    finalFluxes.basolateralFlux['H2O'] = -h2oTransEpiFlux;
+  }
+
+  transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
+
+  // Step 7. Store results (show the converged state)
+  setResult({
+    apicalFlux: finalFluxes.apicalFlux,
+    basolateralFlux: finalFluxes.basolateralFlux,
+    netFlux: finalFluxes.netFlux,
+    concentrations: {
+      apicalECF,
+      icf: newICF,
+      basolateralECF
+    },
+    paraFlux: finalFluxes.paraFlux,
+    transepiFluxData
+  });
+  setIcf(newICF);   // <-- update the ICF state to steady state
+}
+  
   // --- DATA FOR CHARTS ---
   const fluxData = result
     ? Object.keys(result.netFlux).map(ion => ({
@@ -490,7 +710,15 @@ export default function App() {
       <div className="flex space-x-2 mb-4">
         <Button onClick={() => setShowAbout(true)}>About</Button>
         <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
-        <Button variant="outline" onClick={() => setTransporters(INITIAL_TRANSPORTERS.map(t => ({ ...t })))}>Reset</Button>
+        <Button variant="outline" onClick={() => {
+          setTransporters(INITIAL_TRANSPORTERS.map(t => ({ ...t })));
+          setIcf({ ...INITIAL_CONCENTRATIONS.icf });
+          setApicalECF({ ...INITIAL_CONCENTRATIONS.apicalECF });
+          setBasolateralECF({ ...INITIAL_CONCENTRATIONS.basolateralECF });
+          setIsStale(true);
+        }}>
+          Reset
+        </Button>
       </div>
       <div className="mt-4">
         <h2 className="text-base font-semibold mb-2">Paracellular Pathway</h2>
@@ -558,8 +786,7 @@ export default function App() {
                 <XAxis dataKey="ion" />
                 <YAxis />
                 <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                <Legend />
+                <Tooltip content={<StyledTooltip />} />                <Legend />
                 <Bar dataKey="apical" name="Apical" fill="#8884d8" />
                 <Bar dataKey="basolateral" name="Basolateral" fill="#82ca9d" />
                 <Bar dataKey="net" name="Net Flux" fill="#ffc658" />
@@ -572,8 +799,7 @@ export default function App() {
               <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <XAxis dataKey="ion" />
                 <YAxis domain={[0,150]} />
-                <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                <Legend />
+                <Tooltip content={<ConcentrationTooltip />} />                <Legend />
                 <Bar dataKey="apicalECF" name="Apical ECF" fill="#8884d8" fillOpacity={0.5} />
                 <Bar dataKey="icf" name="ICF" fill="#82ca9d" fillOpacity={0.8} />
                 <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#ffc658" fillOpacity={0.5} />
@@ -601,7 +827,7 @@ export default function App() {
                 <XAxis dataKey="ion" />
                 <YAxis />
                 <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                <Tooltip content={<StyledTooltip />} />
                 <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
               </BarChart>
             </ResponsiveContainer>
