@@ -35,32 +35,89 @@ const Button = ({ children, onClick, className = '', variant, size, disabled = f
 // CONSTANTS & HELPERS
 // =====================
 
-const SOLUTES = ['Na+', 'K+', 'Cl-', 'HCO3-', 'Ca2+', 'Glucose'];
+const SOLUTES = ['Na+', 'K+', 'Cl-', 'HCO3-', 'Ca2+', 'Glucose', 'AminoAcid'];
 
 const INITIAL_CONCENTRATIONS = {
-  apicalECF:     { 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5,  'H2O':100 },
-  icf:           { 'Na+':12,  'K+':140, 'Cl-':10,  'H+':0.00002, 'HCO3-':10, 'Ca2+':0.0001,'Glucose':1,  'H2O':100 },
-  basolateralECF:{ 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5,  'H2O':100 }
+  apicalECF:     { 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5, 'AminoAcid':2, 'H2O':100 },
+  icf:           { 'Na+':12,  'K+':140, 'Cl-':10,  'H+':0.00002, 'HCO3-':10, 'Ca2+':0.0001,'Glucose':1, 'AminoAcid':8, 'H2O':100 },
+  basolateralECF:{ 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5, 'AminoAcid':2, 'H2O':100 }
 };
 
 const INITIAL_TRANSPORTERS = [
-  { id: 'AQP2',     name: 'AQP2',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AQP3',     name: 'AQP3',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ClC-Kb',  name: 'ClC-Kb',  type: 'channel',    stoich: { 'Cl-': -1 },        kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 }, 
-  { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
-  { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
-  { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NKCC2',    name: 'NKCC2',      type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'Pendrin', name: 'Pendrin', type: 'exchanger',  stoich: { 'Cl-': -1, 'HCO3-': 1 }, kinetics: { maxRate: 0.4, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'ROMK',     name: 'ROMK',       type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'SGLT2',    name: 'SGLT2',      type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
+  // AQPs: One entry, allows "apical", "basolateral", "both", or "none"
+  { id: 'AQP', name: 'Aquaporin (Water Channel)', type: 'channel',
+    stoich: { 'H2O': 1 }, kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // SGLT: Generic, with SGLT1/SGLT2 switch (see modal code for switch logic)
+  { id: 'SGLT', name: 'SGLT (Na⁺-Glucose Cotransporter)', type: 'symporter',
+    stoich: { 'Na+': 2, 'Glucose': 1 }, // Default SGLT1 stoich
+    stoichType: 'SGLT1', // 'SGLT1' or 'SGLT2'
+    kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // NKCC: Generic Na⁺-K⁺-2Cl⁻ cotransporter (represents NKCC1 and NKCC2)
+  { id: 'NKCC', name: 'NKCC (Na⁺-K⁺-2Cl⁻ Cotransporter)', type: 'symporter',
+    stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 },
+    kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // NHE: Generic Na⁺/H⁺ exchanger
+  { id: 'NHE', name: 'NHE (Na⁺/H⁺ Exchanger)', type: 'antiporter',
+    stoich: { 'Na+': 1, 'H+': -1 },
+    kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // Cl⁻/HCO₃⁻ Exchanger: Generic (represents DRA, Pendrin, etc.)
+  { id: 'ClHCO3Ex', name: 'Cl⁻/HCO₃⁻ Exchanger', type: 'exchanger',
+    stoich: { 'Cl-': -1, 'HCO3-': 1 },
+    kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // K⁺ Channel: Generic (ROMK, BK, etc.)
+  { id: 'KChannel', name: 'K⁺ Channel', type: 'channel',
+    stoich: { 'K+': -1 },
+    kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // ENaC: Apical Na⁺ channel
+  { id: 'ENaC', name: 'ENaC (Epithelial Na⁺ Channel)', type: 'channel',
+    stoich: { 'Na+': 1 },
+    kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // CFTR: Apical Cl⁻ channel
+  { id: 'CFTR', name: 'CFTR (Cl⁻ Channel)', type: 'channel',
+    stoich: { 'Cl-': 1 },
+    kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // Na⁺/K⁺-ATPase: Basolateral pump
+  { id: 'NaKATPase', name: 'Na⁺/K⁺-ATPase', type: 'pump',
+    stoich: { 'Na+': -3, 'K+': 2 },
+    kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // GLUT2: Basolateral glucose uniporter
+  { id: 'GLUT2', name: 'GLUT2 (Glucose Uniporter)', type: 'channel',
+    stoich: { 'Glucose': -1 },
+    kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // NBC: Basolateral Na⁺/HCO₃⁻ cotransporter
+  { id: 'NBC', name: 'NBC (Na⁺/HCO₃⁻ Cotransporter)', type: 'symporter',
+    stoich: { 'Na+': 1, 'HCO3-': 3 }, // Common stoich
+    kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
+
+  // H⁺-ATPase: Apical proton pump
+  { id: 'HATPase', name: 'H⁺-ATPase (Proton Pump)', type: 'pump',
+    stoich: { 'H+': -1 },
+    kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
+
+  // TRPV6: Apical Ca²⁺ channel
+  { id: 'TRPV6', name: 'TRPV6 (Ca²⁺ Channel)', type: 'channel',
+    stoich: { 'Ca2+': 1 },
+    kinetics: { maxRate: 0.2, Km: 0.05 }, placement: 'none', density: 1 },
+
+  // PMCA: Basolateral Ca²⁺-ATPase (extrudes Ca²⁺)
+  { id: 'PMCA', name: 'PMCA (Ca²⁺-ATPase)', type: 'pump',
+    stoich: { 'Ca2+': -1 },
+    kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
+
+  // Na⁺-Amino Acid Cotransporter
+  { id: 'NAAT', name: 'Na⁺-Amino Acid Cotransporter', type: 'symporter',
+    stoich: { 'Na+': 1, 'AminoAcid': 1 },
+    kinetics: { maxRate: 0.6, Km: 0.5 }, placement: 'none', density: 1 },
 ];
 
 function placementsForTick(id, tList) {
@@ -182,6 +239,8 @@ export default function App() {
   };
 
 const handleCalculate = () => {
+  // Always start from baseline ICF
+  const baselineICF = { ...INITIAL_CONCENTRATIONS.icf };
   calculateFluxesAndConcs(
     transporters,
     apicalECF,
@@ -189,12 +248,13 @@ const handleCalculate = () => {
     paracellularType,
     paraCationPerm,
     paraAnionPerm,
-    icf,          // <-- pass icf state
+    baselineICF,   // <<-- Always use the baseline!
     setResult,
-    setIcf        // <-- so calc can update icf
+    setIcf         // <- This stores the converged value, but it will not be used as input next time.
   );
   setIsStale(false);
 };
+
 
   // --- UI HANDLERS ---
   const updateTransporter = (id, field, value) => {
@@ -250,147 +310,170 @@ function calculateFluxesAndConcs(
   Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
   // TRANSPORTER FLUXES (all saturable/MM)
-  tList.forEach(t => {
-    if (t.placement === 'none') return;
+ tList.forEach(t => {
+  if (t.placement === 'none') return;
 
-    let rate = 0;
-    let fromComp = null, toComp = null;
+  let rate = 0;
+  let fromComp = null, toComp = null;
 
-    if (t.placement === 'apical') {
-      fromComp = apicalECF;
-      toComp = currentICF;
-    } else if (t.placement === 'basolateral') {
-      fromComp = basolateralECF;
-      toComp = currentICF;
-    }
+  // Support AQP "both" (for water) and all others as before
+  // For AQP, we handle water flux elsewhere, so skip flux calculation here
+  if (t.id === 'AQP') return;
 
-    // --- MM or multi-site limiting MM for all transporter types ---
-
-    // SGLT2: 2-site MM for Na+ and Glucose
-    if (t.id === 'SGLT2') {
-      // Limiting substrate for co-transport
-      const naSub = Math.max(0, fromComp['Na+']);
-      const gluSub = Math.max(0, fromComp['Glucose']);
-      const limiting = Math.min(naSub, gluSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // NKCC2: 3-site MM for Na+, K+, 2Cl-
-    else if (t.id === 'NKCC2') {
-      const naSub = Math.max(0, fromComp['Na+']);
-      const kSub  = Math.max(0, fromComp['K+']);
-      const clSub = Math.max(0, fromComp['Cl-']);
-      const limiting = Math.min(naSub, kSub, clSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // NCC: 2-site MM for Na+, Cl-
-    else if (t.id === 'NCC') {
-      const naSub = Math.max(0, fromComp['Na+']);
-      const clSub = Math.max(0, fromComp['Cl-']);
-      const limiting = Math.min(naSub, clSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // NBCe1: 2-site MM for Na+, HCO3-
-    else if (t.id === 'NBCe1') {
-      const naSub   = Math.max(0, fromComp['Na+']);
-      const hco3Sub = Math.max(0, fromComp['HCO3-']);
-      const limiting = Math.min(naSub, hco3Sub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // GLUT2: MM for Glucose (facilitated diffusion, both directions)
-    else if (t.id === 'GLUT2') {
-      // Bi-directional facilitated diffusion, saturable in both directions
-      const grad = toComp['Glucose'] - fromComp['Glucose'];
-      const absGrad = Math.abs(grad);
-      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
-    }
-    // ENaC: MM for Na+ (channel)
-    else if (t.id === 'ENaC') {
-      const grad = fromComp['Na+'] - toComp['Na+'];
-      const absGrad = Math.abs(grad);
-      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
-    }
-    // ROMK: MM for K+ (channel)
-    else if (t.id === 'ROMK') {
-      const grad = toComp['K+'] - fromComp['K+'];
-      const absGrad = Math.abs(grad);
-      rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
-    }
-    // NaKATPase: 2-site MM limited by both ICF Na+ and ECF K+
-    else if (t.id === 'NaKATPase') {
-      const na_icf = toComp['Na+'];
-      const k_ecf = fromComp['K+'];
-      // Use Km for both (could set separate Km values if needed)
-      const Km_Na = t.kinetics.Km || 10;
-      const Km_K = t.kinetics.Km || 1.5; // physiologic Km for K+ is ~1-2 mM
-      const lim_Na = na_icf / (Km_Na + na_icf);
-      const lim_K = k_ecf / (Km_K + k_ecf);
-      rate = t.kinetics.maxRate * Math.min(lim_Na, lim_K) * t.density;
+  // Assign compartment pointers
+  if (t.placement === 'apical' || (t.placement === 'both' && t.id === 'AQP')) {
+    fromComp = apicalECF;
+    toComp = currentICF;
+  } else if (t.placement === 'basolateral') {
+    fromComp = basolateralECF;
+    toComp = currentICF;
   }
-    // NHE3: 2-site MM for Na+ (in) and H+ (out)
-    else if (t.id === 'NHE3') {
-      const naSub = Math.max(0, fromComp['Na+']);
-      const hSub  = Math.max(0, toComp['H+']);
-      const limiting = Math.min(naSub, hSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-      // add pH sensitivity (optional)
-      const h = toComp['H+'];
-      const pH = -Math.log10(h);
-      const pH50 = 7.2;
-      const sigma = 0.05;
-      rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
-    }
-    // NCX1: 2-site MM for Na+ (in) and Ca2+ (out)
-    else if (t.id === 'NCX1') {
-      const naSub = Math.max(0, fromComp['Na+']);
-      const caSub = Math.max(0, toComp['Ca2+']);
-      const limiting = Math.min(naSub, caSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // HKATPase: 2-site MM for K+ and H+
-    else if (t.id === 'HKATPase') {
-      const kSub = Math.max(0, fromComp['K+']);
-      const hSub = Math.max(0, toComp['H+']);
-      const limiting = Math.min(kSub, hSub);
-      rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }
-    // HATPase: MM for H+
-    else if (t.id === 'HATPase') {
-      const hSub = Math.max(0, toComp['H+']);
-      rate = t.kinetics.maxRate * hSub / (t.kinetics.Km + hSub) * t.density;
-    }
-    // PMCA: MM for Ca2+
-    else if (t.id === 'PMCA') {
-      const caSub = Math.max(0, toComp['Ca2+']);
-      rate = t.kinetics.maxRate * caSub / (t.kinetics.Km + caSub) * t.density;
-    }
-    // AQP2/AQP3: handled later (water)
-    else if (t.id === 'AQP2' || t.id === 'AQP3') {
-      rate = 0;
-    }
-   // Pendrin: 2-site MM for Cl- and HCO3-
-  else if (t.id === 'Pendrin') {
-    const clSub   = Math.max(0, fromComp['Cl-']);
+
+  // Saturable Michaelis-Menten for ALL, with multi-site limiting for co-transporters/exchangers
+  // 1. SGLT (toggle stoichiometry with t.stoich)
+  if (t.id === 'SGLT') {
+    // Limiting substrate for Na+ and Glucose
+    const naSub = Math.max(0, fromComp['Na+']);
+    const gluSub = Math.max(0, fromComp['Glucose']);
+    const naNeeded = t.stoich['Na+'];
+    const gluNeeded = t.stoich['Glucose'];
+    // Find the min ratio (accounts for both SGLT1 and SGLT2 stoichiometry)
+    const naAvail = naSub / naNeeded;
+    const gluAvail = gluSub / gluNeeded;
+    const limiting = Math.min(naAvail, gluAvail);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+  }
+  // 2. NKCC (Na+ : K+ : 2Cl-), all 1-site except 2 for Cl-
+  else if (t.id === 'NKCC') {
+    const naSub = Math.max(0, fromComp['Na+']);
+    const kSub = Math.max(0, fromComp['K+']);
+    const clSub = Math.max(0, fromComp['Cl-']);
+    const naNeeded = 1, kNeeded = 1, clNeeded = 2;
+    const naAvail = naSub / naNeeded;
+    const kAvail = kSub / kNeeded;
+    const clAvail = clSub / clNeeded;
+    const limiting = Math.min(naAvail, kAvail, clAvail);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+  }
+  // 3. NHE (Na+/H+ exchanger)
+  else if (t.id === 'NHE') {
+    const naSub = Math.max(0, fromComp['Na+']);
+    const hSub = Math.max(0, toComp['H+']);
+    const limiting = Math.min(naSub, hSub);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+  }
+  // 4. Cl-/HCO3- Exchanger
+  else if (t.id === 'ClHCO3Ex') {
+    const clSub = Math.max(0, fromComp['Cl-']);
     const hco3Sub = Math.max(0, toComp['HCO3-']);
     const limiting = Math.min(clSub, hco3Sub);
     rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
-    }   
-    // Fallback: single-site MM for main ion
-    else {
-      let mainIon = Object.keys(t.stoich)[0];
-      const substrate = Math.max(0, fromComp[mainIon]);
-      rate = t.kinetics.maxRate * substrate / (t.kinetics.Km + substrate) * t.density;
+  }
+// 5. KChannel (simple MM, K+ channel)
+else if (t.id === 'KChannel') {
+  let grad = 0;
+  if (t.placement === 'apical') {
+    grad = currentICF['K+'] - apicalECF['K+'];
+  } else if (t.placement === 'basolateral') {
+    grad = currentICF['K+'] - basolateralECF['K+'];
+  }
+  const absGrad = Math.abs(grad);
+  rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+}
+// 6. ENaC (simple MM, Na+ channel)
+else if (t.id === 'ENaC') {
+  let grad = 0;
+  if (t.placement === 'apical') {
+    grad = currentICF['Na+'] - apicalECF['Na+'];
+  } else if (t.placement === 'basolateral') {
+    grad = currentICF['Na+'] - basolateralECF['Na+'];
+  }
+  const absGrad = Math.abs(grad);
+  rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+}
+// 7. CFTR (simple MM, Cl- channel)
+else if (t.id === 'CFTR') {
+  let grad = 0;
+  if (t.placement === 'apical') {
+    grad = currentICF['Cl-'] - apicalECF['Cl-'];
+  } else if (t.placement === 'basolateral') {
+    grad = currentICF['Cl-'] - basolateralECF['Cl-'];
+  }
+  const absGrad = Math.abs(grad);
+  rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+}
+  // 8. NaKATPase (MM limited by ICF Na+ and ECF K+)
+ else if (t.id === 'NaKATPase') {
+  const na_icf = toComp['Na+'];
+  const k_ecf = fromComp['K+'];
+  const k_icf = toComp['K+'];
+  const Km_Na = t.kinetics.Km || 10;
+  const Km_K = t.kinetics.Km || 1.5;
+  // Require sufficient ICF Na and ICF K (for efflux), and ECF K (for influx)
+  const lim_Na = na_icf / (Km_Na + na_icf);
+  const lim_Kecf = k_ecf / (Km_K + k_ecf);
+  const lim_Kicf = k_icf / (Km_K + k_icf);
+  rate = t.kinetics.maxRate * Math.min(lim_Na, lim_Kecf, lim_Kicf) * t.density;
+}
+  // 9. GLUT2 (bidirectional, glucose uniporter)
+  else if (t.id === 'GLUT2') {
+    const grad = toComp['Glucose'] - fromComp['Glucose'];
+    const absGrad = Math.abs(grad);
+    rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+  }
+  // 10. NBC (Na+/3HCO3-)
+  else if (t.id === 'NBC') {
+    const naSub = Math.max(0, fromComp['Na+']);
+    const hco3Sub = Math.max(0, fromComp['HCO3-']);
+    const naNeeded = 1, hco3Needed = 3;
+    const naAvail = naSub / naNeeded;
+    const hco3Avail = hco3Sub / hco3Needed;
+    const limiting = Math.min(naAvail, hco3Avail);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+  }
+  // 11. HATPase (proton pump)
+  else if (t.id === 'HATPase') {
+    const hSub = Math.max(0, toComp['H+']);
+    rate = t.kinetics.maxRate * hSub / (t.kinetics.Km + hSub) * t.density;
+  }
+  // 12. TRPV6 (apical Ca2+ channel)
+  else if (t.id === 'TRPV6') {
+    const grad = fromComp['Ca2+'] - toComp['Ca2+'];
+    const absGrad = Math.abs(grad);
+    rate = t.kinetics.maxRate * absGrad / (t.kinetics.Km + absGrad) * Math.sign(grad) * t.density;
+  }
+  // 13. PMCA (basolateral Ca2+ ATPase)
+  else if (t.id === 'PMCA') {
+    const caSub = Math.max(0, toComp['Ca2+']);
+    rate = t.kinetics.maxRate * caSub / (t.kinetics.Km + caSub) * t.density;
+  }
+  // 14. Na+-Amino Acid Cotransporter (NAAT)
+  else if (t.id === 'NAAT') {
+    const naSub = Math.max(0, fromComp['Na+']);
+    const aaSub = Math.max(0, fromComp['AminoAcid']);
+    const limiting = Math.min(naSub, aaSub);
+    rate = t.kinetics.maxRate * limiting / (t.kinetics.Km + limiting) * t.density;
+  }
+  // fallback: single-site MM for main ion (in case any missed)
+  else {
+    let mainIon = Object.keys(t.stoich)[0];
+    const substrate = Math.max(0, fromComp[mainIon]);
+    rate = t.kinetics.maxRate * substrate / (t.kinetics.Km + substrate) * t.density;
+  }
+
+  // Apply stoichiometry to fluxes (ignore water here)
+  Object.entries(t.stoich).forEach(([ion, coeff]) => {
+    if (ion === 'H2O') return;
+    const delta = rate * coeff;
+    if (t.placement === 'apical') apicalFlux[ion] += delta;
+    else if (t.placement === 'basolateral') basolateralFlux[ion] += delta;
+    else if (t.placement === 'both' && t.id === 'AQP') {
+      // skip for water here, handled later
     }
-
-    // Apply stoichiometry to fluxes
-    Object.entries(t.stoich).forEach(([ion, coeff]) => {
-      if (ion === 'H2O') return;
-      const delta = rate * coeff;
-      if (t.placement === 'apical') apicalFlux[ion] += delta;
-      else if (t.placement === 'basolateral') basolateralFlux[ion] += delta;
-    });
   });
+});
 
-  // Step 2. Paracellular Pathway Fluxes (unchanged)
+  // Step 2. Paracellular Pathway Fluxes
   const paraFlux = {};
   Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
 
@@ -469,28 +552,25 @@ function calculateFluxesAndConcs(
     };
   });
 
-  // Step 6. Water flux logic (unchanged)
-  const aqp2Sides = placementsForTick('AQP2', tList);
-  const aqp3Sides = placementsForTick('AQP3', tList);
-  const hasAQP2_apical = aqp2Sides.includes('apical');
-  const hasAQP2_bl = aqp2Sides.includes('basolateral');
-  const hasAQP3_apical = aqp3Sides.includes('apical');
-  const hasAQP3_bl = aqp3Sides.includes('basolateral');
-  const hasTranscellularH2O = (hasAQP2_apical && hasAQP3_bl) || (hasAQP2_bl && hasAQP3_apical);
-  const hasParacellularH2O = paracellularType === 'cation';
+ // Step 6. Water flux logic (for AQP, including "both")
+const aqpPlacement = transporters.find(t => t.id === 'AQP')?.placement ?? 'none';
+const hasAQP_apical = aqpPlacement === 'apical' || aqpPlacement === 'both';
+const hasAQP_bl = aqpPlacement === 'basolateral' || aqpPlacement === 'both';
+const hasTranscellularH2O = hasAQP_apical && hasAQP_bl;
+const hasParacellularH2O = paracellularType === 'cation';
 
-  finalFluxes.apicalFlux['H2O'] = 0;
-  finalFluxes.basolateralFlux['H2O'] = 0;
+finalFluxes.apicalFlux['H2O'] = 0;
+finalFluxes.basolateralFlux['H2O'] = 0;
 
-  let h2oTransEpiFlux = 0;
-  if ((hasTranscellularH2O || hasParacellularH2O)) {
-    const netTEFluxNum = transepiFluxData.reduce((sum, row) => sum + row.transepithelial, 0);
-    h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
-    finalFluxes.apicalFlux['H2O'] = h2oTransEpiFlux;
-    finalFluxes.basolateralFlux['H2O'] = -h2oTransEpiFlux;
-  }
+let h2oTransEpiFlux = 0;
+if (hasTranscellularH2O || hasParacellularH2O) {
+  const netTEFluxNum = transepiFluxData.reduce((sum, row) => sum + row.transepithelial, 0);
+  h2oTransEpiFlux = 0.5 * Math.sign(netTEFluxNum) * Math.min(Math.abs(netTEFluxNum), 5);
+  finalFluxes.apicalFlux['H2O'] = h2oTransEpiFlux;
+  finalFluxes.basolateralFlux['H2O'] = -h2oTransEpiFlux;
+}
 
-  transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
+transepiFluxData.push({ ion: 'H2O', transepithelial: h2oTransEpiFlux });
 
   // Step 7. Store results (show the converged state)
   setResult({
@@ -553,7 +633,16 @@ function calculateFluxesAndConcs(
         <li>Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a></li>
       </ul>
       </div>
-      {/* ... [rest of About modal unchanged; you can trim for brevity if needed] ... */}
+      <div className="mt-6 p-3 rounded bg-gray-100 text-xs text-gray-700 border border-gray-200">
+        <b>Modeling Limitations & Assumptions:</b>
+        <ul className="list-disc ml-6 mt-1">
+            <li><b>No membrane voltage:</b> The model does not calculate or use transmembrane electrical potential. All channel and transporter fluxes are determined by concentration gradients alone. In real cells, membrane voltage can strongly influence ion movement.</li>
+            <li><b>Fixed volumes and simplified water flux:</b> Cell and compartment volumes are constant. Osmotic gradients and resulting volume changes are not modeled; water movement reflects the presence of pathways only.</li>
+            <li><b>Simplified kinetics and stoichiometry:</b> All transporter and channel activities use Michaelis-Menten saturation, and parameters may not match true physiological values for all tissues. Stoichiometries are representative but generic in some cases.</li>
+            <li><b>Generic transporters:</b> Several transporters (e.g., SGLT, NKCC, NHE) represent families or isoforms, not individual gene products.</li>
+            <li><b>Not all solutes are represented:</b> The simulation includes a selected set of major ions and solutes; many others are omitted for simplicity.</li>
+        </ul>
+</div>
       <Button onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
   </div>
@@ -666,6 +755,31 @@ function calculateFluxesAndConcs(
                 .join(", ")}
             </div>
           </div>
+        {modalTransporter.id === 'SGLT' && (
+          <div className="mb-2">
+            <label className="block text-sm font-semibold">Isoform:</label>
+            <select
+              value={modalTransporter.stoichType}
+              onChange={e => {
+                const stoichType = e.target.value;
+                let newStoich = stoichType === 'SGLT1'
+                  ? { 'Na+': 2, 'Glucose': 1 }
+                  : { 'Na+': 1, 'Glucose': 1 };
+                updateTransporter(modalTransporter.id, 'stoichType', stoichType);
+                updateTransporter(modalTransporter.id, 'stoich', newStoich);
+              }}
+              className="border rounded p-1 w-full"
+            >
+              <option value="SGLT1">SGLT1 (2 Na⁺ : 1 Glucose)</option>
+              <option value="SGLT2">SGLT2 (1 Na⁺ : 1 Glucose)</option>
+            </select>
+            <div className="text-xs text-gray-600 mt-1">
+              SGLT1 (intestine, late PT): 2 Na⁺:1 Glucose<br/>
+              SGLT2 (early PT): 1 Na⁺:1 Glucose
+            </div>
+          </div>
+        )}
+
           <div className="mb-2">
             <label className="block text-sm">Density:</label>
             <input
@@ -739,35 +853,39 @@ function calculateFluxesAndConcs(
           </tbody>
         </table>
       </div>
-      <h2 className="text-base font-semibold mb-4">Transporters</h2>
-      <table className="min-w-full table-auto text-left">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="px-2 py-1">Abbr</th>
-            <th className="px-2 py-1">Placement</th>
-            <th className="px-2 py-1">Info</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transporters.map(t => (
-            <tr key={t.id} className="border-t">
-              <td className="px-2 py-1">{t.name}</td>
-              <td className="px-2 py-1">
-                <select value={t.placement} onChange={e => updateTransporter(t.id, 'placement', e.target.value)} className="w-full border rounded p-1">
-                  <option value="none">None</option>
-                  <option value="apical">Apical</option>
-                  <option value="basolateral">Basolateral</option>
-                </select>
-              </td>
-              <td className="px-2 py-1">
-                <Button size="sm" variant="outline" onClick={() => { setModalTransporterId(t.id); setShowInfoModal(true); }}>
-                  Info
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+<h2 className="text-base font-semibold mb-4">Transporters</h2>
+<table className="min-w-full table-auto text-left">
+  <thead>
+    <tr className="bg-gray-100">
+      <th className="px-2 py-1">Transporter</th>  {/* Changed from Abbr */}
+      <th className="px-2 py-1">Placement</th>
+      <th className="px-2 py-1">Info</th>
+    </tr>
+  </thead>
+  <tbody>
+    {[...transporters].sort((a, b) => a.name.localeCompare(b.name)).map(t => (      <tr key={t.id} className="border-t">
+        <td className="px-2 py-1">{t.name}</td>
+        <td className="px-2 py-1">
+          <select
+                value={t.placement}
+                onChange={e => updateTransporter(t.id, "placement", e.target.value)}
+                >
+                <option value="none">None</option>
+                <option value="apical">Apical</option>
+                <option value="basolateral">Basolateral</option>
+                {t.id === 'AQP' && <option value="both">Both</option>}
+            </select>
+        </td>
+        <td className="px-2 py-1">
+          <Button size="sm" variant="outline" onClick={() => { setModalTransporterId(t.id); setShowInfoModal(true); }}>
+            Info
+          </Button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
     </div>
     <div className="flex-1 p-4 flex flex-col">
       <Button
