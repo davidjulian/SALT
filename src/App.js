@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -232,14 +232,14 @@ const INITIAL_TRANSPORTERS = [
   { id: 'AQP3',     name: 'AQP3',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'HATPase',  name: 'Hâº-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'HKATPase', name: 'Hâº/Kâº-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
   { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
   { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NKCC2',    name: 'NKCC2',      type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaKATPase',name: 'Naâº/Kâº-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
   { id: 'ROMK',     name: 'ROMK',       type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'SGLT2',    name: 'SGLT2',      type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
@@ -532,8 +532,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       }))
     : [];
 
-// For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
-// Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
+// For Hâº/Kâº-ATPase, Kâº flux can occur with HKATPase on either membrane (no exit needed).
+// Parallel/mirrored Hâº and HCOâ‚ƒâ» TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Naâº/Kâº ATPase for NHE3/NBCe1)
   const transepiFluxData = result?.transepiFluxData || [];
 
   const modalTransporter = transporters.find(t => t.id === modalTransporterId);
@@ -569,93 +569,93 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
-        <li>Na⁺-coupled transporters (SGLT2, ENaC, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
+        <li>Naâº-coupled transporters (SGLT2, ENaC, NCC, NKCC2, NHE3, NBCe1, etc.) require Naâº/Kâº ATPase (on any membrane) to be present.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
         <li>
-          <b>AQP2:</b> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
+          <b>AQP2:</b> Water channel; enables rapid Hâ‚‚O movement.<br/>
+          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular Hâ‚‚O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
-          <b>AQP3:</b> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
+          <b>AQP3:</b> Water channel; enables rapid Hâ‚‚O movement.<br/>
+          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular Hâ‚‚O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
-          <b>ENaC:</b> Sodium channel; allows passive Na⁺ entry.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase somewhere to be active and to contribute to net Na⁺ flux.
+          <b>ENaC:</b> Sodium channel; allows passive Naâº entry.<br/>
+          <i>Rule:</i> Requires Naâº/Kâº ATPase somewhere to be active and to contribute to net Naâº flux.
         </li>
         <li>
           <b>GLUT2:</b> Facilitated glucose transporter; allows glucose to exit the cell.<br/>
-          <i>Rule:</i> Net glucose transport requires SGLT2 on one membrane and GLUT2 on the opposite, and Na⁺/K⁺ ATPase present.
+          <i>Rule:</i> Net glucose transport requires SGLT2 on one membrane and GLUT2 on the opposite, and Naâº/Kâº ATPase present.
         </li>
         <li>
-          <b>H⁺-ATPase:</b> Proton pump; pumps H⁺ out using ATP.<br/>
-          <i>Rule:</i> Contributes to H⁺ efflux, can participate in transepithelial H⁺ flux if paired with NBCe1 on the opposite membrane.
+          <b>Hâº-ATPase:</b> Proton pump; pumps Hâº out using ATP.<br/>
+          <i>Rule:</i> Contributes to Hâº efflux, can participate in transepithelial Hâº flux if paired with NBCe1 on the opposite membrane.
         </li>
         <li>
-          <b>H⁺-K⁺-ATPase:</b> Proton-potassium ATPase; exchanges one H⁺ out and K⁺ in using ATP.<br/>
-          <i>Rule:</i> For K⁺, presence of H⁺/K⁺-ATPase on either membrane is sufficient for transepithelial flux. For H⁺, an exit pathway (NBCe1 or HKATPase) must be present on the opposite membrane.
+          <b>Hâº-Kâº-ATPase:</b> Proton-potassium ATPase; exchanges one Hâº out and Kâº in using ATP.<br/>
+          <i>Rule:</i> For Kâº, presence of Hâº/Kâº-ATPase on either membrane is sufficient for transepithelial flux. For Hâº, an exit pathway (NBCe1 or HKATPase) must be present on the opposite membrane.
         </li>
         <li>
-          <b>NBCe1:</b> Na⁺-bicarbonate symporter; co-transports Na⁺ and HCO₃⁻ out.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; required for HCO₃⁻ efflux when NHE3 is active.
+          <b>NBCe1:</b> Naâº-bicarbonate symporter; co-transports Naâº and HCOâ‚ƒâ» out.<br/>
+          <i>Rule:</i> Requires Naâº/Kâº ATPase present; required for HCOâ‚ƒâ» efflux when NHE3 is active.
         </li>
         <li>
-          <b>NCC:</b> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ in.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; transepithelial flux requires NCC or NKCC2 on both membranes.
+          <b>NCC:</b> Naâº-Clâ» symporter; co-transports Naâº and Clâ» in.<br/>
+          <i>Rule:</i> Requires Naâº/Kâº ATPase present; transepithelial flux requires NCC or NKCC2 on both membranes.
         </li>
         <li>
-          <b>NCX1:</b> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ in for 1 Ca²⁺ out.<br/>
-          <i>Rule:</i> Transepithelial Ca²⁺ flux requires NCX1 or PMCA on both membranes.
+          <b>NCX1:</b> Naâº-CaÂ²âº exchanger; exchanges 3 Naâº in for 1 CaÂ²âº out.<br/>
+          <i>Rule:</i> Transepithelial CaÂ²âº flux requires NCX1 or PMCA on both membranes.
         </li>
         <li>
-          <b>NHE3:</b> Na⁺/H⁺ exchanger; exchanges Na⁺ in for H⁺ out.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBCe1 for transepithelial HCO₃⁻ and H⁺ flux.
+          <b>NHE3:</b> Naâº/Hâº exchanger; exchanges Naâº in for Hâº out.<br/>
+          <i>Rule:</i> Requires Naâº/Kâº ATPase present; activity decreases at higher pH; paired with NBCe1 for transepithelial HCOâ‚ƒâ» and Hâº flux.
         </li>
         <li>
-          <b>NKCC2:</b> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ in.<br/>
-          <i>Rule:</i> Requires ROMK on the same membrane and Na⁺/K⁺ ATPase present for activity; for net flux, NKCC2 or NCC must be present on both membranes.
+          <b>NKCC2:</b> Naâº-Kâº-2Clâ» symporter; co-transports Naâº, Kâº, and 2 Clâ» in.<br/>
+          <i>Rule:</i> Requires ROMK on the same membrane and Naâº/Kâº ATPase present for activity; for net flux, NKCC2 or NCC must be present on both membranes.
         </li>
         <li>
-          <b>Na⁺/K⁺ ATPase:</b> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
-          <i>Rule:</i> Required for activity of all Na⁺-coupled transporters and for transepithelial Na⁺ or K⁺ absorption.
+          <b>Naâº/Kâº ATPase:</b> Active pump; extrudes 3 Naâº and imports 2 Kâº per ATP.<br/>
+          <i>Rule:</i> Required for activity of all Naâº-coupled transporters and for transepithelial Naâº or Kâº absorption.
         </li>
         <li>
-          <b>PMCA:</b> Plasma membrane Ca²⁺ ATPase; pumps Ca²⁺ out using ATP.<br/>
-          <i>Rule:</i> For transepithelial Ca²⁺ flux, PMCA or NCX1 must be on both membranes.
+          <b>PMCA:</b> Plasma membrane CaÂ²âº ATPase; pumps CaÂ²âº out using ATP.<br/>
+          <i>Rule:</i> For transepithelial CaÂ²âº flux, PMCA or NCX1 must be on both membranes.
         </li>
         <li>
-          <b>ROMK:</b> Potassium channel; allows K⁺ to exit.<br/>
-          <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity; for transepithelial K⁺ flux, ROMK or Na⁺/K⁺ ATPase must be on the opposite membrane.
+          <b>ROMK:</b> Potassium channel; allows Kâº to exit.<br/>
+          <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity; for transepithelial Kâº flux, ROMK or Naâº/Kâº ATPase must be on the opposite membrane.
         </li>
         <li>
-          <b>SGLT2:</b> Na⁺-glucose symporter; co-transports Na⁺ and glucose in.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT2 and GLUT2 must be on opposite membranes.
+          <b>SGLT2:</b> Naâº-glucose symporter; co-transports Naâº and glucose in.<br/>
+          <i>Rule:</i> Requires Naâº/Kâº ATPase present; for net glucose flux, SGLT2 and GLUT2 must be on opposite membranes.
         </li>
         </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.<br/>
-        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient.
+        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Naâº and Kâº flux down their transepithelial concentration gradients and paracellular Hâ‚‚O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Clâ» and HCOâ‚ƒâ» flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient.
         </li>
           </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Water &amp; Osmolality Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li>H₂O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
+        <li>Hâ‚‚O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
         <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent bath, and require a water pathway on that membrane.</li>
         <li>Net transcellular epithelial water movement uses a teaching rule: when a complete apical-to-basolateral water pathway exists, water follows net transepithelial solute absorption or secretion. This represents local osmotic coupling that the app does not explicitly model as a standing bath-to-bath osmotic gradient.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li><b>Glucose:</b> SGLT2 on one membrane and GLUT2 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere).</li>
-        <li><b>Na⁺:</b> SGLT2, ENaC, NCC, or NKCC2 on one membrane and Na⁺/K⁺ ATPase on the other (pump required).</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase on either membrane is sufficient for net transepithelial K⁺ flux. NKCC2 or ROMK on one membrane and ROMK or Na⁺/K⁺ ATPase on the other also support K⁺ flux (pump required).</li>
-        <li><b>Cl⁻:</b> NKCC2 or NCC on one membrane and NKCC2 or NCC on the other.</li>
-        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere). The direction and magnitude of net acid/base flux depends on transporter placement and rates.</li>
-        <li><b>H₂O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, H₂O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
+        <li><b>Glucose:</b> SGLT2 on one membrane and GLUT2 on the opposite membrane (plus Naâº/Kâº ATPase anywhere).</li>
+        <li><b>Naâº:</b> SGLT2, ENaC, NCC, or NKCC2 on one membrane and Naâº/Kâº ATPase on the other (pump required).</li>
+        <li><b>Kâº:</b> Hâº/Kâº-ATPase on either membrane is sufficient for net transepithelial Kâº flux. NKCC2 or ROMK on one membrane and ROMK or Naâº/Kâº ATPase on the other also support Kâº flux (pump required).</li>
+        <li><b>Clâ»:</b> NKCC2 or NCC on one membrane and NKCC2 or NCC on the other.</li>
+        <li><b>Hâº and HCOâ‚ƒâ»:</b> A proton extruder (NHE3, Hâº-ATPase, or Hâº/Kâº-ATPase) on one membrane and NBCe1 on the opposite membrane (plus Naâº/Kâº ATPase anywhere). The direction and magnitude of net acid/base flux depends on transporter placement and rates.</li>
+        <li><b>Hâ‚‚O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, Hâ‚‚O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
       </ul>
       <Button onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
@@ -729,7 +729,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       {paracellularType === 'cation' && (
         <>
           <div className="mb-2">
-            <b>Cation + Water Selective Paracellular Pore</b>: Permeable to Na⁺, K⁺, and H₂O (e.g., Claudin-2 type).<br/>
+            <b>Cation + Water Selective Paracellular Pore</b>: Permeable to Naâº, Kâº, and Hâ‚‚O (e.g., Claudin-2 type).<br/>
             <label className="block mt-2 text-sm">Permeability:</label>
             <input
               type="number"
@@ -745,7 +745,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       {paracellularType === 'anion' && (
         <>
           <div className="mb-2">
-            <b>Anion Selective Paracellular Pore</b>: Permeable to Cl⁻ and HCO₃⁻ (e.g., claudin-10a or claudin-17 type).<br/>
+            <b>Anion Selective Paracellular Pore</b>: Permeable to Clâ» and HCOâ‚ƒâ» (e.g., claudin-10a or claudin-17 type).<br/>
             <label className="block mt-2 text-sm">Permeability:</label>
             <input
               type="number"
@@ -833,35 +833,35 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {(() => {
       switch (modalTransporter.id) {
         case 'AQP2':
-          return <><b>Aquaporin 2</b>: enables rapid H₂O movement.<br/></>;
+          return <><b>Aquaporin 2</b>: enables rapid Hâ‚‚O movement.<br/></>;
         case 'AQP3':
-          return <><b>Aquaporin 3</b>: enables rapid H₂O movement.<br/></>;
+          return <><b>Aquaporin 3</b>: enables rapid Hâ‚‚O movement.<br/></>;
         case 'ENaC':
-          return <><b>Epithelial sodium channel</b>: allows passive Na⁺ entry.<br/></>;
+          return <><b>Epithelial sodium channel</b>: allows passive Naâº entry.<br/></>;
         case 'GLUT2':
           return <><b>Glucose transporter 2</b>: allows passive glucose exit.<br/></>;
         case 'HATPase':
-          return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
+          return <><b>Proton-ATPase (V-type)</b>: pumps one Hâº out per ATP.<br/></>;
         case 'HKATPase':
-          return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
+          return <><b>Proton-potassium ATPase</b>: exchanges one Hâº out for one Kâº in per ATP.<br/></>;
         case 'NBCe1':
-          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: symports Na⁺ and HCO₃⁻ out.<br/></>;
+          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: symports Naâº and HCOâ‚ƒâ» out.<br/></>;
         case 'NCC':
-          return <><b>Sodium-chloride cotransporter</b>: symports Na⁺ and Cl⁻ in.<br/></>;
+          return <><b>Sodium-chloride cotransporter</b>: symports Naâº and Clâ» in.<br/></>;
         case 'NCX1':
-          return <><b>Sodium-calcium exchanger</b>: antiports 3 Na⁺ in for 1 Ca²⁺ out.<br/></>;
+          return <><b>Sodium-calcium exchanger</b>: antiports 3 Naâº in for 1 CaÂ²âº out.<br/></>;
         case 'NHE3':
-          return <><b>Sodium–hydrogen exchanger 3</b>: antiports Na⁺ in for H⁺ out.<br/></>;
+          return <><b>Sodiumâ€“hydrogen exchanger 3</b>: antiports Naâº in for Hâº out.<br/></>;
         case 'NKCC2':
-          return <><b>Sodium-potassium-chloride cotransporter</b>: symports Na⁺, K⁺, and 2 Cl⁻ in.<br/></>;
+          return <><b>Sodium-potassium-chloride cotransporter</b>: symports Naâº, Kâº, and 2 Clâ» in.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium–potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
+          return <><b>Sodiumâ€“potassium pump</b>: pumps 3 Naâº out and 2 Kâº in per ATP.<br/></>;
         case 'PMCA':
-          return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
+          return <><b>Plasma membrane calcium ATPase</b>: pumps one CaÂ²âº out per ATP.<br/></>;
         case 'ROMK':
-          return <><b>Renal outer medullary potassium channel</b>: allows passive K⁺ exit, inhibited by internal ATP.<br/></>;
+          return <><b>Renal outer medullary potassium channel</b>: allows passive Kâº exit, inhibited by internal ATP.<br/></>;
         case 'SGLT2':
-          return <><b>Sodium/glucose cotransporter 2</b>: symports Na⁺ and glucose in.<br/></>;
+          return <><b>Sodium/glucose cotransporter 2</b>: symports Naâº and glucose in.<br/></>;
         default:
           return null;
       }
