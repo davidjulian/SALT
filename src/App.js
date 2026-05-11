@@ -32,8 +32,20 @@ function osmolality(comp) {
     .reduce((sum, [ion, conc]) => sum + Math.abs(conc), 0);
 }
 
-const WATER_EPSILON = 0.5;
+const WATER_EPSILON = 0.05;
 const NORMAL_OSMOLALITY = 284.2;
+const FIXED_INTRACELLULAR_OSMOLES = 111.2;
+const CHARGE_EPSILON = 0.05;
+const ION_VALENCE = {
+  'Na+': 1,
+  'K+': 1,
+  'Cl-': -1,
+  'H+': 1,
+  'HCO3-': -1,
+  'Ca2+': 2,
+  Glucose: 0,
+  H2O: 0
+};
 
 function osmCategory(value, reference = NORMAL_OSMOLALITY) {
   const diff = value - reference;
@@ -66,7 +78,7 @@ function membraneWaterTendency(bathName, bathOsm, cellOsm, hasPathway) {
       label: `${bathName} membrane`,
       direction: 'no strong net tendency',
       strength: 'none',
-      value: 0
+      value: delta
     };
   }
   return {
@@ -91,7 +103,7 @@ function transepithelialWaterTendency(value, hasPathway, pathwayLabel) {
       label: pathwayLabel,
       direction: 'no strong net tendency',
       strength: 'none',
-      value: 0
+      value
     };
   }
   return {
@@ -102,9 +114,73 @@ function transepithelialWaterTendency(value, hasPathway, pathwayLabel) {
   };
 }
 
+function chargeStrength(value) {
+  const magnitude = Math.abs(value);
+  if (magnitude < CHARGE_EPSILON) return 'none';
+  if (magnitude < 0.5) return 'weak';
+  if (magnitude < 1.5) return 'moderate';
+  return 'strong';
+}
+
+function chargeSum(fluxes) {
+  return Object.entries(fluxes)
+    .reduce((sum, [ion, flux]) => sum + (ION_VALENCE[ion] ?? 0) * flux, 0);
+}
+
+function transepithelialChargeSum(transepiFluxData) {
+  return transepiFluxData
+    .filter(row => row.ion !== 'H2O')
+    .reduce((sum, row) => sum + (ION_VALENCE[row.ion] ?? 0) * row.transepithelial, 0);
+}
+
+function cellPolarityDirection(value) {
+  if (Math.abs(value) < CHARGE_EPSILON) return 'no strong net tendency';
+  return value > 0 ? 'cell tends positive' : 'cell tends negative';
+}
+
+function epithelialPolarityDirection(value) {
+  if (Math.abs(value) < CHARGE_EPSILON) return 'no strong net tendency';
+  return value > 0 ? 'lumen tends negative relative to blood' : 'lumen tends positive relative to blood';
+}
+
+function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
+  const apicalCharge = chargeSum(apicalFlux);
+  const basolateralCharge = chargeSum(basolateralFlux);
+  const cellCharge = apicalCharge + basolateralCharge;
+  const transepithelialCharge = transepithelialChargeSum(transepiFluxData);
+
+  return {
+    apical: {
+      label: 'Apical membrane',
+      direction: cellPolarityDirection(apicalCharge),
+      strength: chargeStrength(apicalCharge),
+      value: apicalCharge
+    },
+    basolateral: {
+      label: 'Basolateral membrane',
+      direction: cellPolarityDirection(basolateralCharge),
+      strength: chargeStrength(basolateralCharge),
+      value: basolateralCharge
+    },
+    cell: {
+      label: 'Cell net polarity',
+      direction: cellPolarityDirection(cellCharge),
+      strength: chargeStrength(cellCharge),
+      value: cellCharge
+    },
+    transepithelial: {
+      label: 'Transepithelial polarity',
+      direction: epithelialPolarityDirection(transepithelialCharge),
+      strength: chargeStrength(transepithelialCharge),
+      value: transepithelialCharge
+    }
+  };
+}
+
 function buildWaterReport(apicalECF, icf, basolateralECF, tList, paracellularType, paraCationPerm, transepiFluxDataNoH2O) {
   const apicalOsm = osmolality(apicalECF);
-  const icfOsm = osmolality(icf);
+  const mobileIcfOsm = osmolality(icf);
+  const icfOsm = mobileIcfOsm + FIXED_INTRACELLULAR_OSMOLES;
   const basolateralOsm = osmolality(basolateralECF);
   const apicalWaterPath = tList.some(t => ['AQP2', 'AQP3'].includes(t.id) && t.placement === 'apical');
   const basolateralWaterPath = tList.some(t => ['AQP2', 'AQP3'].includes(t.id) && t.placement === 'basolateral');
@@ -126,6 +202,8 @@ function buildWaterReport(apicalECF, icf, basolateralECF, tList, paracellularTyp
     osmolality: {
       apical: apicalOsm,
       icf: icfOsm,
+      mobileIcf: mobileIcfOsm,
+      fixedIcf: FIXED_INTRACELLULAR_OSMOLES,
       basolateral: basolateralOsm,
       apicalCategory: osmCategory(apicalOsm),
       icfCategory: osmCategory(icfOsm),
@@ -185,6 +263,7 @@ export default function App() {
   // ECF model state
 const [ecfModel, setEcfModel] = useState('infinite'); // 'infinite' or 'finite'
 const [ecfPoolSize, setEcfPoolSize] = useState(10); // unitless
+const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
 
   // Paracellular pathway state
   const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'anion'
@@ -202,7 +281,8 @@ const [ecfPoolSize, setEcfPoolSize] = useState(10); // unitless
   paraCationPerm,
   paraAnionPerm,
   ecfModel,
-  ecfPoolSize
+  ecfPoolSize,
+  electrochemicalFeedback
 ]);
 
 
@@ -346,7 +426,29 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     kTransEpiFlux = transepithelialFlux('K+', ['NKCC2','ROMK'], ['ROMK','NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   }
 
-  // Transepithelial H+ and HCO3- logic (skipped here for brevity; add as above if desired)
+  const hExtruders = tList.filter(t => ['NHE3','HATPase','HKATPase'].includes(t.id) && t.placement !== 'none');
+  const nbcTrans = tList.filter(t => t.id === 'NBCe1' && t.placement !== 'none');
+  let hTransEpiFlux = 0;
+  let hco3TransEpiFlux = 0;
+  if (hasNaKATPase && hExtruders.length > 0 && nbcTrans.length > 0) {
+    const fluxPairs = [];
+    for (let t of hExtruders) {
+      for (let nbc of nbcTrans) {
+        if (t.placement !== nbc.placement) {
+          const extruderRate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
+          const nbcRate = (nbc.kinetics.maxRate / (nbc.kinetics.Km + 1)) * nbc.density * 3;
+          const limiting = Math.min(Math.abs(extruderRate), Math.abs(nbcRate));
+          if (t.placement === 'apical' && nbc.placement === 'basolateral') {
+            fluxPairs.push({ h: -limiting, hco3: limiting });
+          } else if (t.placement === 'basolateral' && nbc.placement === 'apical') {
+            fluxPairs.push({ h: limiting, hco3: -limiting });
+          }
+        }
+      }
+    }
+    hTransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.h, 0);
+    hco3TransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.hco3, 0);
+  }
 
   // Compose transepiFluxDataNoH2O
   const transepiFluxDataNoH2O = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
@@ -356,6 +458,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       case 'K+':      return { ion, transepithelial: kTransEpiFlux };
       case 'Cl-':     return { ion, transepithelial: clTransEpiFlux };
       case 'Ca2+':    return { ion, transepithelial: caTransEpiFlux };
+      case 'HCO3-':   return { ion, transepithelial: hco3TransEpiFlux };
+      case 'H+':      return { ion, transepithelial: hTransEpiFlux };
       default:        return { ion, transepithelial: 0 };
     }
   });
@@ -387,6 +491,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ...transepiFluxDataNoH2O,
     { ion: 'H2O', transepithelial: waterReport.netTransepithelial.value }
   ];
+  const chargeReport = buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData);
 
   // Push results
   setResult({
@@ -400,7 +505,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     },
     paraFlux,
     transepiFluxData,
-    waterReport
+    waterReport,
+    chargeReport
   });
 };
 
@@ -426,121 +532,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       }))
     : [];
 
-  // Helper: get all placements for a transporter id (except 'none')
-  const placementsFor = id => transporters.filter(t => t.id === id && t.placement !== 'none').map(t => t.placement);
-  const hasNaKATPase = transporters.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
-
-  function transepithelialFlux(ion, entryIds, exitIds, requirePump = false) {
-    if (requirePump && !hasNaKATPase) return 0;
-    const entrySides = [].concat(...entryIds.map(id => placementsFor(id)));
-    const exitSides = [].concat(...exitIds.map(id => placementsFor(id)));
-    for (let side1 of entrySides) {
-      for (let side2 of exitSides) {
-        if (side1 !== side2) {
-          const entryFlux = side1 === 'apical' ? (result?.apicalFlux[ion] ?? 0) : (result?.basolateralFlux[ion] ?? 0);
-          const exitFlux  = side2 === 'apical' ? (result?.apicalFlux[ion] ?? 0) : (result?.basolateralFlux[ion] ?? 0);
-          if (entryFlux > 0 && exitFlux < 0) {
-            return Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-          } else if (entryFlux < 0 && exitFlux > 0) {
-            return -Math.min(Math.abs(entryFlux), Math.abs(exitFlux));
-          }
-        }
-      }
-    }
-    return 0;
-  }
-
-  const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT2'], ['GLUT2'], true);
-  const naTransEpiFlux     = transepithelialFlux('Na+',    ['SGLT2','ENaC','NCC','NKCC2'], ['NaKATPase'], true);
-  const clTransEpiFlux     = transepithelialFlux('Cl-',    ['NKCC2','NCC'], ['NKCC2','NCC']);
-  const caTransEpiFlux     = transepithelialFlux('Ca2+',   ['NCX1','PMCA'], ['NCX1','PMCA']);
-
 // For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
-const hkAtpaseSides = placementsFor('HKATPase');
-let kTransEpiFlux = 0;
-if (hkAtpaseSides.length > 0 && result) {
-  const apicalHK = transporters.some(t => t.id === 'HKATPase' && t.placement === 'apical');
-  const basolateralHK = transporters.some(t => t.id === 'HKATPase' && t.placement === 'basolateral');
-  if (apicalHK) kTransEpiFlux += result.apicalFlux['K+'] ?? 0;
-  if (basolateralHK) kTransEpiFlux += result.basolateralFlux['K+'] ?? 0;
-}
-// Add other K+ pathways (NKCC2, ROMK) if present on opposite membranes as before:
-if (kTransEpiFlux === 0) {
-  kTransEpiFlux = transepithelialFlux('K+', ['NKCC2','ROMK'], ['ROMK','NaKATPase'], true);
-}
-  
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
-const hExtruders = transporters.filter(t => ['NHE3','HATPase','HKATPase'].includes(t.id) && t.placement !== 'none');
-const nbcTrans = transporters.filter(t => t.id === 'NBCe1' && t.placement !== 'none');
-const requirePump = hasNaKATPase;
-
-let hTransEpiFlux = 0;
-let hco3TransEpiFlux = 0;
-if (requirePump && hExtruders.length > 0 && nbcTrans.length > 0) {
-  // For every combination of H+ extruder and NBCe1 on opposite membranes
-  let fluxPairs = [];
-  for (let t of hExtruders) {
-    for (let nbc of nbcTrans) {
-      if (t.placement !== nbc.placement) {
-        // Use max possible rate as the limiting step
-        let extruderRate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
-        let nbcRate = (nbc.kinetics.maxRate / (nbc.kinetics.Km + 1)) * nbc.density * 3; // NBCe1 moves 3 HCO3-
-        // Direction: If H+ extruder is apical, it's acid secretion; if basolateral, acid reabsorption
-        let limiting = Math.min(Math.abs(extruderRate), Math.abs(nbcRate));
-        if (t.placement === 'apical' && nbc.placement === 'basolateral') {
-          // Acid secretion, base reabsorption
-          fluxPairs.push({ h: -limiting, hco3: limiting });
-        } else if (t.placement === 'basolateral' && nbc.placement === 'apical') {
-          // Acid reabsorption, base secretion
-          fluxPairs.push({ h: limiting, hco3: -limiting });
-        }
-      }
-    }
-  }
-  // Sum (allowing for more than one pair), but only use the largest (for teaching clarity, usually only one pair will be present)
-  if (fluxPairs.length > 0) {
-    hTransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.h, 0);
-    hco3TransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.hco3, 0);
-  }
-}
-
-  const transepiFluxDataNoH2O = result
-    ? Object.keys(result.netFlux).filter(ion => ion !== 'H2O').map(ion => {
-        switch (ion) {
-          case 'Glucose': return { ion, transepithelial: glucoseTransEpiFlux };
-          case 'Na+':     return { ion, transepithelial: naTransEpiFlux };
-          case 'K+':      return { ion, transepithelial: kTransEpiFlux };
-          case 'Cl-':     return { ion, transepithelial: clTransEpiFlux };
-          case 'Ca2+':    return { ion, transepithelial: caTransEpiFlux };
-          case 'HCO3-':   return { ion, transepithelial: hco3TransEpiFlux };
-          case 'H+':      return { ion, transepithelial: hTransEpiFlux };
-          default:        return { ion, transepithelial: 0 };
-        }
-      })
-    : [];
-
-  // Inject paracellular fluxes into transepiFluxDataNoH2O
-const paraFlux = result?.paraFlux || {};
-  if (paracellularType !== 'none') {
-  transepiFluxDataNoH2O.forEach(row => {
-    if (
-      (paracellularType === 'cation' && ['Na+','K+'].includes(row.ion)) ||
-      (paracellularType === 'anion' && ['Cl-','HCO3-'].includes(row.ion))
-    ) {
-      row.transepithelial += paraFlux[row.ion] || 0;
-    }
-  });
-}
   const transepiFluxData = result?.transepiFluxData || [];
 
-const modalTransporter = transporters.find(t => t.id === modalTransporterId);
-const netTEFlux =
-  transepiFluxData
-    .filter(row => row.ion !== 'H2O')
-    .reduce((sum, row) => sum + row.transepithelial, 0)
-    .toFixed(3);
-const waterReport = result?.waterReport;
-const formatWaterValue = value => Number(value ?? 0).toFixed(1);
+  const modalTransporter = transporters.find(t => t.id === modalTransporterId);
+  const netTEFlux =
+    transepiFluxData
+      .filter(row => row.ion !== 'H2O')
+      .reduce((sum, row) => sum + row.transepithelial, 0)
+      .toFixed(3);
+  const waterReport = result?.waterReport;
+  const formatWaterValue = value => Number(value ?? 0).toFixed(1);
+  const chargeReport = result?.chargeReport;
+  const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   
   // --- Render ---
 
@@ -554,6 +559,13 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
       <div className="mb-3 text-sm text-gray-700">
   Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a>
       </div>
+      <h3 className="text-lg font-semibold mt-4 mb-1">Model Scope</h3>
+      <ul className="list-disc ml-6 mb-3 text-sm">
+        <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
+        <li>By default, apical and basolateral bath concentrations are treated as fixed reservoirs. The finite ECF option is mainly useful for exploring consequences of changing bath pools.</li>
+        <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
+        <li>The app can show charge and polarity tendencies. Electrochemical feedback is a development setting for allowing polarity to affect passive flux in a later model pass.</li>
+      </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
@@ -563,11 +575,11 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
       <ul className="list-disc ml-6 text-sm space-y-2">
         <li>
           <b>AQP2:</b> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> Both AQP2 and AQP3 must be present on opposite membranes for net transepithelial H₂O flux.
+          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
           <b>AQP3:</b> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> Both AQP2 and AQP3 must be present on opposite membranes for net transepithelial H₂O flux.
+          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
           <b>ENaC:</b> Sodium channel; allows passive Na⁺ entry.<br/>
@@ -625,9 +637,16 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.<br/>
-        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺, K⁺, and H₂O flux down their transepithelial concentration gradients (e.g., claudin-2 type), or <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the concentration gradient.
+        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient.
         </li>
           </ul>
+
+      <h3 className="text-lg font-semibold mt-4 mb-1">Water &amp; Osmolality Rules</h3>
+      <ul className="list-disc ml-6 text-sm">
+        <li>H₂O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
+        <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent bath, and require a water pathway on that membrane.</li>
+        <li>Net transcellular epithelial water movement uses a teaching rule: when a complete apical-to-basolateral water pathway exists, water follows net transepithelial solute absorption or secretion. This represents local osmotic coupling that the app does not explicitly model as a standing bath-to-bath osmotic gradient.</li>
+      </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
@@ -636,7 +655,7 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
         <li><b>K⁺:</b> H⁺/K⁺-ATPase on either membrane is sufficient for net transepithelial K⁺ flux. NKCC2 or ROMK on one membrane and ROMK or Na⁺/K⁺ ATPase on the other also support K⁺ flux (pump required).</li>
         <li><b>Cl⁻:</b> NKCC2 or NCC on one membrane and NKCC2 or NCC on the other.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere). The direction and magnitude of net acid/base flux depends on transporter placement and rates.</li>
-        <li><b>H₂O:</b> AQP2 on one membrane and AQP3 on the other (required on opposite sides).</li>
+        <li><b>H₂O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, H₂O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
       </ul>
       <Button onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
@@ -749,16 +768,16 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
 {showSettings && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
-      <h2 className="text-xl font-bold mb-4">Compartment Settings</h2>
+      <h2 className="text-xl font-bold mb-4">Model Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
-        <label className="block mb-2 font-semibold">ECF Model</label>
+        <label className="block mb-2 font-semibold">Bath Concentrations</label>
         <label className="block mb-2">
           <input
             type="radio"
             checked={ecfModel === 'infinite'}
             onChange={() => setEcfModel('infinite')}
           />{' '}
-          Infinite ECF <span className="text-gray-500">(no concentration change)</span>
+          Fixed reservoirs <span className="text-gray-500">(no bath concentration change)</span>
         </label>
         <label className="block mb-2">
           <input
@@ -766,7 +785,7 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
             checked={ecfModel === 'finite'}
             onChange={() => setEcfModel('finite')}
           />{' '}
-          Finite ECF <span className="text-gray-500">(pool size below)</span>
+          Finite pools <span className="text-gray-500">(coming soon)</span>
         </label>
         {ecfModel === 'finite' && (
           <div className="ml-4 mb-2">
@@ -783,6 +802,20 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
             </label>
           </div>
         )}
+      </div>
+      <div className="mb-4 text-sm text-gray-700">
+        <label className="block mb-2 font-semibold">Electrochemical Feedback</label>
+        <label className="block mb-2">
+          <input
+            type="checkbox"
+            checked={electrochemicalFeedback}
+            onChange={e => setElectrochemicalFeedback(e.target.checked)}
+          />{' '}
+          Polarity affects passive flux <span className="text-gray-500">(coming soon)</span>
+        </label>
+        <div className="text-gray-500">
+          When off, the app reports charge and polarity tendencies without changing flux.
+        </div>
       </div>
       <Button className="mt-4" onClick={() => setShowSettings(false)}>
         Close
@@ -894,9 +927,9 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
                   <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                   <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
                   <Legend />
-                  <Bar dataKey="apical" name="Apical" fill="#8884d8" />
-                  <Bar dataKey="basolateral" name="Basolateral" fill="#82ca9d" />
-                  <Bar dataKey="net" name="Net Flux" fill="#ffc658" />
+                  <Bar dataKey="apical" name="Apical" fill="#2563eb" />
+                  <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
+                  <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -906,9 +939,9 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
                 <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <XAxis dataKey="ion" />
                   <YAxis domain={[0,150]} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
-                  <Bar dataKey="apicalECF" name="Apical ECF" fill="#8884d8" fillOpacity={0.5} />
-                  <Bar dataKey="icf" name="ICF" fill="#82ca9d" fillOpacity={0.8} />
-                  <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#ffc658" fillOpacity={0.5} />
+                  <Bar dataKey="apicalECF" name="Apical ECF" fill="#14b8a6" fillOpacity={0.65} />
+                  <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
+                  <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#f97316" fillOpacity={0.65} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -940,6 +973,9 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
                   <div className="border rounded p-3">
                     <div className="font-semibold">Cell</div>
                     <div>{formatWaterValue(waterReport.osmolality.icf)} arbitrary osmoles</div>
+                    <div className="text-gray-500">
+                      includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed osmoles
+                    </div>
                     <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
                   </div>
                   <div className="border rounded p-3">
@@ -968,7 +1004,30 @@ const formatWaterValue = value => Number(value ?? 0).toFixed(1);
                 </table>
               </div>
             )}
-            
+
+            {chargeReport && (
+              <div>
+                <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
+                <table className="min-w-full table-auto text-left text-sm">
+                  <tbody>
+                    {[
+                      chargeReport.apical,
+                      chargeReport.basolateral,
+                      chargeReport.cell,
+                      chargeReport.transepithelial
+                    ].map(row => (
+                      <tr key={row.label} className="border-t">
+                        <td className="px-2 py-1 font-semibold">{row.label}</td>
+                        <td className="px-2 py-1">{row.direction}</td>
+                        <td className="px-2 py-1 text-gray-600">{row.strength}</td>
+                        <td className="px-2 py-1 text-gray-500">{formatChargeValue(row.value)} charge units</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+             
           </div>
         )}
       </div>
