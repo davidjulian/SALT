@@ -262,8 +262,8 @@ const DENSITY_OPTIONS = [
 const TRANSPORTER_DESCRIPTIONS = {
   AQP2: 'Aquaporin 2: enables rapid H2O movement.',
   AQP3: 'Aquaporin 3: enables rapid H2O movement.',
-  ENaC: 'Epithelial sodium channel: allows passive Na+ entry.',
-  GLUT2: 'Glucose transporter 2: allows passive glucose exit.',
+  ENaC: 'Epithelial sodium channel: passive Na+ flux follows the Na+ gradient.',
+  GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
   NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- out.',
@@ -273,7 +273,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   NKCC2: 'Sodium-potassium-chloride cotransporter: moves Na+, K+, and Cl- together.',
   NaKATPase: 'Sodium-potassium pump: pumps Na+ out and K+ in using ATP.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
-  ROMK: 'Potassium channel: allows passive K+ exit.',
+  ROMK: 'Potassium channel: passive K+ flux follows the K+ gradient.',
   SGLT2: 'Sodium-glucose cotransporter: moves Na+ and glucose together.'
 };
 
@@ -297,6 +297,14 @@ const ION_LABEL = {
 const SURFACE_TRANSPORT_SENSITIVITY = 0.5;
 const SURFACE_MIXING_FRACTION = 0.25;
 const SURFACE_MAX_MULTIPLIER = 2;
+const PASSIVE_SOLUTE_CHANNELS = {
+  ENaC: 'Na+',
+  GLUT2: 'Glucose',
+  ROMK: 'K+'
+};
+const ACTIVE_CELL_CONCENTRATION_GAIN = {
+  Glucose: 20
+};
 
 function cloneConcentrations(source) {
   return {
@@ -343,6 +351,19 @@ function buildSurfaceConcentrations(apicalBulk, basolateralBulk, apicalFlux, bas
   };
 }
 
+function activeCellConcentrationDelta(ion, flux) {
+  const gain = flux > 0 ? (ACTIVE_CELL_CONCENTRATION_GAIN[ion] || 1) : 1;
+  return flux * gain;
+}
+
+function concentrationGradientFlux(transporter, outsideConcentration, cellConcentration) {
+  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density;
+  const effectiveCellConcentration = Math.max(cellConcentration, 0);
+  const denominator = Math.abs(outsideConcentration) + Math.abs(effectiveCellConcentration) + 1;
+  const gradientSignal = (outsideConcentration - effectiveCellConcentration) / denominator;
+  return maxFlux * gradientSignal;
+}
+
 export default function App() {
   // State
   const [showAbout, setShowAbout] = useState(false);
@@ -356,8 +377,8 @@ export default function App() {
 
   // ECF model state
 const [ecfModel, setEcfModel] = useState('infinite'); // 'infinite' or 'finite'
-const [ecfPoolSize, setEcfPoolSize] = useState(10); // unitless
-const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
+const [ecfPoolSize] = useState(10); // unitless
+const [electrochemicalFeedback] = useState(false);
 
   // Paracellular pathway state
   const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'anion'
@@ -479,16 +500,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   Object.keys(baseline.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
+  const passiveChannels = [];
 
-  // Calculate all apical and basolateral transmembrane fluxes
+  // Calculate active/coupled transport first, then passive channels respond to gradients.
   tList.forEach(t => {
     if (t.id === 'NKCC2') {
       const romkSame = tList.some(u => u.id === 'ROMK' && u.placement === t.placement && t.placement !== 'none');
       if (!romkSame) return;
     }
-    if (t.stoich['Na+'] && !hasNaKATPase) return;
     if (t.placement === 'none') return;
     if (Object.keys(t.stoich).includes('H2O')) return;
+    if (PASSIVE_SOLUTE_CHANNELS[t.id]) {
+      passiveChannels.push(t);
+      return;
+    }
+    if (t.stoich['Na+'] && !hasNaKATPase) return;
 
     let rate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
     if (t.id === 'NHE3') {
@@ -503,6 +529,23 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       if (t.placement === 'apical') apicalFlux[ion] += delta;
       else basolateralFlux[ion] += delta;
     });
+  });
+
+  const activeNetFlux = {};
+  Object.keys(apicalFlux).forEach(ion => { activeNetFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
+  const prePassiveICF = { ...baseline.icf };
+  Object.entries(activeNetFlux).forEach(([ion, flux]) => { prePassiveICF[ion] += activeCellConcentrationDelta(ion, flux); });
+  prePassiveICF['H+'] = Math.max(prePassiveICF['H+'], 1e-8);
+
+  const passiveNetFlux = {};
+  Object.keys(apicalFlux).forEach(ion => { passiveNetFlux[ion] = 0; });
+  passiveChannels.forEach(t => {
+    const ion = PASSIVE_SOLUTE_CHANNELS[t.id];
+    const outsideConcentration = t.placement === 'apical' ? apicalECF[ion] : basolateralECF[ion];
+    const delta = concentrationGradientFlux(t, outsideConcentration, prePassiveICF[ion]);
+    if (t.placement === 'apical') apicalFlux[ion] += delta;
+    else basolateralFlux[ion] += delta;
+    passiveNetFlux[ion] += delta;
   });
 
   const netFlux = {};
@@ -520,8 +563,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   }
 
-  const newICF = { ...baseline.icf };
-  Object.entries(netFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
+  const newICF = { ...prePassiveICF };
+  Object.entries(passiveNetFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
 
   const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
@@ -868,15 +911,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Model Scope</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
-        <li>By default, apical and basolateral bath concentrations are treated as fixed reservoirs. The finite ECF option is mainly useful for exploring consequences of changing bath pools.</li>
+        <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
         <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
+        <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
-        <li>The app can show charge and polarity tendencies. Electrochemical feedback is a development setting for allowing polarity to affect passive flux in a later model pass.</li>
+        <li>The app can show charge and polarity tendencies. Electrochemical feedback is shown as a coming-soon teaching extension for a later model pass.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
-        <li>Na⁺-coupled transporters (SGLT2, ENaC, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
+        <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, and GLUT2 can reverse direction if the gradient reverses.</li>
+        <li>Na⁺-coupled cotransporters and exchangers (SGLT2, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
@@ -892,13 +937,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
-          <i>Action:</i> Sodium channel; allows passive Na⁺ entry.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase somewhere to be active and to contribute to net Na⁺ flux.
+          <i>Action:</i> Sodium channel; passive Na⁺ flux follows the Na⁺ gradient.<br/>
+          <i>Rule:</i> For net transepithelial Na⁺ flux, Na⁺/K⁺ ATPase must be on the opposite membrane.
         </li>
         <li>
           <b>GLUT2:</b> glucose transporter 2<br/>
-          <i>Action:</i> Facilitated glucose transporter; allows glucose to exit the cell.<br/>
-          <i>Rule:</i> Net glucose transport requires SGLT2 on one membrane and GLUT2 on the opposite, and Na⁺/K⁺ ATPase present.
+          <i>Action:</i> Facilitated glucose transporter; passive glucose flux follows the glucose gradient.<br/>
+          <i>Rule:</i> SGLT2 can raise modeled cell glucose enough to drive GLUT2. If the adjacent bath glucose is higher than the displayed cell glucose, GLUT2 favors glucose entry instead of exit.
         </li>
         <li>
           <b>H⁺-ATPase:</b> proton ATPase<br/>
@@ -947,7 +992,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>ROMK:</b> renal outer medullary potassium channel<br/>
-          <i>Action:</i> Potassium channel; allows K⁺ to exit.<br/>
+          <i>Action:</i> Potassium channel; passive K⁺ flux follows the K⁺ gradient.<br/>
           <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity; for transepithelial K⁺ flux, ROMK or Na⁺/K⁺ ATPase must be on the opposite membrane.
         </li>
         <li>
@@ -1081,35 +1126,27 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <input
             type="radio"
             checked={ecfModel === 'finite'}
-            onChange={() => setEcfModel('finite')}
+            disabled
+            aria-describedby="finite-pools-coming-soon"
+            onChange={() => {}}
           />{' '}
-          Finite pools <span className="text-gray-500">(coming soon)</span>
+          Finite pools <span id="finite-pools-coming-soon" className="text-gray-500">(coming soon)</span>
         </label>
-        {ecfModel === 'finite' && (
-          <div className="ml-4 mb-2">
-            <label className="block text-sm mb-1">
-              Pool Size (unitless):
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={ecfPoolSize}
-                onChange={e => setEcfPoolSize(Number(e.target.value))}
-                className="border rounded p-1 w-24 ml-2"
-              />
-            </label>
-          </div>
-        )}
+        <div className="ml-4 mb-2 text-gray-500">
+          Pool size controls will be available when finite pools are implemented.
+        </div>
       </div>
       <div className="mb-4 text-sm text-gray-700">
         <label className="block mb-2 font-semibold">Electrochemical Feedback</label>
         <label className="block mb-2">
           <input
             type="checkbox"
-            checked={electrochemicalFeedback}
-            onChange={e => setElectrochemicalFeedback(e.target.checked)}
+            checked={false}
+            disabled
+            aria-describedby="electrochemical-feedback-coming-soon"
+            onChange={() => {}}
           />{' '}
-          Polarity affects passive flux <span className="text-gray-500">(coming soon)</span>
+          Polarity affects passive flux <span id="electrochemical-feedback-coming-soon" className="text-gray-500">(coming soon)</span>
         </label>
         <div className="text-gray-500">
           When off, the app reports charge and polarity tendencies without changing flux.
@@ -1176,9 +1213,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'AQP3':
           return <><b>Aquaporin 3</b>: enables rapid H₂O movement.<br/></>;
         case 'ENaC':
-          return <><b>Epithelial sodium channel</b>: allows passive Na⁺ entry.<br/></>;
+          return <><b>Epithelial sodium channel</b>: passive Na⁺ flux follows the Na⁺ gradient.<br/></>;
         case 'GLUT2':
-          return <><b>Glucose transporter 2</b>: allows passive glucose exit.<br/></>;
+          return <><b>Glucose transporter 2</b>: passive glucose flux follows the glucose gradient.<br/></>;
         case 'HATPase':
           return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
         case 'HKATPase':
@@ -1198,7 +1235,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PMCA':
           return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
         case 'ROMK':
-          return <><b>Renal outer medullary potassium channel</b>: allows passive K⁺ exit, inhibited by internal ATP.<br/></>;
+          return <><b>Renal outer medullary potassium channel</b>: passive K⁺ flux follows the K⁺ gradient.<br/></>;
         case 'SGLT2':
           return <><b>Sodium/glucose cotransporter 2</b>: symports Na⁺ and glucose in.<br/></>;
         default:
