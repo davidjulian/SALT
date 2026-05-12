@@ -305,6 +305,12 @@ const PASSIVE_SOLUTE_CHANNELS = {
 const ACTIVE_CELL_CONCENTRATION_GAIN = {
   Glucose: 20
 };
+const PASSIVE_CONDUCTANCE_SCALE = {
+  GLUT2: 4
+};
+const COUPLED_MISMATCH_EPSILON = 0.05;
+const COUPLED_COMPLETION_FRACTION = 0.85;
+const COUPLED_MISMATCH_EXCLUSIONS = ['NaKATPase'];
 
 function cloneConcentrations(source) {
   return {
@@ -357,11 +363,73 @@ function activeCellConcentrationDelta(ion, flux) {
 }
 
 function concentrationGradientFlux(transporter, outsideConcentration, cellConcentration) {
-  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density;
+  const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
+  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale;
   const effectiveCellConcentration = Math.max(cellConcentration, 0);
   const denominator = Math.abs(outsideConcentration) + Math.abs(effectiveCellConcentration) + 1;
   const gradientSignal = (outsideConcentration - effectiveCellConcentration) / denominator;
   return maxFlux * gradientSignal;
+}
+
+function coupledSolutes(stoich) {
+  return Object.entries(stoich)
+    .filter(([ion, coeff]) => ion !== 'H2O' && coeff !== 0);
+}
+
+function transepithelialDirectionForMembraneFlux(placement, coeff) {
+  return (placement === 'apical' ? 1 : -1) * Math.sign(coeff);
+}
+
+function buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O) {
+  if (!coupledEvents.length) {
+    return {
+      state: 'none',
+      label: 'Coupled transport: none',
+      ariaLabel: 'No active coupled transporters in this layout.',
+      details: []
+    };
+  }
+
+  const transepithelialByIon = Object.fromEntries(
+    transepiFluxDataNoH2O.map(row => [row.ion, row.transepithelial || 0])
+  );
+  const details = coupledEvents.map(event => {
+    const solutes = coupledSolutes(event.stoich).map(([ion, coeff]) => {
+      const required = Math.abs(event.rate * coeff);
+      const expectedDirection = transepithelialDirectionForMembraneFlux(event.placement, coeff);
+      const completed = Math.max(0, expectedDirection * (transepithelialByIon[ion] || 0));
+      const completion = required < COUPLED_MISMATCH_EPSILON ? 1 : completed / required;
+      return {
+        ion,
+        required,
+        completed,
+        completion,
+        limited: required >= COUPLED_MISMATCH_EPSILON &&
+          completed + COUPLED_MISMATCH_EPSILON < required * COUPLED_COMPLETION_FRACTION
+      };
+    });
+    const limitedSolutes = solutes.filter(solute => solute.limited);
+    return {
+      transporter: event.name,
+      placement: event.placement,
+      solutes,
+      limitedSolutes: limitedSolutes.map(solute => solute.ion)
+    };
+  }).filter(event => event.limitedSolutes.length > 0);
+
+  return details.length
+    ? {
+        state: 'mismatch',
+        label: 'Coupled transport: mismatch',
+        ariaLabel: 'Coupled transport mismatch detected in ' + details.map(detail => detail.transporter).join(', ') + '.',
+        details
+      }
+    : {
+        state: 'matched',
+        label: 'Coupled transport: matched',
+        ariaLabel: 'Active coupled transporters have matching transepithelial completion in this teaching model.',
+        details: []
+      };
 }
 
 export default function App() {
@@ -501,6 +569,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
   const passiveChannels = [];
+  const coupledEvents = [];
 
   // Calculate active/coupled transport first, then passive channels respond to gradients.
   tList.forEach(t => {
@@ -523,6 +592,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       const pH50 = 7.2;
       const sigma = 0.05;
       rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
+    }
+    if (!COUPLED_MISMATCH_EXCLUSIONS.includes(t.id) && coupledSolutes(t.stoich).length > 1) {
+      coupledEvents.push({
+        id: t.id,
+        name: t.name,
+        placement: t.placement,
+        rate,
+        stoich: { ...t.stoich }
+      });
     }
     Object.entries(t.stoich).forEach(([ion, coeff]) => {
       const delta = rate * coeff;
@@ -660,6 +738,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   }
 
+  const coupledMismatchReport = buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O);
+
   const waterReport = buildWaterReport(
     apicalSurface,
     newICF,
@@ -693,7 +773,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     paraFlux,
     transepiFluxData,
     waterReport,
-    chargeReport
+    chargeReport,
+    coupledMismatchReport
   });
 };
 
@@ -841,6 +922,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const waterReport = result?.waterReport;
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
+  const coupledMismatchReport = result?.coupledMismatchReport;
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
@@ -867,6 +949,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     waterReport ? 'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ' (' + waterReport.netTransepithelial.strength + ').' : '',
     chargeReport ? 'Transepithelial charge tendency: ' + chargeReport.transepithelial.direction + ' (' + chargeReport.transepithelial.strength + ').' : ''
   ].filter(Boolean) : [];
+  const coupledStatusClass = coupledMismatchReport?.state === 'mismatch'
+    ? 'border-amber-400 bg-amber-50 text-amber-800'
+    : coupledMismatchReport?.state === 'matched'
+      ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+      : 'border-gray-300 bg-gray-50 text-gray-600';
+  const coupledDotClass = coupledMismatchReport?.state === 'mismatch'
+    ? 'bg-amber-500'
+    : coupledMismatchReport?.state === 'matched'
+      ? 'bg-emerald-500'
+      : 'bg-gray-400';
 
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
   const tePotentialNeedleAngle = clamp(-tePotentialValue * 25, -60, 60);
@@ -913,7 +1005,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
         <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
         <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
-        <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value.</li>
+        <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
+        <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
         <li>The app can show charge and polarity tendencies. Electrochemical feedback is shown as a coming-soon teaching extension for a later model pass.</li>
       </ul>
@@ -1264,7 +1357,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
  {result && (
           <div className="mt-3 space-y-4 overflow-auto">
             <section className="border rounded p-2 bg-white">
-              <h2 className="font-semibold mb-1">Simulation Summary</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h2 className="font-semibold">Simulation Summary</h2>
+                {coupledMismatchReport && (
+                  <div
+                    className={'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold ' + coupledStatusClass}
+                    role="status"
+                    aria-label={coupledMismatchReport.ariaLabel}
+                    title={coupledMismatchReport.ariaLabel}
+                  >
+                    <span className={'inline-block h-2 w-2 rounded-full ' + coupledDotClass} aria-hidden="true" />
+                    {coupledMismatchReport.label}
+                  </div>
+                )}
+              </div>
               <ul className="list-disc ml-5 text-sm leading-snug">
                 {simulationSummary.map(line => <li key={line}>{line}</li>)}
               </ul>
