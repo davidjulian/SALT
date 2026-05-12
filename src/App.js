@@ -1066,10 +1066,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <div className="flex-1 p-4 flex flex-col">
        
  {result && (
-          <div className="mt-4 space-y-6 overflow-auto">
-            <section className="border rounded p-3 bg-white">
-              <h2 className="font-semibold mb-2">Simulation Summary</h2>
-              <ul className="list-disc ml-6 text-sm space-y-1">
+          <div className="mt-3 space-y-4 overflow-auto">
+            <section className="border rounded p-2 bg-white">
+              <h2 className="font-semibold mb-1">Simulation Summary</h2>
+              <ul className="list-disc ml-5 text-sm leading-snug">
                 {simulationSummary.map(line => <li key={line}>{line}</li>)}
               </ul>
             </section>
@@ -1099,25 +1099,42 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             </fieldset>
 
             {resultsView === 'graphs' ? (
-              <>
-                <div>
-                  <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <BarChart data={fluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                      <XAxis dataKey="ion" />
-                      <YAxis />
-                      <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                      <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                      <Legend />
-                      <Bar dataKey="apical" name="Apical" fill="#2563eb" />
-                      <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
-                      <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
-                    </BarChart>
-                  </ResponsiveContainer>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
+                    <ResponsiveContainer width="100%" height={170}>
+                      <BarChart data={fluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                        <XAxis dataKey="ion" />
+                        <YAxis />
+                        <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                        <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                        <Legend />
+                        <Bar dataKey="apical" name="Apical" fill="#2563eb" />
+                        <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
+                        <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">
+                      Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span>
+                    </h3>
+                    <ResponsiveContainer width="100%" height={170}>
+                      <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                        <XAxis dataKey="ion" />
+                        <YAxis />
+                        <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                        <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                        <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="text-xs text-gray-500 mt-1">Positive = absorption; negative = secretion.</div>
+                  </div>
                 </div>
                 <div>
                   <h3 className="font-semibold mb-2">Concentrations</h3>
-                  <ResponsiveContainer width="100%" height={180}>
+                  <ResponsiveContainer width="100%" height={170}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                       <XAxis dataKey="ion" />
                       <YAxis domain={[0,150]} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
@@ -1127,21 +1144,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div>
-                  <h3 className="font-semibold mb-2">
-                    Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span> (positive = absorption, negative = secretion)
-                  </h3>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                      <XAxis dataKey="ion" />
-                      <YAxis />
-                      <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                      <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                      <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
+              </div>
             ) : (
               <div className="space-y-6 overflow-auto">
                 <AccessibleTable
