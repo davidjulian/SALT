@@ -703,6 +703,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
   const fluxDirection = value => {
     const numeric = Number(value ?? 0);
@@ -727,6 +728,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     waterReport ? 'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ' (' + waterReport.netTransepithelial.strength + ').' : '',
     chargeReport ? 'Transepithelial charge tendency: ' + chargeReport.transepithelial.direction + ' (' + chargeReport.transepithelial.strength + ').' : ''
   ].filter(Boolean) : [];
+
+  const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
+  const tePotentialNeedleAngle = clamp(-tePotentialValue * 25, -60, 60);
 
   const AccessibleTable = ({ caption, columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
@@ -1105,8 +1109,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
                     <ResponsiveContainer width="100%" height={170}>
                       <BarChart data={fluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                        <XAxis dataKey="ion" />
-                        <YAxis />
+                        <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
+                        <YAxis tick={{ fontSize: 12 }} />
                         <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                         <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
                         <Legend />
@@ -1122,8 +1126,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     </h3>
                     <ResponsiveContainer width="100%" height={170}>
                       <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                        <XAxis dataKey="ion" />
-                        <YAxis />
+                        <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
+                        <YAxis tick={{ fontSize: 12 }} />
                         <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                         <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
                         <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
@@ -1136,8 +1140,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   <h3 className="font-semibold mb-2">Concentrations</h3>
                   <ResponsiveContainer width="100%" height={170}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                      <XAxis dataKey="ion" />
-                      <YAxis domain={[0,150]} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
+                      <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
+                      <YAxis domain={[0,150]} tick={{ fontSize: 12 }} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
                       <Bar dataKey="apicalECF" name="Apical ECF" fill="#14b8a6" fillOpacity={0.65} />
                       <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
                       <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#f97316" fillOpacity={0.65} />
@@ -1176,6 +1180,49 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   ]}
                   rows={(result?.transepiFluxData || []).map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
                 />
+              </div>
+            )}
+
+            {chargeReport && (
+              <div>
+                <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
+                <div
+                  className="border rounded p-3 mb-3 bg-white"
+                  role="img"
+                  aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
+                >
+                  <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
+                    <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
+                      <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
+                      <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
+                      <circle cx="80" cy="70" r="6" fill="#111827" />
+                      <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
+                    </svg>
+                    <div className="text-xs text-gray-600 w-20">Lumen positive</div>
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
+                  </div>
+                </div>
+                <table className="min-w-full table-auto text-left text-sm">
+                  <tbody>
+                    {[
+                      chargeReport.apical,
+                      chargeReport.basolateral,
+                      chargeReport.cell,
+                      chargeReport.transepithelial
+                    ].map(row => (
+                      <tr key={row.label} className="border-t">
+                        <td className="px-2 py-1 font-semibold">{row.label}</td>
+                        <td className="px-2 py-1">{row.direction}</td>
+                        <td className="px-2 py-1 text-gray-600">{row.strength}</td>
+                        <td className="px-2 py-1 text-gray-500">{formatChargeValue(row.value)} charge units</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 
@@ -1223,28 +1270,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               </div>
             )}
 
-            {chargeReport && (
-              <div>
-                <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
-                <table className="min-w-full table-auto text-left text-sm">
-                  <tbody>
-                    {[
-                      chargeReport.apical,
-                      chargeReport.basolateral,
-                      chargeReport.cell,
-                      chargeReport.transepithelial
-                    ].map(row => (
-                      <tr key={row.label} className="border-t">
-                        <td className="px-2 py-1 font-semibold">{row.label}</td>
-                        <td className="px-2 py-1">{row.direction}</td>
-                        <td className="px-2 py-1 text-gray-600">{row.strength}</td>
-                        <td className="px-2 py-1 text-gray-500">{formatChargeValue(row.value)} charge units</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+
              
           </div>
         )}
