@@ -283,6 +283,66 @@ const INITIAL_CONCENTRATIONS = {
   basolateralECF:{ 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5,  'H2O':100 }
 };
 
+const CONCENTRATION_EDIT_IONS = ['Na+', 'K+', 'Cl-', 'HCO3-', 'Ca2+', 'Glucose'];
+const ION_LABEL = {
+  'Na+': 'Na⁺',
+  'K+': 'K⁺',
+  'Cl-': 'Cl⁻',
+  'H+': 'H⁺',
+  'HCO3-': 'HCO₃⁻',
+  'Ca2+': 'Ca²⁺',
+  Glucose: 'Glucose',
+  H2O: 'H₂O'
+};
+const SURFACE_TRANSPORT_SENSITIVITY = 0.5;
+const SURFACE_MIXING_FRACTION = 0.25;
+const SURFACE_MAX_MULTIPLIER = 2;
+
+function cloneConcentrations(source) {
+  return {
+    apicalECF: { ...source.apicalECF },
+    icf: { ...source.icf },
+    basolateralECF: { ...source.basolateralECF }
+  };
+}
+
+function surfaceClamp(value, bulkValue) {
+  const upper = Math.max((bulkValue || 1) * SURFACE_MAX_MULTIPLIER, 1);
+  return Math.min(Math.max(value, 0), upper);
+}
+
+function surfacePHDirection(flux) {
+  const surfaceHChange = -flux;
+  if (Math.abs(surfaceHChange) < 0.001) return 'no strong local pH tendency';
+  return surfaceHChange > 0 ? 'surface pH tends lower' : 'surface pH tends higher';
+}
+
+function buildSurfaceConcentrations(apicalBulk, basolateralBulk, apicalFlux, basolateralFlux) {
+  const transportScale = SURFACE_TRANSPORT_SENSITIVITY * (1 - SURFACE_MIXING_FRACTION);
+  const apicalSurface = { ...apicalBulk };
+  const basolateralSurface = { ...basolateralBulk };
+
+  Object.keys(apicalBulk).forEach(ion => {
+    if (ion === 'H2O') return;
+    if (ion === 'H+') {
+      apicalSurface[ion] = apicalBulk[ion];
+      basolateralSurface[ion] = basolateralBulk[ion];
+      return;
+    }
+    apicalSurface[ion] = surfaceClamp(apicalBulk[ion] - (apicalFlux[ion] || 0) * transportScale, apicalBulk[ion]);
+    basolateralSurface[ion] = surfaceClamp(basolateralBulk[ion] - (basolateralFlux[ion] || 0) * transportScale, basolateralBulk[ion]);
+  });
+
+  return {
+    apicalSurface,
+    basolateralSurface,
+    pHTendency: {
+      apical: surfacePHDirection(apicalFlux['H+'] || 0),
+      basolateral: surfacePHDirection(basolateralFlux['H+'] || 0)
+    }
+  };
+}
+
 export default function App() {
   // State
   const [showAbout, setShowAbout] = useState(false);
@@ -292,6 +352,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [resultsView, setResultsView] = useState('graphs');
+  const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
 
   // ECF model state
 const [ecfModel, setEcfModel] = useState('infinite'); // 'infinite' or 'finite'
@@ -315,7 +376,8 @@ const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
   paraAnionPerm,
   ecfModel,
   ecfPoolSize,
-  electrochemicalFeedback
+  electrochemicalFeedback,
+  baseConcentrations
 ]);
 
 
@@ -358,6 +420,21 @@ const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
     setTransporters(ts => ts.filter(t => t.uid !== uid));
   };
 
+  const updateBaseConcentration = (compartment, ion, value) => {
+    const numeric = Math.max(Number(value) || 0, 0);
+    setBaseConcentrations(current => ({
+      ...current,
+      [compartment]: {
+        ...current[compartment],
+        [ion]: numeric
+      }
+    }));
+  };
+
+  const resetBaseConcentrations = () => {
+    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+  };
+
   // --- Simulation Logic ---
 
 // Helper to get placements for a transporter in this simulation step
@@ -387,18 +464,19 @@ function transepithelialFlux(ion, entryIds, exitIds, requirePump, apicalFlux, ba
 }
 
 const calculateFluxesAndConcs = (tList = transporters) => {
-  // Use current ECF concentrations (mutable if finite)
+  // Bulk baths are fixed teaching reservoirs; local surface layers are computed below.
+  const baseline = baseConcentrations;
   let apicalECF, basolateralECF;
   if (ecfModel === 'infinite' || !result) {
-    apicalECF = { ...INITIAL_CONCENTRATIONS.apicalECF };
-    basolateralECF = { ...INITIAL_CONCENTRATIONS.basolateralECF };
+    apicalECF = { ...baseline.apicalECF };
+    basolateralECF = { ...baseline.basolateralECF };
   } else {
     apicalECF = { ...result.concentrations.apicalECF };
     basolateralECF = { ...result.concentrations.basolateralECF };
   }
   const apicalFlux = {};
   const basolateralFlux = {};
-  Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
+  Object.keys(baseline.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
 
@@ -414,7 +492,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
     let rate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
     if (t.id === 'NHE3') {
-      const h = (INITIAL_CONCENTRATIONS.icf['H+']);
+      const h = (baseline.icf['H+']);
       const pH = -Math.log10(h);
       const pH50 = 7.2;
       const sigma = 0.05;
@@ -442,25 +520,29 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   }
 
-  const newICF = { ...INITIAL_CONCENTRATIONS.icf };
+  const newICF = { ...baseline.icf };
   Object.entries(netFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
 
+  const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
+  const apicalSurface = surfaceReport.apicalSurface;
+  const basolateralSurface = surfaceReport.basolateralSurface;
+
   // --- Paracellular Pathway Fluxes ---
   const paraFlux = {};
-  Object.keys(INITIAL_CONCENTRATIONS.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
+  Object.keys(baseline.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
 
   if (paracellularType === 'cation') {
     ['Na+','K+'].forEach(ion => {
-      const cap = apicalECF[ion];
-      const blp = basolateralECF[ion];
+      const cap = apicalSurface[ion];
+      const blp = basolateralSurface[ion];
       paraFlux[ion] = paraCationPerm * (cap - blp);
     });
   }
   if (paracellularType === 'anion') {
     ['Cl-','HCO3-'].forEach(ion => {
-      const cap = apicalECF[ion];
-      const blp = basolateralECF[ion];
+      const cap = apicalSurface[ion];
+      const blp = basolateralSurface[ion];
       paraFlux[ion] = paraAnionPerm * (cap - blp);
     });
   }
@@ -536,9 +618,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
 
   const waterReport = buildWaterReport(
-    apicalECF,
+    apicalSurface,
     newICF,
-    basolateralECF,
+    basolateralSurface,
     tList,
     paracellularType,
     paraCationPerm,
@@ -559,9 +641,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     netFlux,
     concentrations: {
       apicalECF,
+      apicalSurface,
       icf: newICF,
+      basolateralSurface,
       basolateralECF
     },
+    surfaceReport,
     paraFlux,
     transepiFluxData,
     waterReport,
@@ -582,14 +667,25 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         net: result.netFlux[ion]
       }))
     : [];
-  const concData = result
-    ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O').map(ion => ({
-        ion,
-        apicalECF: result.concentrations.apicalECF[ion],
-        icf: result.concentrations.icf[ion],
-        basolateralECF: result.concentrations.basolateralECF[ion]
-      }))
+  const concentrationIons = result
+    ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O')
     : [];
+  const concData = concentrationIons.map(ion => ({
+    ion: ION_LABEL[ion] || ion,
+    apicalBulk: result.concentrations.apicalECF[ion],
+    apicalSurface: result.concentrations.apicalSurface?.[ion] ?? result.concentrations.apicalECF[ion],
+    icf: result.concentrations.icf[ion],
+    basolateralSurface: result.concentrations.basolateralSurface?.[ion] ?? result.concentrations.basolateralECF[ion],
+    basolateralBulk: result.concentrations.basolateralECF[ion]
+  }));
+  const concTableData = concentrationIons.map(ion => ({
+    ion: ION_LABEL[ion] || ion,
+    apicalBulk: result.concentrations.apicalECF[ion],
+    apicalSurface: result.concentrations.apicalSurface?.[ion] ?? result.concentrations.apicalECF[ion],
+    icf: result.concentrations.icf[ion],
+    basolateralSurface: result.concentrations.basolateralSurface?.[ion] ?? result.concentrations.basolateralECF[ion],
+    basolateralBulk: result.concentrations.basolateralECF[ion]
+  }));
 
 // For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
@@ -773,6 +869,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
         <li>By default, apical and basolateral bath concentrations are treated as fixed reservoirs. The finite ECF option is mainly useful for exploring consequences of changing bath pools.</li>
+        <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
         <li>The app can show charge and polarity tendencies. Electrochemical feedback is a development setting for allowing polarity to affect passive flux in a later model pass.</li>
       </ul>
@@ -869,8 +966,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Water &amp; Osmolality Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li>H₂O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
-        <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent bath, and require a water pathway on that membrane.</li>
+        <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent local surface layer, and require a water pathway on that membrane.</li>
         <li>Net transcellular epithelial water movement uses a teaching rule: when a complete apical-to-basolateral water pathway exists, water follows net transepithelial solute absorption or secretion. This represents local osmotic coupling that the app does not explicitly model as a standing bath-to-bath osmotic gradient.</li>
+        <li>H⁺ surface changes are reported as pH tendencies rather than recalculated H⁺ concentrations.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
@@ -967,7 +1065,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 )}
 {showSettings && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
+    <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
       <h2 className="text-xl font-bold mb-4">Model Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
         <label className="block mb-2 font-semibold">Bath Concentrations</label>
@@ -1016,6 +1114,47 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <div className="text-gray-500">
           When off, the app reports charge and polarity tendencies without changing flux.
         </div>
+      </div>
+      <div className="mb-4 text-sm text-gray-700">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <label className="font-semibold">Baseline Concentrations</label>
+          <Button size="sm" variant="outline" onClick={resetBaseConcentrations}>
+            Reset defaults
+          </Button>
+        </div>
+        <p className="text-gray-500 mb-2">
+          These values set fixed bulk reservoirs and the starting cell composition. Local surface concentrations are calculated from transporter fluxes plus fixed partial mixing.
+        </p>
+        <table className="min-w-full table-auto text-left border">
+          <thead>
+            <tr className="bg-gray-100">
+              <th scope="col" className="px-2 py-1 border">Ion or solute</th>
+              <th scope="col" className="px-2 py-1 border">Apical bath</th>
+              <th scope="col" className="px-2 py-1 border">Cell</th>
+              <th scope="col" className="px-2 py-1 border">Basolateral bath</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CONCENTRATION_EDIT_IONS.map(ion => (
+              <tr key={ion}>
+                <th scope="row" className="px-2 py-1 border font-semibold">{ION_LABEL[ion] || ion}</th>
+                {['apicalECF', 'icf', 'basolateralECF'].map(compartment => (
+                  <td key={compartment} className="px-2 py-1 border">
+                    <input
+                      type="number"
+                      min="0"
+                      step={ion === 'Ca2+' ? '0.0001' : '0.1'}
+                      value={baseConcentrations[compartment][ion]}
+                      onChange={e => updateBaseConcentration(compartment, ion, e.target.value)}
+                      className="border rounded p-1 w-full"
+                      aria-label={(ION_LABEL[ion] || ion) + ' ' + compartment + ' baseline concentration'}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <Button className="mt-4" onClick={() => setShowSettings(false)}>
         Close
@@ -1154,15 +1293,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 </div>
                 <div>
                   <h3 className="font-semibold mb-2">Concentrations</h3>
-                  <ResponsiveContainer width="100%" height={170}>
+                  <ResponsiveContainer width="100%" height={190}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
                       <YAxis domain={[0,150]} tick={{ fontSize: 12 }} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
-                      <Bar dataKey="apicalECF" name="Apical ECF" fill="#14b8a6" fillOpacity={0.65} />
+                      <Bar dataKey="apicalBulk" name="Apical Bulk" fill="#99f6e4" />
+                      <Bar dataKey="apicalSurface" name="Apical Surface" fill="#0f766e" />
                       <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
-                      <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#f97316" fillOpacity={0.65} />
+                      <Bar dataKey="basolateralSurface" name="Basolateral Surface" fill="#ea580c" />
+                      <Bar dataKey="basolateralBulk" name="Basolateral Bulk" fill="#fed7aa" />
                     </BarChart>
                   </ResponsiveContainer>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Bulk bars show the fixed reservoirs; surface bars show local teaching estimates after transport and partial mixing.
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1178,14 +1322,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   rows={fluxData}
                 />
                 <AccessibleTable
-                  caption="Concentrations. Values are arbitrary teaching units."
+                  caption="Concentrations. Bulk reservoirs are fixed unless changed in Settings. Surface values are local teaching estimates based on transport and partial mixing."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
-                    { key: 'apicalECF', label: 'Apical bath', format: formatTableValue },
+                    { key: 'apicalBulk', label: 'Apical bulk', format: formatTableValue },
+                    { key: 'apicalSurface', label: 'Apical surface', format: formatTableValue },
                     { key: 'icf', label: 'Cell', format: formatTableValue },
-                    { key: 'basolateralECF', label: 'Basolateral bath', format: formatTableValue }
+                    { key: 'basolateralSurface', label: 'Basolateral surface', format: formatTableValue },
+                    { key: 'basolateralBulk', label: 'Basolateral bulk', format: formatTableValue }
                   ]}
-                  rows={concData}
+                  rows={concTableData}
                 />
                 <AccessibleTable
                   caption="Transepithelial fluxes. Positive values indicate absorption and negative values indicate secretion."
@@ -1249,7 +1395,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                       <div className="border rounded p-3">
-                        <div className="font-semibold">Apical</div>
+                        <div className="font-semibold">Apical surface</div>
                         <div>{formatWaterValue(waterReport.osmolality.apical)} arbitrary osmoles</div>
                         <div className="text-gray-600">{waterReport.osmolality.apicalCategory}</div>
                       </div>
@@ -1262,7 +1408,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
                       </div>
                       <div className="border rounded p-3">
-                        <div className="font-semibold">Basolateral</div>
+                        <div className="font-semibold">Basolateral surface</div>
                         <div>{formatWaterValue(waterReport.osmolality.basolateral)} arbitrary osmoles</div>
                         <div className="text-gray-600">{waterReport.osmolality.basolateralCategory}</div>
                       </div>
@@ -1283,6 +1429,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         waterReport.netTransepithelial
                       ]}
                     />
+                    <AccessibleTable
+                      caption="Local surface pH tendencies. H+ concentration is not changed by this teaching layer."
+                      columns={[
+                        { key: 'surface', label: 'Surface' },
+                        { key: 'tendency', label: 'Tendency' }
+                      ]}
+                      rows={[
+                        { surface: 'Apical surface', tendency: result.surfaceReport?.pHTendency?.apical || 'no strong local pH tendency' },
+                        { surface: 'Basolateral surface', tendency: result.surfaceReport?.pHTendency?.basolateral || 'no strong local pH tendency' }
+                      ]}
+                    />
                   </>
                 ) : (
                   <div className="space-y-6">
@@ -1295,9 +1452,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         { key: 'note', label: 'Note' }
                       ]}
                       rows={[
-                        { region: 'Apical bath', osmolality: waterReport.osmolality.apical, category: waterReport.osmolality.apicalCategory, note: '' },
+                        { region: 'Apical surface', osmolality: waterReport.osmolality.apical, category: waterReport.osmolality.apicalCategory, note: 'Derived from fixed bath plus local transport/mixing' },
                         { region: 'Cell', osmolality: waterReport.osmolality.icf, category: waterReport.osmolality.icfCategory, note: 'Includes ' + formatWaterValue(waterReport.osmolality.fixedIcf) + ' fixed osmoles' },
-                        { region: 'Basolateral bath', osmolality: waterReport.osmolality.basolateral, category: waterReport.osmolality.basolateralCategory, note: '' }
+                        { region: 'Basolateral surface', osmolality: waterReport.osmolality.basolateral, category: waterReport.osmolality.basolateralCategory, note: 'Derived from fixed bath plus local transport/mixing' }
                       ]}
                     />
                     <AccessibleTable
@@ -1314,6 +1471,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         waterReport.transcellular,
                         waterReport.paracellular,
                         waterReport.netTransepithelial
+                      ]}
+                    />
+                    <AccessibleTable
+                      caption="Local surface pH tendencies. H+ concentration is not changed by this teaching layer."
+                      columns={[
+                        { key: 'surface', label: 'Surface' },
+                        { key: 'tendency', label: 'Tendency' }
+                      ]}
+                      rows={[
+                        { surface: 'Apical surface', tendency: result.surfaceReport?.pHTendency?.apical || 'no strong local pH tendency' },
+                        { surface: 'Basolateral surface', tendency: result.surfaceReport?.pHTendency?.basolateral || 'no strong local pH tendency' }
                       ]}
                     />
                   </div>
