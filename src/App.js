@@ -245,6 +245,38 @@ const INITIAL_TRANSPORTERS = [
   { id: 'SGLT2',    name: 'SGLT2',      type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
 ];
 
+const TRANSPORTER_GROUPS = [
+  { label: 'Water pathways', ids: ['AQP2', 'AQP3'] },
+  { label: 'Channels', ids: ['ENaC', 'GLUT2', 'ROMK'] },
+  { label: 'Cotransporters', ids: ['SGLT2', 'NCC', 'NKCC2', 'NBCe1'] },
+  { label: 'Exchangers', ids: ['NHE3', 'NCX1'] },
+  { label: 'Pumps', ids: ['NaKATPase', 'HATPase', 'HKATPase', 'PMCA'] }
+];
+
+const DENSITY_OPTIONS = [
+  { label: 'Low', value: 0.5 },
+  { label: 'Normal', value: 1 },
+  { label: 'High', value: 2 }
+];
+
+const TRANSPORTER_DESCRIPTIONS = {
+  AQP2: 'Aquaporin 2: enables rapid H2O movement.',
+  AQP3: 'Aquaporin 3: enables rapid H2O movement.',
+  ENaC: 'Epithelial sodium channel: allows passive Na+ entry.',
+  GLUT2: 'Glucose transporter 2: allows passive glucose exit.',
+  HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
+  HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
+  NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- out.',
+  NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
+  NCX1: 'Sodium-calcium exchanger: exchanges Na+ entry for Ca2+ exit.',
+  NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ entry for H+ exit.',
+  NKCC2: 'Sodium-potassium-chloride cotransporter: moves Na+, K+, and Cl- together.',
+  NaKATPase: 'Sodium-potassium pump: pumps Na+ out and K+ in using ATP.',
+  PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
+  ROMK: 'Potassium channel: allows passive K+ exit.',
+  SGLT2: 'Sodium-glucose cotransporter: moves Na+ and glucose together.'
+};
+
 const INITIAL_CONCENTRATIONS = {
   apicalECF:     { 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, 'Glucose':5,  'H2O':100 },
   icf:           { 'Na+':12,  'K+':140, 'Cl-':10,  'H+':0.00002, 'HCO3-':10, 'Ca2+':0.0001,'Glucose':1,  'H2O':100 },
@@ -256,9 +288,10 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [modalTransporterId, setModalTransporterId] = useState(null);
-  const [transporters, setTransporters] = useState(INITIAL_TRANSPORTERS);
+  const [transporters, setTransporters] = useState([]);
   const [result, setResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [resultsView, setResultsView] = useState('graphs');
 
   // ECF model state
 const [ecfModel, setEcfModel] = useState('infinite'); // 'infinite' or 'finite'
@@ -286,10 +319,18 @@ const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
 ]);
 
 
-  const updateTransporter = (id, field, value) => {
+  useEffect(() => {
+    setTransporters(ts =>
+      ts.some(t => !t.uid)
+        ? ts.map(t => t.uid ? t : { ...t, uid: t.id + '-' + t.placement + '-' + Math.random().toString(36).slice(2) })
+        : ts
+    );
+  }, []);
+
+  const updateTransporter = (uid, field, value) => {
     setTransporters(ts =>
       ts.map(t =>
-        t.id === id
+        t.uid === uid
           ? (field === 'kinetics'
               ? { ...t, kinetics: { ...value } }
               : { ...t, [field]: value })
@@ -298,6 +339,24 @@ const [electrochemicalFeedback, setElectrochemicalFeedback] = useState(false);
     );
   };
 
+  const addTransporterToMembrane = (id, placement) => {
+    const template = INITIAL_TRANSPORTERS.find(t => t.id === id);
+    if (!template) return;
+    setTransporters(ts => [
+      ...ts,
+      {
+        ...template,
+        kinetics: { ...template.kinetics },
+        placement,
+        density: 1,
+        uid: id + '-' + placement + '-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+      }
+    ]);
+  };
+
+  const removeTransporter = uid => {
+    setTransporters(ts => ts.filter(t => t.uid !== uid));
+  };
 
   // --- Simulation Logic ---
 
@@ -536,7 +595,105 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
   const transepiFluxData = result?.transepiFluxData || [];
 
-  const modalTransporter = transporters.find(t => t.id === modalTransporterId);
+  const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
+  const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
+  const membraneTransporters = placement => transporters.filter(t => t.placement === placement);
+  const transporterIsOnMembrane = (id, placement) => transporters.some(t => t.id === id && t.placement === placement);
+
+  const renderTransporterChooser = placement => (
+    <div className="space-y-3">
+      {TRANSPORTER_GROUPS.map(group => (
+        <div key={group.label}>
+          <div className="text-xs font-semibold text-gray-600 mb-1">{group.label}</div>
+          <div className="flex flex-wrap gap-1">
+            {group.ids.map(id => {
+              const template = transporterTemplateById(id);
+              const alreadyAdded = transporterIsOnMembrane(id, placement);
+              const description = TRANSPORTER_DESCRIPTIONS[id] || '';
+              return (
+                <span key={id} className="relative group inline-block">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={alreadyAdded}
+                    title={description}
+                    aria-label={description ? 'Add ' + (template?.name || id) + '. ' + description : 'Add ' + (template?.name || id)}
+                    className={alreadyAdded ? 'text-gray-400 border-gray-200 bg-gray-50' : ''}
+                    onClick={() => addTransporterToMembrane(id, placement)}
+                  >
+                    {template?.name || id}
+                  </Button>
+                  {description && (
+                    <span className="hidden group-hover:block group-focus-within:block absolute left-0 top-full mt-1 w-64 z-20 rounded border bg-white p-2 text-xs text-gray-700 shadow-lg">
+                      {description}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderTransporterRows = placement => {
+    const rows = membraneTransporters(placement);
+    if (rows.length === 0) {
+      return <div className="text-sm text-gray-500 border rounded p-2 bg-gray-50">No transporters added.</div>;
+    }
+
+    return (
+      <div className="space-y-2">
+        {rows.map(t => (
+          <div key={t.uid} className="border rounded p-2 bg-white">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="font-semibold text-sm" title={TRANSPORTER_DESCRIPTIONS[t.id] || ''}>{t.name}</div>
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={'Remove ' + t.name + ' from ' + placement + ' membrane'}
+                onClick={() => removeTransporter(t.uid)}
+              >
+                Remove
+              </Button>
+            </div>
+            <fieldset className="flex items-center gap-2 text-xs">
+              <legend className="text-gray-600 mr-1">Density</legend>
+              {DENSITY_OPTIONS.map(option => (
+                <label key={option.label} className="inline-flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name={'density-' + t.uid}
+                    value={option.value}
+                    checked={t.density === option.value}
+                    onChange={() => updateTransporter(t.uid, 'density', option.value)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMembraneBuilder = (placement, title) => (
+    <section className="border rounded p-3 bg-gray-50">
+      <h2 className="text-base font-semibold mb-2">{title}</h2>
+      <div className="mb-3">
+        {renderTransporterRows(placement)}
+      </div>
+      <details className="bg-white border rounded p-2">
+        <summary className="cursor-pointer text-sm font-semibold">Add transporter</summary>
+        <div className="mt-3">
+          {renderTransporterChooser(placement)}
+        </div>
+      </details>
+    </section>
+  );
+
   const netTEFlux =
     transepiFluxData
       .filter(row => row.ion !== 'H2O')
@@ -546,6 +703,54 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
+  const formatTableValue = value => Number(value ?? 0).toFixed(3);
+  const fluxDirection = value => {
+    const numeric = Number(value ?? 0);
+    if (Math.abs(numeric) < 0.001) return 'none';
+    return numeric > 0 ? 'absorption' : 'secretion';
+  };
+  const membraneListText = placement => {
+    const rows = membraneTransporters(placement);
+    if (rows.length === 0) return 'none';
+    return rows.map(t => {
+      const option = DENSITY_OPTIONS.find(o => o.value === t.density);
+      return t.name + ' (' + (option?.label || 'custom') + ' density)';
+    }).join(', ');
+  };
+  const keyTransepithelialRows = transepiFluxData.filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001);
+  const simulationSummary = result ? [
+    'Apical membrane: ' + membraneListText('apical') + '.',
+    'Basolateral membrane: ' + membraneListText('basolateral') + '.',
+    keyTransepithelialRows.length
+      ? 'Net transepithelial movement: ' + keyTransepithelialRows.map(row => row.ion + ' ' + fluxDirection(row.transepithelial)).join('; ') + '.'
+      : 'No substantial net transepithelial solute or water movement is currently predicted.',
+    waterReport ? 'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ' (' + waterReport.netTransepithelial.strength + ').' : '',
+    chargeReport ? 'Transepithelial charge tendency: ' + chargeReport.transepithelial.direction + ' (' + chargeReport.transepithelial.strength + ').' : ''
+  ].filter(Boolean) : [];
+
+  const AccessibleTable = ({ caption, columns, rows }) => (
+    <table className="min-w-full table-auto text-left text-sm border">
+      <caption className="text-left font-semibold mb-2">{caption}</caption>
+      <thead>
+        <tr className="bg-gray-100">
+          {columns.map(column => (
+            <th key={column.key} scope="col" className="px-2 py-1 border">{column.label}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={row.ion || row.label || index} className="border-t">
+            {columns.map((column, columnIndex) => (
+              columnIndex === 0
+                ? <th key={column.key} scope="row" className="px-2 py-1 border font-semibold">{row[column.key]}</th>
+                : <td key={column.key} className="px-2 py-1 border">{column.format ? column.format(row[column.key], row) : row[column.key]}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
   
   // --- Render ---
 
@@ -669,7 +874,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   </div><div className="flex space-x-2 mb-4">
   <Button onClick={() => setShowAbout(true)}>About</Button>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
-<Button variant="outline" onClick={() => setTransporters(INITIAL_TRANSPORTERS.map(t => ({ ...t })))}>Reset</Button>
+<Button variant="outline" onClick={() => setTransporters([])}>Reset</Button>
 </div>
            
         <div className="mt-4">
@@ -693,35 +898,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   </table>
 </div>
 
-        <h2 className="text-base font-semibold mb-4">Transporters</h2>
-        <table className="min-w-full table-auto text-left">
-  <thead>
-    <tr className="bg-gray-100">
-      <th className="px-2 py-1">Abbr</th>
-      <th className="px-2 py-1">Placement</th>
-      <th className="px-2 py-1">Info</th>
-    </tr>
-  </thead>
-  <tbody>
-    {transporters.map(t => (
-      <tr key={t.id} className="border-t">
-        <td className="px-2 py-1">{t.name}</td>
-        <td className="px-2 py-1">
-          <select value={t.placement} onChange={e => updateTransporter(t.id, 'placement', e.target.value)} className="w-full border rounded p-1">
-            <option value="none">None</option>
-            <option value="apical">Apical</option>
-            <option value="basolateral">Basolateral</option>
-          </select>
-        </td>
-        <td className="px-2 py-1">
-          <Button size="sm" variant="outline" onClick={() => { setModalTransporterId(t.id); setShowInfoModal(true); }}>
-            Info
-          </Button>
-        </td>
-      </tr>
-    ))}
-  </tbody>
-</table>
+        <div className="mt-4 space-y-4">
+          {renderMembraneBuilder('apical', 'Apical Membrane')}
+          {renderMembraneBuilder('basolateral', 'Basolateral Membrane')}
+        </div>
 {showParaInfo && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
@@ -874,39 +1054,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       .map(([ion, coeff]) => `${ion} ${coeff >= 0 ? "+" : ""}${coeff}`)
       .join(", ")}
   </div>
-</div> 
-      
-      <div className="mb-2">
-        <label className="block text-sm">Density:</label>
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          value={modalTransporter.density}
-          onChange={e => updateTransporter(modalTransporter.id, "density", parseFloat(e.target.value))}
-          className="border rounded p-1 w-full"
-        />
-      </div>
-      <div className="mb-2">
-        <label className="block text-sm">Vmax:</label>
-        <input
-          type="number"
-          step="0.1"
-          value={modalTransporter.kinetics.maxRate}
-          onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, maxRate: parseFloat(e.target.value) })}
-          className="border rounded p-1 w-full"
-        />
-      </div>
-      <div className="mb-2">
-        <label className="block text-sm">Km:</label>
-        <input
-          type="number"
-          step="0.1"
-          value={modalTransporter.kinetics.Km}
-          onChange={e => updateTransporter(modalTransporter.id, "kinetics", { ...modalTransporter.kinetics, Km: parseFloat(e.target.value) })}
-          className="border rounded p-1 w-full"
-        />
-      </div>
+</div>
+
       <Button className="mt-2" onClick={() => setShowInfoModal(false)}>Close</Button>
     </div>
   </div>
@@ -918,48 +1067,114 @@ const calculateFluxesAndConcs = (tList = transporters) => {
        
  {result && (
           <div className="mt-4 space-y-6 overflow-auto">
-            <div>
-              <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={fluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <XAxis dataKey="ion" />
-                  <YAxis />
-                  <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                  <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                  <Legend />
-                  <Bar dataKey="apical" name="Apical" fill="#2563eb" />
-                  <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
-                  <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-           <div>
-              <h3 className="font-semibold mb-2">Concentrations</h3>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <XAxis dataKey="ion" />
-                  <YAxis domain={[0,150]} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
-                  <Bar dataKey="apicalECF" name="Apical ECF" fill="#14b8a6" fillOpacity={0.65} />
-                  <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
-                  <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#f97316" fillOpacity={0.65} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <section className="border rounded p-3 bg-white">
+              <h2 className="font-semibold mb-2">Simulation Summary</h2>
+              <ul className="list-disc ml-6 text-sm space-y-1">
+                {simulationSummary.map(line => <li key={line}>{line}</li>)}
+              </ul>
+            </section>
 
-            <div>
-              <h3 className="font-semibold mb-2">
-              Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span> (positive = absorption, negative = secretion)
-            </h3>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <XAxis dataKey="ion" />
-                  <YAxis />
-                  <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                  <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                  <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <fieldset className="flex items-center gap-3 text-sm">
+              <legend className="font-semibold mr-1">Results view</legend>
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="results-view"
+                  value="graphs"
+                  checked={resultsView === 'graphs'}
+                  onChange={() => setResultsView('graphs')}
+                />
+                Graphs
+              </label>
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="results-view"
+                  value="tables"
+                  checked={resultsView === 'tables'}
+                  onChange={() => setResultsView('tables')}
+                />
+                Tables
+              </label>
+            </fieldset>
+
+            {resultsView === 'graphs' ? (
+              <>
+                <div>
+                  <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={fluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <XAxis dataKey="ion" />
+                      <YAxis />
+                      <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                      <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                      <Legend />
+                      <Bar dataKey="apical" name="Apical" fill="#2563eb" />
+                      <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
+                      <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-2">Concentrations</h3>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <XAxis dataKey="ion" />
+                      <YAxis domain={[0,150]} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
+                      <Bar dataKey="apicalECF" name="Apical ECF" fill="#14b8a6" fillOpacity={0.65} />
+                      <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
+                      <Bar dataKey="basolateralECF" name="Basolateral ECF" fill="#f97316" fillOpacity={0.65} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-2">
+                    Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span> (positive = absorption, negative = secretion)
+                  </h3>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <XAxis dataKey="ion" />
+                      <YAxis />
+                      <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                      <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                      <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-6 overflow-auto">
+                <AccessibleTable
+                  caption="Transmembrane fluxes. Positive values indicate movement into the cell."
+                  columns={[
+                    { key: 'ion', label: 'Ion or solute' },
+                    { key: 'apical', label: 'Apical flux', format: formatTableValue },
+                    { key: 'basolateral', label: 'Basolateral flux', format: formatTableValue },
+                    { key: 'net', label: 'Net cellular flux', format: formatTableValue }
+                  ]}
+                  rows={fluxData}
+                />
+                <AccessibleTable
+                  caption="Concentrations. Values are arbitrary teaching units."
+                  columns={[
+                    { key: 'ion', label: 'Ion or solute' },
+                    { key: 'apicalECF', label: 'Apical bath', format: formatTableValue },
+                    { key: 'icf', label: 'Cell', format: formatTableValue },
+                    { key: 'basolateralECF', label: 'Basolateral bath', format: formatTableValue }
+                  ]}
+                  rows={concData}
+                />
+                <AccessibleTable
+                  caption="Transepithelial fluxes. Positive values indicate absorption and negative values indicate secretion."
+                  columns={[
+                    { key: 'ion', label: 'Ion or solute' },
+                    { key: 'transepithelial', label: 'Net transepithelial flux', format: formatTableValue },
+                    { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
+                  ]}
+                  rows={(result?.transepiFluxData || []).map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
+                />
+              </div>
+            )}
 
             {waterReport && (
               <div>
