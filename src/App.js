@@ -762,9 +762,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 <>
   {/* About Modal */}
   {showAbout && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh]">
-      <h2 className="text-2xl font-bold mb-4">About the Secretion and Absorption Learning Tool</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowAbout(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh] relative" onClick={e => e.stopPropagation()}>
+      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close About window" onClick={() => setShowAbout(false)}>Close</Button>
+      <h2 className="text-2xl font-bold mb-4 pr-20">About the Secretion and Absorption Learning Tool</h2>
       <div className="mb-3 text-sm text-gray-700">
   Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a>
       </div>
@@ -780,69 +781,84 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
         <li>Na⁺-coupled transporters (SGLT2, ENaC, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
       </ul>
-      <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions & Rules</h3>
+      <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
         <li>
-          <b>AQP2:</b> Water channel; enables rapid H₂O movement.<br/>
+          <b>AQP2:</b> aquaporin 2<br/>
+          <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
           <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
-          <b>AQP3:</b> Water channel; enables rapid H₂O movement.<br/>
+          <b>AQP3:</b> aquaporin 3<br/>
+          <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
           <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
         </li>
         <li>
-          <b>ENaC:</b> Sodium channel; allows passive Na⁺ entry.<br/>
+          <b>ENaC:</b> epithelial sodium channel<br/>
+          <i>Action:</i> Sodium channel; allows passive Na⁺ entry.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase somewhere to be active and to contribute to net Na⁺ flux.
         </li>
         <li>
-          <b>GLUT2:</b> Facilitated glucose transporter; allows glucose to exit the cell.<br/>
+          <b>GLUT2:</b> glucose transporter 2<br/>
+          <i>Action:</i> Facilitated glucose transporter; allows glucose to exit the cell.<br/>
           <i>Rule:</i> Net glucose transport requires SGLT2 on one membrane and GLUT2 on the opposite, and Na⁺/K⁺ ATPase present.
         </li>
         <li>
-          <b>H⁺-ATPase:</b> Proton pump; pumps H⁺ out using ATP.<br/>
+          <b>H⁺-ATPase:</b> proton ATPase<br/>
+          <i>Action:</i> Proton pump; pumps H⁺ out using ATP.<br/>
           <i>Rule:</i> Contributes to H⁺ efflux, can participate in transepithelial H⁺ flux if paired with NBCe1 on the opposite membrane.
         </li>
         <li>
-          <b>H⁺-K⁺-ATPase:</b> Proton-potassium ATPase; exchanges one H⁺ out and K⁺ in using ATP.<br/>
-          <i>Rule:</i> For K⁺, presence of H⁺/K⁺-ATPase on either membrane is sufficient for transepithelial flux. For H⁺, an exit pathway (NBCe1 or HKATPase) must be present on the opposite membrane.
+          <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
+          <i>Action:</i> Proton-potassium pump; exchanges one H⁺ out and K⁺ in using ATP.<br/>
+          <i>Rule:</i> For K⁺, presence of H⁺/K⁺-ATPase on either membrane is sufficient for transepithelial flux. For H⁺, an exit pathway (NBCe1 or H⁺/K⁺-ATPase) must be present on the opposite membrane.
         </li>
         <li>
-          <b>NBCe1:</b> Na⁺-bicarbonate symporter; co-transports Na⁺ and HCO₃⁻ out.<br/>
+          <b>NBCe1:</b> electrogenic sodium bicarbonate cotransporter 1<br/>
+          <i>Action:</i> Na⁺-bicarbonate symporter; co-transports Na⁺ and HCO₃⁻ out.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; required for HCO₃⁻ efflux when NHE3 is active.
         </li>
         <li>
-          <b>NCC:</b> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ in.<br/>
+          <b>NCC:</b> sodium-chloride cotransporter<br/>
+          <i>Action:</i> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ in.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; transepithelial flux requires NCC or NKCC2 on both membranes.
         </li>
         <li>
-          <b>NCX1:</b> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ in for 1 Ca²⁺ out.<br/>
+          <b>NCX1:</b> sodium-calcium exchanger 1<br/>
+          <i>Action:</i> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ in for 1 Ca²⁺ out.<br/>
           <i>Rule:</i> Transepithelial Ca²⁺ flux requires NCX1 or PMCA on both membranes.
         </li>
         <li>
-          <b>NHE3:</b> Na⁺/H⁺ exchanger; exchanges Na⁺ in for H⁺ out.<br/>
+          <b>NHE3:</b> sodium-hydrogen exchanger 3<br/>
+          <i>Action:</i> Na⁺/H⁺ exchanger; exchanges Na⁺ in for H⁺ out.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBCe1 for transepithelial HCO₃⁻ and H⁺ flux.
         </li>
         <li>
-          <b>NKCC2:</b> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ in.<br/>
+          <b>NKCC2:</b> sodium-potassium-chloride cotransporter 2<br/>
+          <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ in.<br/>
           <i>Rule:</i> Requires ROMK on the same membrane and Na⁺/K⁺ ATPase present for activity; for net flux, NKCC2 or NCC must be present on both membranes.
         </li>
         <li>
-          <b>Na⁺/K⁺ ATPase:</b> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
+          <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
+          <i>Action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
           <i>Rule:</i> Required for activity of all Na⁺-coupled transporters and for transepithelial Na⁺ or K⁺ absorption.
         </li>
         <li>
-          <b>PMCA:</b> Plasma membrane Ca²⁺ ATPase; pumps Ca²⁺ out using ATP.<br/>
+          <b>PMCA:</b> plasma membrane calcium ATPase<br/>
+          <i>Action:</i> Ca²⁺ pump; pumps Ca²⁺ out using ATP.<br/>
           <i>Rule:</i> For transepithelial Ca²⁺ flux, PMCA or NCX1 must be on both membranes.
         </li>
         <li>
-          <b>ROMK:</b> Potassium channel; allows K⁺ to exit.<br/>
+          <b>ROMK:</b> renal outer medullary potassium channel<br/>
+          <i>Action:</i> Potassium channel; allows K⁺ to exit.<br/>
           <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity; for transepithelial K⁺ flux, ROMK or Na⁺/K⁺ ATPase must be on the opposite membrane.
         </li>
         <li>
-          <b>SGLT2:</b> Na⁺-glucose symporter; co-transports Na⁺ and glucose in.<br/>
+          <b>SGLT2:</b> sodium-glucose cotransporter 2<br/>
+          <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose in.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT2 and GLUT2 must be on opposite membranes.
         </li>
-        </ul>
+      </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.<br/>
@@ -1186,92 +1202,125 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {chargeReport && (
               <div>
                 <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
-                <div
-                  className="border rounded p-3 mb-3 bg-white"
-                  role="img"
-                  aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
-                >
-                  <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
-                    <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
-                      <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
-                      <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
-                      <circle cx="80" cy="70" r="6" fill="#111827" />
-                      <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
-                    </svg>
-                    <div className="text-xs text-gray-600 w-20">Lumen positive</div>
+                {resultsView === 'graphs' && (
+                  <div
+                    className="border rounded p-3 mb-3 bg-white"
+                    role="img"
+                    aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
+                  >
+                    <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
+                      <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
+                        <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
+                        <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
+                        <circle cx="80" cy="70" r="6" fill="#111827" />
+                        <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
+                      </svg>
+                      <div className="text-xs text-gray-600 w-20">Lumen positive</div>
+                    </div>
+                    <div className="text-sm text-gray-700">
+                      {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-700">
-                    {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
-                  </div>
-                </div>
-                <table className="min-w-full table-auto text-left text-sm">
-                  <tbody>
-                    {[
-                      chargeReport.apical,
-                      chargeReport.basolateral,
-                      chargeReport.cell,
-                      chargeReport.transepithelial
-                    ].map(row => (
-                      <tr key={row.label} className="border-t">
-                        <td className="px-2 py-1 font-semibold">{row.label}</td>
-                        <td className="px-2 py-1">{row.direction}</td>
-                        <td className="px-2 py-1 text-gray-600">{row.strength}</td>
-                        <td className="px-2 py-1 text-gray-500">{formatChargeValue(row.value)} charge units</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                )}
+                <AccessibleTable
+                  caption="Charge and polarity tendencies. These are display-only teaching units."
+                  columns={[
+                    { key: 'label', label: 'Region' },
+                    { key: 'direction', label: 'Tendency' },
+                    { key: 'strength', label: 'Strength' },
+                    { key: 'value', label: 'Value', format: value => formatChargeValue(value) + ' charge units' }
+                  ]}
+                  rows={[
+                    chargeReport.apical,
+                    chargeReport.basolateral,
+                    chargeReport.cell,
+                    chargeReport.transepithelial
+                  ]}
+                />
               </div>
             )}
 
             {waterReport && (
               <div>
                 <h3 className="font-semibold mb-2">Water &amp; Osmolality</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
-                  <div className="border rounded p-3">
-                    <div className="font-semibold">Apical</div>
-                    <div>{formatWaterValue(waterReport.osmolality.apical)} arbitrary osmoles</div>
-                    <div className="text-gray-600">{waterReport.osmolality.apicalCategory}</div>
-                  </div>
-                  <div className="border rounded p-3">
-                    <div className="font-semibold">Cell</div>
-                    <div>{formatWaterValue(waterReport.osmolality.icf)} arbitrary osmoles</div>
-                    <div className="text-gray-500">
-                      includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed osmoles
+                {resultsView === 'graphs' ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
+                      <div className="border rounded p-3">
+                        <div className="font-semibold">Apical</div>
+                        <div>{formatWaterValue(waterReport.osmolality.apical)} arbitrary osmoles</div>
+                        <div className="text-gray-600">{waterReport.osmolality.apicalCategory}</div>
+                      </div>
+                      <div className="border rounded p-3">
+                        <div className="font-semibold">Cell</div>
+                        <div>{formatWaterValue(waterReport.osmolality.icf)} arbitrary osmoles</div>
+                        <div className="text-gray-500">
+                          includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed osmoles
+                        </div>
+                        <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
+                      </div>
+                      <div className="border rounded p-3">
+                        <div className="font-semibold">Basolateral</div>
+                        <div>{formatWaterValue(waterReport.osmolality.basolateral)} arbitrary osmoles</div>
+                        <div className="text-gray-600">{waterReport.osmolality.basolateralCategory}</div>
+                      </div>
                     </div>
-                    <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
+                    <AccessibleTable
+                      caption="Water movement tendencies."
+                      columns={[
+                        { key: 'label', label: 'Pathway or region' },
+                        { key: 'direction', label: 'Direction' },
+                        { key: 'strength', label: 'Strength' }
+                      ]}
+                      rows={[
+                        waterReport.apicalMembrane,
+                        waterReport.basolateralMembrane,
+                        waterReport.cell,
+                        waterReport.transcellular,
+                        waterReport.paracellular,
+                        waterReport.netTransepithelial
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <div className="space-y-6">
+                    <AccessibleTable
+                      caption="Osmolality. Values are arbitrary teaching units."
+                      columns={[
+                        { key: 'region', label: 'Region' },
+                        { key: 'osmolality', label: 'Osmolality', format: value => formatWaterValue(value) + ' arbitrary osmoles' },
+                        { key: 'category', label: 'Category' },
+                        { key: 'note', label: 'Note' }
+                      ]}
+                      rows={[
+                        { region: 'Apical bath', osmolality: waterReport.osmolality.apical, category: waterReport.osmolality.apicalCategory, note: '' },
+                        { region: 'Cell', osmolality: waterReport.osmolality.icf, category: waterReport.osmolality.icfCategory, note: 'Includes ' + formatWaterValue(waterReport.osmolality.fixedIcf) + ' fixed osmoles' },
+                        { region: 'Basolateral bath', osmolality: waterReport.osmolality.basolateral, category: waterReport.osmolality.basolateralCategory, note: '' }
+                      ]}
+                    />
+                    <AccessibleTable
+                      caption="Water movement tendencies."
+                      columns={[
+                        { key: 'label', label: 'Pathway or region' },
+                        { key: 'direction', label: 'Direction' },
+                        { key: 'strength', label: 'Strength' }
+                      ]}
+                      rows={[
+                        waterReport.apicalMembrane,
+                        waterReport.basolateralMembrane,
+                        waterReport.cell,
+                        waterReport.transcellular,
+                        waterReport.paracellular,
+                        waterReport.netTransepithelial
+                      ]}
+                    />
                   </div>
-                  <div className="border rounded p-3">
-                    <div className="font-semibold">Basolateral</div>
-                    <div>{formatWaterValue(waterReport.osmolality.basolateral)} arbitrary osmoles</div>
-                    <div className="text-gray-600">{waterReport.osmolality.basolateralCategory}</div>
-                  </div>
-                </div>
-                <table className="min-w-full table-auto text-left text-sm">
-                  <tbody>
-                    {[
-                      waterReport.apicalMembrane,
-                      waterReport.basolateralMembrane,
-                      waterReport.cell,
-                      waterReport.transcellular,
-                      waterReport.paracellular,
-                      waterReport.netTransepithelial
-                    ].map(row => (
-                      <tr key={row.label} className="border-t">
-                        <td className="px-2 py-1 font-semibold">{row.label}</td>
-                        <td className="px-2 py-1">{row.direction}</td>
-                        <td className="px-2 py-1 text-gray-600">{row.strength}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                )}
               </div>
             )}
 
-
-             
           </div>
         )}
       </div>
