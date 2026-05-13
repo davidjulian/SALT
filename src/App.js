@@ -266,10 +266,10 @@ const TRANSPORTER_DESCRIPTIONS = {
   GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
-  NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- out.',
+  NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- together.',
   NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
-  NCX1: 'Sodium-calcium exchanger: exchanges Na+ entry for Ca2+ exit.',
-  NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ entry for H+ exit.',
+  NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
+  NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
   NKCC2: 'Sodium-potassium-chloride cotransporter: moves Na+, K+, and Cl- together.',
   NaKATPase: 'Sodium-potassium pump: pumps Na+ out and K+ in using ATP.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
@@ -1068,20 +1068,24 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Model Scope</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
+        <li>The model separates membrane flux tendencies from completed transepithelial flux. A transporter can move solute across one membrane even when a complete apical-to-basolateral pathway is missing.</li>
         <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
         <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
         <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
         <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
+        <li>Passive flux currently uses chemical concentration gradients only. Electrochemical feedback is shown as a coming-soon extension and does not yet alter flux.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
-        <li>The app can show charge and polarity tendencies. Electrochemical feedback is shown as a coming-soon teaching extension for a later model pass.</li>
+        <li>Charge and polarity outputs are display-only tendencies computed from modeled ion fluxes.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
         <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, and GLUT2 can reverse direction if the gradient reverses.</li>
-        <li>Na⁺-coupled cotransporters and exchangers (SGLT2, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase (on any membrane) to be present.</li>
+        <li>Na⁺-coupled cotransporters and exchangers (SGLT2, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase to be present as gradient support.</li>
+        <li>Completed transepithelial flux is calculated only when compatible entry and exit pathways exist on opposite membranes. Otherwise, one-sided flux can still contribute to intracellular accumulation or depletion.</li>
+        <li>NKCC2 has an additional teaching rule: it is inactive unless ROMK is present on the same membrane.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
@@ -1098,7 +1102,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
           <i>Action:</i> Sodium channel; passive Na⁺ flux follows the Na⁺ gradient.<br/>
-          <i>Rule:</i> For net transepithelial Na⁺ flux, Na⁺/K⁺ ATPase must be on the opposite membrane.
+          <i>Rule:</i> Can provide Na⁺ membrane flux; completed transepithelial Na⁺ movement depends on Na⁺/K⁺-ATPase support.
         </li>
         <li>
           <b>GLUT2:</b> glucose transporter 2<br/>
@@ -1108,42 +1112,42 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>H⁺-ATPase:</b> proton ATPase<br/>
           <i>Action:</i> Proton pump; pumps H⁺ out using ATP.<br/>
-          <i>Rule:</i> Contributes to H⁺ efflux, can participate in transepithelial H⁺ flux if paired with NBCe1 on the opposite membrane.
+          <i>Rule:</i> Contributes to local H⁺ flux and pH tendency; completed acid/base flux is modeled when paired with NBCe1 on the opposite membrane.
         </li>
         <li>
           <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
           <i>Action:</i> Proton-potassium pump; exchanges one H⁺ out and K⁺ in using ATP.<br/>
-          <i>Rule:</i> For K⁺, presence of H⁺/K⁺-ATPase on either membrane is sufficient for transepithelial flux. For H⁺, an exit pathway (NBCe1 or H⁺/K⁺-ATPase) must be present on the opposite membrane.
+          <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBCe1 on the opposite membrane.
         </li>
         <li>
           <b>NBCe1:</b> electrogenic sodium bicarbonate cotransporter 1<br/>
-          <i>Action:</i> Na⁺-bicarbonate symporter; co-transports Na⁺ and HCO₃⁻ out.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; required for HCO₃⁻ efflux when NHE3 is active.
+          <i>Action:</i> Electrogenic Na⁺-bicarbonate cotransporter; moves Na⁺ and HCO₃⁻ together.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; pairs with proton extruders on the opposite membrane for transepithelial acid/base flux.
         </li>
         <li>
           <b>NCC:</b> sodium-chloride cotransporter<br/>
-          <i>Action:</i> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ in.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; transepithelial flux requires NCC or NKCC2 on both membranes.
+          <i>Action:</i> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ together.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase support. Cl⁻ transepithelial completion requires compatible NCC or NKCC2 pathways on both membranes; otherwise Cl⁻ imbalance can appear.
         </li>
         <li>
           <b>NCX1:</b> sodium-calcium exchanger 1<br/>
-          <i>Action:</i> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ in for 1 Ca²⁺ out.<br/>
+          <i>Action:</i> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ and 1 Ca²⁺ in opposite directions.<br/>
           <i>Rule:</i> Transepithelial Ca²⁺ flux requires NCX1 or PMCA on both membranes.
         </li>
         <li>
           <b>NHE3:</b> sodium-hydrogen exchanger 3<br/>
-          <i>Action:</i> Na⁺/H⁺ exchanger; exchanges Na⁺ in for H⁺ out.<br/>
+          <i>Action:</i> Na⁺/H⁺ exchanger; exchanges Na⁺ and H⁺ in opposite directions.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBCe1 for transepithelial HCO₃⁻ and H⁺ flux.
         </li>
         <li>
           <b>NKCC2:</b> sodium-potassium-chloride cotransporter 2<br/>
-          <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ in.<br/>
-          <i>Rule:</i> Requires ROMK on the same membrane and Na⁺/K⁺ ATPase present for activity; for net flux, NKCC2 or NCC must be present on both membranes.
+          <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ together.<br/>
+          <i>Rule:</i> Requires same-membrane ROMK and Na⁺/K⁺ ATPase support for activity. Cl⁻ completion requires compatible NCC or NKCC2 pathways on both membranes.
         </li>
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
-          <i>Action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
-          <i>Rule:</i> Required for activity of all Na⁺-coupled transporters and for transepithelial Na⁺ or K⁺ absorption.
+          <i>Biological action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
+          <i>Rule:</i> In this teaching layer, it is modeled as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ stoichiometry is acknowledged but not explicitly balanced.
         </li>
         <li>
           <b>PMCA:</b> plasma membrane calcium ATPase<br/>
@@ -1153,11 +1157,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>ROMK:</b> renal outer medullary potassium channel<br/>
           <i>Action:</i> Potassium channel; passive K⁺ flux follows the K⁺ gradient.<br/>
-          <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity; for transepithelial K⁺ flux, ROMK or Na⁺/K⁺ ATPase must be on the opposite membrane.
+          <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity. As a passive channel, ROMK can also provide K⁺ membrane flux when a K⁺ gradient exists.
         </li>
         <li>
           <b>SGLT2:</b> sodium-glucose cotransporter 2<br/>
-          <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose in.<br/>
+          <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT2 and GLUT2 must be on opposite membranes.
         </li>
       </ul>
@@ -1179,8 +1183,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT2 on one membrane and GLUT2 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere).</li>
-        <li><b>Na⁺:</b> SGLT2, ENaC, NCC, or NKCC2 on one membrane and Na⁺/K⁺ ATPase on the other (pump required).</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase on either membrane is sufficient for net transepithelial K⁺ flux. NKCC2 or ROMK on one membrane and ROMK or Na⁺/K⁺ ATPase on the other also support K⁺ flux (pump required).</li>
+        <li><b>Na⁺:</b> SGLT2, ENaC, NCC, or NKCC2 can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support provides modeled basolateral Na⁺ clearance.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux and same-membrane support for NKCC2.</li>
         <li><b>Cl⁻:</b> NKCC2 or NCC on one membrane and NKCC2 or NCC on the other.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere). The direction and magnitude of net acid/base flux depends on transporter placement and rates.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, H₂O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
@@ -1381,15 +1385,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'HKATPase':
           return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
         case 'NBCe1':
-          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: symports Na⁺ and HCO₃⁻ out.<br/></>;
+          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: moves Na⁺ and HCO₃⁻ together.<br/></>;
         case 'NCC':
-          return <><b>Sodium-chloride cotransporter</b>: symports Na⁺ and Cl⁻ in.<br/></>;
+          return <><b>Sodium-chloride cotransporter</b>: moves Na⁺ and Cl⁻ together.<br/></>;
         case 'NCX1':
-          return <><b>Sodium-calcium exchanger</b>: antiports 3 Na⁺ in for 1 Ca²⁺ out.<br/></>;
+          return <><b>Sodium-calcium exchanger</b>: exchanges 3 Na⁺ and 1 Ca²⁺ in opposite directions.<br/></>;
         case 'NHE3':
-          return <><b>Sodium-hydrogen exchanger 3</b>: antiports Na⁺ in for H⁺ out.<br/></>;
+          return <><b>Sodium-hydrogen exchanger 3</b>: exchanges Na⁺ and H⁺ in opposite directions.<br/></>;
         case 'NKCC2':
-          return <><b>Sodium-potassium-chloride cotransporter</b>: symports Na⁺, K⁺, and 2 Cl⁻ in.<br/></>;
+          return <><b>Sodium-potassium-chloride cotransporter</b>: moves Na⁺, K⁺, and 2 Cl⁻ together.<br/></>;
         case 'NaKATPase':
           return <><b>Sodium-potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
         case 'PMCA':
@@ -1397,7 +1401,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'ROMK':
           return <><b>Renal outer medullary potassium channel</b>: passive K⁺ flux follows the K⁺ gradient.<br/></>;
         case 'SGLT2':
-          return <><b>Sodium/glucose cotransporter 2</b>: symports Na⁺ and glucose in.<br/></>;
+          return <><b>Sodium/glucose cotransporter 2</b>: moves Na⁺ and glucose together.<br/></>;
         default:
           return null;
       }
