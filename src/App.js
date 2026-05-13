@@ -308,9 +308,11 @@ const ACTIVE_CELL_CONCENTRATION_GAIN = {
 const PASSIVE_CONDUCTANCE_SCALE = {
   GLUT2: 4
 };
+const SUPPORT_PUMP_ID = 'NaKATPase';
+const CELL_IMBALANCE_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
-const COUPLED_MISMATCH_EXCLUSIONS = ['NaKATPase'];
+const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID];
 
 function cloneConcentrations(source) {
   return {
@@ -430,6 +432,26 @@ function buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O) {
         ariaLabel: 'Active coupled transporters have matching transepithelial completion in this teaching model.',
         details: []
       };
+}
+
+function imbalanceDirection(value) {
+  if (Math.abs(value) < CELL_IMBALANCE_EPSILON) return 'near steady';
+  return value > 0 ? 'accumulation tendency' : 'depletion tendency';
+}
+
+function buildCellImbalanceReport(baselineIcf, modeledIcf) {
+  return Object.keys(baselineIcf)
+    .filter(ion => ion !== 'H2O')
+    .map(ion => {
+      const change = (modeledIcf[ion] || 0) - (baselineIcf[ion] || 0);
+      return {
+        ion,
+        label: ION_LABEL[ion] || ion,
+        change,
+        direction: imbalanceDirection(change)
+      };
+    })
+    .filter(row => Math.abs(row.change) >= CELL_IMBALANCE_EPSILON);
 }
 
 export default function App() {
@@ -570,6 +592,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
   const passiveChannels = [];
   const coupledEvents = [];
+  const fluxEvents = [];
 
   // Calculate active/coupled transport first, then passive channels respond to gradients.
   tList.forEach(t => {
@@ -583,6 +606,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       passiveChannels.push(t);
       return;
     }
+    if (t.id === SUPPORT_PUMP_ID) return;
     if (t.stoich['Na+'] && !hasNaKATPase) return;
 
     let rate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
@@ -602,12 +626,39 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         stoich: { ...t.stoich }
       });
     }
+    fluxEvents.push({
+      id: t.id,
+      name: t.name,
+      placement: t.placement,
+      type: coupledSolutes(t.stoich).length > 1 ? 'coupled' : 'active',
+      solutes: Object.entries(t.stoich)
+        .filter(([ion]) => ion !== 'H2O')
+        .map(([ion, coeff]) => ({
+          ion,
+          coeff,
+          flux: rate * coeff
+        }))
+    });
     Object.entries(t.stoich).forEach(([ion, coeff]) => {
       const delta = rate * coeff;
       if (t.placement === 'apical') apicalFlux[ion] += delta;
       else basolateralFlux[ion] += delta;
     });
   });
+
+  const supportClearance = { 'Na+': 0 };
+  const activeNaCellLoad = (apicalFlux['Na+'] || 0) + (basolateralFlux['Na+'] || 0);
+  if (hasNaKATPase && activeNaCellLoad > 0) {
+    supportClearance['Na+'] = activeNaCellLoad;
+    basolateralFlux['Na+'] -= supportClearance['Na+'];
+    fluxEvents.push({
+      id: SUPPORT_PUMP_ID,
+      name: 'Na⁺/K⁺-ATPase support',
+      placement: 'basolateral',
+      type: 'gradient-support',
+      solutes: [{ ion: 'Na+', coeff: -1, flux: -supportClearance['Na+'] }]
+    });
+  }
 
   const activeNetFlux = {};
   Object.keys(apicalFlux).forEach(ion => { activeNetFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
@@ -624,6 +675,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     if (t.placement === 'apical') apicalFlux[ion] += delta;
     else basolateralFlux[ion] += delta;
     passiveNetFlux[ion] += delta;
+    fluxEvents.push({
+      id: t.id,
+      name: t.name,
+      placement: t.placement,
+      type: 'passive',
+      solutes: [{ ion, coeff: Math.sign(delta), flux: delta }]
+    });
   });
 
   const netFlux = {};
@@ -644,6 +702,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const newICF = { ...prePassiveICF };
   Object.entries(passiveNetFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
+  const cellImbalanceReport = buildCellImbalanceReport(baseline.icf, newICF);
 
   const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
   const apicalSurface = surfaceReport.apicalSurface;
@@ -771,10 +830,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     },
     surfaceReport,
     paraFlux,
+    fluxEvents,
     transepiFluxData,
     waterReport,
     chargeReport,
-    coupledMismatchReport
+    coupledMismatchReport,
+    cellImbalanceReport
   });
 };
 
@@ -923,6 +984,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
   const coupledMismatchReport = result?.coupledMismatchReport;
+  const cellImbalanceReport = result?.cellImbalanceReport || [];
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
@@ -946,6 +1008,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     keyTransepithelialRows.length
       ? 'Net transepithelial movement: ' + keyTransepithelialRows.map(row => row.ion + ' ' + fluxDirection(row.transepithelial)).join('; ') + '.'
       : 'No substantial net transepithelial solute or water movement is currently predicted.',
+    cellImbalanceReport.length
+      ? 'Intracellular imbalance: ' + cellImbalanceReport.map(row => row.label + ' ' + row.direction).join('; ') + '.'
+      : '',
     waterReport ? 'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ' (' + waterReport.netTransepithelial.strength + ').' : '',
     chargeReport ? 'Transepithelial charge tendency: ' + chargeReport.transepithelial.direction + ' (' + chargeReport.transepithelial.strength + ').' : ''
   ].filter(Boolean) : [];
@@ -1006,7 +1071,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
         <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
         <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
+        <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
+        <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
         <li>The app can show charge and polarity tendencies. Electrochemical feedback is shown as a coming-soon teaching extension for a later model pass.</li>
       </ul>
@@ -1484,6 +1551,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
                   ]}
                   rows={(result?.transepiFluxData || []).map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
+                />
+              </div>
+            )}
+
+            {cellImbalanceReport.length > 0 && (
+              <div>
+                <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
+                <AccessibleTable
+                  caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
+                  columns={[
+                    { key: 'label', label: 'Ion or solute' },
+                    { key: 'direction', label: 'Tendency' },
+                    { key: 'change', label: 'Modeled change', format: formatTableValue }
+                  ]}
+                  rows={cellImbalanceReport}
                 />
               </div>
             )}
