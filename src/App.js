@@ -297,6 +297,7 @@ const ION_LABEL = {
 const SURFACE_TRANSPORT_SENSITIVITY = 0.5;
 const SURFACE_MIXING_FRACTION = 0.25;
 const SURFACE_MAX_MULTIPLIER = 2;
+const GENERAL_DISPLAY_EXCLUDED_IONS = ['H+'];
 const PASSIVE_SOLUTE_CHANNELS = {
   ENaC: 'Na+',
   GLUT2: 'Glucose',
@@ -331,6 +332,17 @@ function surfacePHDirection(flux) {
   const surfaceHChange = -flux;
   if (Math.abs(surfaceHChange) < 0.001) return 'no strong local pH tendency';
   return surfaceHChange > 0 ? 'surface pH tends lower' : 'surface pH tends higher';
+}
+
+function cellPHDirection(hFlux, hco3Flux = 0) {
+  const acidLoad = hFlux - hco3Flux;
+  if (Math.abs(acidLoad) < 0.001) return 'no strong cell pH tendency';
+  return acidLoad > 0 ? 'cell tends acidified' : 'cell tends alkalinized';
+}
+
+function epithelialAcidBaseDirection(value) {
+  if (Math.abs(value) < 0.001) return 'no strong net acid/base tendency';
+  return value > 0 ? 'acid secretion / base absorption' : 'base secretion / acid absorption';
 }
 
 function buildSurfaceConcentrations(apicalBulk, basolateralBulk, apicalFlux, basolateralFlux) {
@@ -441,7 +453,7 @@ function imbalanceDirection(value) {
 
 function buildCellImbalanceReport(baselineIcf, modeledIcf) {
   return Object.keys(baselineIcf)
-    .filter(ion => ion !== 'H2O')
+    .filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
     .map(ion => {
       const change = (modeledIcf[ion] || 0) - (baselineIcf[ion] || 0);
       return {
@@ -703,7 +715,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   Object.entries(passiveNetFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
   const cellImbalanceReport = buildCellImbalanceReport(baseline.icf, newICF);
-
   const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
   const apicalSurface = surfaceReport.apicalSurface;
   const basolateralSurface = surfaceReport.basolateralSurface;
@@ -797,6 +808,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   }
 
+  const acidBaseRows = Object.fromEntries(transepiFluxDataNoH2O.map(row => [row.ion, row.transepithelial || 0]));
+  const acidBaseValue = -(acidBaseRows['H+'] || 0) + (acidBaseRows['HCO3-'] || 0);
+  const acidBaseReport = {
+    apicalSurface: surfacePHDirection(apicalFlux['H+'] || 0),
+    cell: cellPHDirection(netFlux['H+'] || 0, netFlux['HCO3-'] || 0),
+    basolateralSurface: surfacePHDirection(basolateralFlux['H+'] || 0),
+    startingCellPH: -Math.log10(Math.max(baseline.icf['H+'], 1e-8)),
+    transepithelial: {
+      label: 'Net epithelial acid/base',
+      direction: epithelialAcidBaseDirection(acidBaseValue),
+      strength: tendencyStrength(acidBaseValue),
+      value: acidBaseValue
+    }
+  };
+
   const coupledMismatchReport = buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O);
 
   const waterReport = buildWaterReport(
@@ -835,25 +861,24 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     waterReport,
     chargeReport,
     coupledMismatchReport,
-    cellImbalanceReport
+    cellImbalanceReport,
+    acidBaseReport
   });
 };
 
 
   // --- Derived Data for Display ---
-  const icfH = result?.concentrations?.icf['H+'] ?? INITIAL_CONCENTRATIONS.icf['H+'];
-  const icf_pH = -Math.log10(icfH);
+  const acidBaseReport = result?.acidBaseReport;
 
   const fluxData = result
     ? Object.keys(result.netFlux).filter(ion => ion !== 'H2O').map(ion => ({
-        ion,
-        apical: result.apicalFlux[ion],
-        basolateral: result.basolateralFlux[ion],
-        net: result.netFlux[ion]
+      ion,
+      apical: result.apicalFlux[ion],
+      basolateral: result.basolateralFlux[ion]
       }))
     : [];
   const concentrationIons = result
-    ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O')
+    ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
     : [];
   const concData = concentrationIons.map(ion => ({
     ion: ION_LABEL[ion] || ion,
@@ -875,6 +900,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 // For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
   const transepiFluxData = result?.transepiFluxData || [];
+  const soluteTransepiFluxData = transepiFluxData.filter(row => row.ion !== 'H2O');
 
   const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
   const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
@@ -976,8 +1002,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   );
 
   const netTEFlux =
-    transepiFluxData
-      .filter(row => row.ion !== 'H2O')
+    soluteTransepiFluxData
       .reduce((sum, row) => sum + row.transepithelial, 0)
       .toFixed(3);
   const waterReport = result?.waterReport;
@@ -1001,7 +1026,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       return t.name + ' (' + (option?.label || 'custom') + ' density)';
     }).join(', ');
   };
-  const keyTransepithelialRows = transepiFluxData.filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001);
+  const keyTransepithelialRows = soluteTransepiFluxData.filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001);
   const simulationSummary = result ? [
     'Apical membrane: ' + membraneListText('apical') + '.',
     'Basolateral membrane: ' + membraneListText('basolateral') + '.',
@@ -1027,6 +1052,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
   const tePotentialNeedleAngle = clamp(-tePotentialValue * 25, -60, 60);
+  const acidBaseNeedleAngle = clamp((acidBaseReport?.transepithelial?.value ?? 0) * 25, -60, 60);
+  const waterNeedleAngle = clamp((waterReport?.netTransepithelial?.value ?? 0) * 25, -60, 60);
 
   const AccessibleTable = ({ caption, columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
@@ -1075,6 +1102,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
+        <li>H⁺ is not plotted on the same concentration scale as bulk solutes. Acid/base behavior is reported as pH and net acid/base tendencies rather than a buffered quantitative pH calculation.</li>
         <li>Passive flux currently uses chemical concentration gradients only. Electrochemical feedback is shown as a coming-soon extension and does not yet alter flux.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
         <li>Charge and polarity outputs are display-only tendencies computed from modeled ion fluxes.</li>
@@ -1177,7 +1205,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>H₂O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
         <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent local surface layer, and require a water pathway on that membrane.</li>
         <li>Net transcellular epithelial water movement uses a teaching rule: when a complete apical-to-basolateral water pathway exists, water follows net transepithelial solute absorption or secretion. This represents local osmotic coupling that the app does not explicitly model as a standing bath-to-bath osmotic gradient.</li>
-        <li>H⁺ surface changes are reported as pH tendencies rather than recalculated H⁺ concentrations.</li>
+      </ul>
+
+      <h3 className="text-lg font-semibold mt-4 mb-1">Acid/Base &amp; pH Rules</h3>
+      <ul className="list-disc ml-6 text-sm">
+        <li>H⁺ is excluded from the standard concentration graph because its physiological concentration is too small to share a useful visual scale with Na⁺, K⁺, Cl⁻, glucose, and other bulk solutes.</li>
+        <li>The app does not recalculate buffered H⁺ concentration or true pH after transport. Instead, it reports qualitative pH tendencies for the apical surface, cell, and basolateral surface.</li>
+        <li>Surface pH tendencies come from local H⁺ flux at that membrane: H⁺ added to a surface tends to lower local pH, while H⁺ removed from a surface tends to raise local pH.</li>
+        <li>Cell pH tendency compares the modeled cellular H⁺ load with HCO₃⁻ movement. H⁺ loading tends to acidify the cell, while HCO₃⁻ loading tends to alkalinize it.</li>
+        <li>The net acid/base dial is calculated from completed transepithelial H⁺ and HCO₃⁻ flux. H⁺ secretion and HCO₃⁻ absorption point toward acid secretion/base absorption; the opposite points toward base secretion/acid absorption.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
@@ -1485,16 +1521,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         <Legend />
                         <Bar dataKey="apical" name="Apical" fill="#2563eb" />
                         <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
-                        <Bar dataKey="net" name="Net Flux" fill="#dc2626" />
                       </BarChart>
                     </ResponsiveContainer>
+                    <div className="text-xs text-gray-500 mt-1">Shows membrane fluxes only; epithelial net movement is shown at right.</div>
                   </div>
                   <div>
                     <h3 className="font-semibold mb-2">
                       Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span>
                     </h3>
                     <ResponsiveContainer width="100%" height={170}>
-                      <BarChart data={result?.transepiFluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                      <BarChart data={soluteTransepiFluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
                         <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
                         <YAxis tick={{ fontSize: 12 }} />
                         <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
@@ -1526,12 +1562,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             ) : (
               <div className="space-y-6 overflow-auto">
                 <AccessibleTable
-                  caption="Transmembrane fluxes. Positive values indicate movement into the cell."
+                  caption="Transmembrane fluxes. Positive values indicate movement into the cell. Epithelial net movement is reported in the transepithelial flux table."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
                     { key: 'apical', label: 'Apical flux', format: formatTableValue },
-                    { key: 'basolateral', label: 'Basolateral flux', format: formatTableValue },
-                    { key: 'net', label: 'Net cellular flux', format: formatTableValue }
+                    { key: 'basolateral', label: 'Basolateral flux', format: formatTableValue }
                   ]}
                   rows={fluxData}
                 />
@@ -1554,51 +1589,99 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     { key: 'transepithelial', label: 'Net transepithelial flux', format: formatTableValue },
                     { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
                   ]}
-                  rows={(result?.transepiFluxData || []).map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
-                />
-              </div>
-            )}
-
-            {cellImbalanceReport.length > 0 && (
-              <div>
-                <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
-                <AccessibleTable
-                  caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
-                  columns={[
-                    { key: 'label', label: 'Ion or solute' },
-                    { key: 'direction', label: 'Tendency' },
-                    { key: 'change', label: 'Modeled change', format: formatTableValue }
-                  ]}
-                  rows={cellImbalanceReport}
+                  rows={soluteTransepiFluxData.map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
                 />
               </div>
             )}
 
             {chargeReport && (
               <div>
-                <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 {resultsView === 'graphs' && (
-                  <div
-                    className="border rounded p-3 mb-3 bg-white"
-                    role="img"
-                    aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
-                  >
-                    <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
-                      <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
-                        <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
-                        <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
-                        <circle cx="80" cy="70" r="6" fill="#111827" />
-                        <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
-                      </svg>
-                      <div className="text-xs text-gray-600 w-20">Lumen positive</div>
+                  <>
+                    <h3 className="font-semibold mb-2">Epithelial Outcome Tendencies</h3>
+                    <div className={'grid grid-cols-1 gap-3 mb-3 ' + (waterReport ? 'xl:grid-cols-3' : 'xl:grid-cols-2')}>
+                      <div
+                        className="border rounded p-3 bg-white"
+                        role="img"
+                        aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
+                      >
+                        <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
+                          <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
+                            <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
+                            <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
+                            <circle cx="80" cy="70" r="6" fill="#111827" />
+                            <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
+                          </svg>
+                          <div className="text-xs text-gray-600 w-20">Lumen positive</div>
+                        </div>
+                        <div className="text-sm text-gray-700">
+                          {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
+                        </div>
+                      </div>
+                      {acidBaseReport && (
+                        <div
+                          className="border rounded p-3 bg-white"
+                          role="img"
+                          aria-label={'Net epithelial acid base tendency: ' + acidBaseReport.transepithelial.direction + ', ' + acidBaseReport.transepithelial.strength + ', ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid base units.'}
+                        >
+                          <div className="font-semibold text-sm mb-1">Net Acid/Base Tendency</div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-xs text-gray-600 text-right w-20">Base secretion</div>
+                            <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
+                              <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
+                              <line x1="80" y1="70" x2="80" y2="25" stroke="#0f766e" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + acidBaseNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
+                              <circle cx="80" cy="70" r="6" fill="#111827" />
+                              <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
+                            </svg>
+                            <div className="text-xs text-gray-600 w-20">Acid secretion</div>
+                          </div>
+                          <div className="text-sm text-gray-700">
+                            {acidBaseReport.transepithelial.direction} ({acidBaseReport.transepithelial.strength}); {formatChargeValue(acidBaseReport.transepithelial.value)} acid/base units
+                          </div>
+                        </div>
+                      )}
+                      {waterReport && (
+                        <div
+                          className="border rounded p-3 bg-white"
+                          role="img"
+                          aria-label={'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ', ' + waterReport.netTransepithelial.strength + ', ' + formatWaterValue(waterReport.netTransepithelial.value) + ' water tendency units.'}
+                        >
+                          <div className="font-semibold text-sm mb-1">Net Epithelial Water Tendency</div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-xs text-gray-600 text-right w-20">Secretion</div>
+                            <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
+                              <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
+                              <line x1="80" y1="70" x2="80" y2="25" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + waterNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
+                              <circle cx="80" cy="70" r="6" fill="#111827" />
+                              <text x="80" y="88" textAnchor="middle" fontSize="10" fill="#4b5563">0</text>
+                            </svg>
+                            <div className="text-xs text-gray-600 w-20">Absorption</div>
+                          </div>
+                          <div className="text-sm text-gray-700">
+                            {waterReport.netTransepithelial.direction} ({waterReport.netTransepithelial.strength}); {formatWaterValue(waterReport.netTransepithelial.value)} water tendency units
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-700">
-                      {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
-                    </div>
+                  </>
+                )}
+                {cellImbalanceReport.length > 0 && (
+                  <div className="mb-3">
+                    <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
+                    <AccessibleTable
+                      caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
+                      columns={[
+                        { key: 'label', label: 'Ion or solute' },
+                        { key: 'direction', label: 'Tendency' },
+                        { key: 'change', label: 'Modeled change', format: formatTableValue }
+                      ]}
+                      rows={cellImbalanceReport}
+                    />
                   </div>
                 )}
+                <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 <AccessibleTable
                   caption="Charge and polarity tendencies. These are display-only teaching units."
                   columns={[
@@ -1614,6 +1697,45 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     chargeReport.transepithelial
                   ]}
                 />
+              </div>
+            )}
+
+            {acidBaseReport && (
+              <div>
+                <h3 className="font-semibold mb-2">Acid/Base &amp; pH Tendencies</h3>
+                {resultsView === 'graphs' && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
+                    <div className="border rounded p-3">
+                      <div className="font-semibold">Apical surface</div>
+                      <div>{acidBaseReport.apicalSurface}</div>
+                    </div>
+                    <div className="border rounded p-3">
+                      <div className="font-semibold">Cell</div>
+                      <div>{acidBaseReport.cell}</div>
+                      <div className="text-gray-500">starting pH {Number(acidBaseReport.startingCellPH).toFixed(2)}</div>
+                    </div>
+                    <div className="border rounded p-3">
+                      <div className="font-semibold">Basolateral surface</div>
+                      <div>{acidBaseReport.basolateralSurface}</div>
+                    </div>
+                  </div>
+                )}
+                {resultsView === 'tables' && (
+                  <AccessibleTable
+                    caption="Acid/base tendencies. H+ concentration is not graphed with bulk solutes and buffered pH is not recalculated."
+                    columns={[
+                      { key: 'region', label: 'Region' },
+                      { key: 'tendency', label: 'pH or acid/base tendency' },
+                      { key: 'note', label: 'Note' }
+                    ]}
+                    rows={[
+                      { region: 'Net epithelium', tendency: acidBaseReport.transepithelial.direction, note: acidBaseReport.transepithelial.strength + '; ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid/base units' },
+                      { region: 'Apical surface', tendency: acidBaseReport.apicalSurface, note: 'Based on local H+ flux tendency' },
+                      { region: 'Cell', tendency: acidBaseReport.cell, note: 'Starting pH ' + Number(acidBaseReport.startingCellPH).toFixed(2) },
+                      { region: 'Basolateral surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
+                    ]}
+                  />
+                )}
               </div>
             )}
 
@@ -1658,17 +1780,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         waterReport.netTransepithelial
                       ]}
                     />
-                    <AccessibleTable
-                      caption="Local surface pH tendencies. H+ concentration is not changed by this teaching layer."
-                      columns={[
-                        { key: 'surface', label: 'Surface' },
-                        { key: 'tendency', label: 'Tendency' }
-                      ]}
-                      rows={[
-                        { surface: 'Apical surface', tendency: result.surfaceReport?.pHTendency?.apical || 'no strong local pH tendency' },
-                        { surface: 'Basolateral surface', tendency: result.surfaceReport?.pHTendency?.basolateral || 'no strong local pH tendency' }
-                      ]}
-                    />
                   </>
                 ) : (
                   <div className="space-y-6">
@@ -1700,17 +1811,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         waterReport.transcellular,
                         waterReport.paracellular,
                         waterReport.netTransepithelial
-                      ]}
-                    />
-                    <AccessibleTable
-                      caption="Local surface pH tendencies. H+ concentration is not changed by this teaching layer."
-                      columns={[
-                        { key: 'surface', label: 'Surface' },
-                        { key: 'tendency', label: 'Tendency' }
-                      ]}
-                      rows={[
-                        { surface: 'Apical surface', tendency: result.surfaceReport?.pHTendency?.apical || 'no strong local pH tendency' },
-                        { surface: 'Basolateral surface', tendency: result.surfaceReport?.pHTendency?.basolateral || 'no strong local pH tendency' }
                       ]}
                     />
                   </div>
