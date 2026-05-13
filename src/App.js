@@ -1010,6 +1010,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const chargeReport = result?.chargeReport;
   const coupledMismatchReport = result?.coupledMismatchReport;
   const cellImbalanceReport = result?.cellImbalanceReport || [];
+  const cellImbalanceRows = cellImbalanceReport.length
+    ? cellImbalanceReport
+    : [{ label: 'None', direction: 'No intracellular imbalance tendency detected', change: 0 }];
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
@@ -1667,20 +1670,18 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     </div>
                   </>
                 )}
-                {cellImbalanceReport.length > 0 && (
-                  <div className="mb-3">
-                    <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
-                    <AccessibleTable
-                      caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
-                      columns={[
-                        { key: 'label', label: 'Ion or solute' },
-                        { key: 'direction', label: 'Tendency' },
-                        { key: 'change', label: 'Modeled change', format: formatTableValue }
-                      ]}
-                      rows={cellImbalanceReport}
-                    />
-                  </div>
-                )}
+                <div className="mb-3">
+                  <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
+                  <AccessibleTable
+                    caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
+                    columns={[
+                      { key: 'label', label: 'Ion or solute' },
+                      { key: 'direction', label: 'Tendency' },
+                      { key: 'change', label: 'Modeled change', format: formatTableValue }
+                    ]}
+                    rows={cellImbalanceRows}
+                  />
+                </div>
                 <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 <AccessibleTable
                   caption="Charge and polarity tendencies. These are display-only teaching units."
