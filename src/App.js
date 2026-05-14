@@ -643,10 +643,7 @@ export default function App() {
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
   const [tissuePreset, setTissuePreset] = useState('all');
 
-  // ECF model state
-const [ecfModel, setEcfModel] = useState('infinite'); // 'infinite' or 'finite'
-const [ecfPoolSize] = useState(10); // unitless
-const [electrochemicalFeedback] = useState(false);
+  const [electrochemicalFeedback] = useState(false);
 
   // Paracellular pathway state
   const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'anion'
@@ -663,8 +660,6 @@ const [electrochemicalFeedback] = useState(false);
   paracellularType,
   paraCationPerm,
   paraAnionPerm,
-  ecfModel,
-  ecfPoolSize,
   electrochemicalFeedback,
   baseConcentrations
 ]);
@@ -762,14 +757,8 @@ function activeStoichForPlacement(transporter) {
 const calculateFluxesAndConcs = (tList = transporters) => {
   // Bulk baths are fixed teaching reservoirs; local surface layers are computed below.
   const baseline = baseConcentrations;
-  let apicalECF, basolateralECF;
-  if (ecfModel === 'infinite' || !result) {
-    apicalECF = { ...baseline.apicalECF };
-    basolateralECF = { ...baseline.basolateralECF };
-  } else {
-    apicalECF = { ...result.concentrations.apicalECF };
-    basolateralECF = { ...result.concentrations.basolateralECF };
-  }
+  const apicalECF = { ...baseline.apicalECF };
+  const basolateralECF = { ...baseline.basolateralECF };
   const apicalFlux = {};
   const basolateralFlux = {};
   const fluxSolutes = Array.from(new Set([
@@ -889,18 +878,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const netFlux = {};
   Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
-
-  // --- Update ECF concentrations if "finite" model is selected ---
-  if (ecfModel === 'finite') {
-    Object.keys(apicalECF).forEach(ion => {
-      apicalECF[ion] -= apicalFlux[ion] / ecfPoolSize;
-      if (apicalECF[ion] < 0) apicalECF[ion] = 0;
-    });
-    Object.keys(basolateralECF).forEach(ion => {
-      basolateralECF[ion] += basolateralFlux[ion] / ecfPoolSize;
-      if (basolateralECF[ion] < 0) basolateralECF[ion] = 0;
-    });
-  }
 
   const newICF = { ...prePassiveICF };
   Object.entries(passiveNetFlux)
@@ -1446,34 +1423,34 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       </div>
       <h3 className="text-lg font-semibold mt-4 mb-1">Model Scope</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
-        <li>This is a teaching model that uses arbitrary units. It is intended to preserve directionality, coupling, osmotic tendencies, charge tendencies, and pathway logic, not research-grade flux magnitudes.</li>
-        <li>The model separates membrane flux tendencies from completed transepithelial flux. A transporter can move solute across one membrane even when a complete apical-to-basolateral pathway is missing.</li>
-        <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
-        <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
-        <li>Flux graphs use a shared directional convention: positive values point toward the basolateral/blood side and negative values point toward the apical/lumen side. Paracellular flux is shown as a separate pathway contribution when leaky junctions are enabled, and is included in net epithelial flux.</li>
-        <li>Amino acids, peptides, organic anions, and organic cations are treated as flux-only teaching cargo. They are not shown in concentration graphs, Settings concentration controls, osmolality, or charge/polarity calculations.</li>
-        <li>The tissue setting filters which transporters are offered in the add-transporter controls. It does not remove transporters that have already been placed, so unusual layouts can still be explored.</li>
-        <li>SGLT-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
-        <li>NaPi-driven phosphate entry can use a teaching abstraction for basolateral phosphate exit when Na⁺/K⁺-ATPase support is present, allowing phosphate absorption without adding a more speculative basolateral phosphate transporter.</li>
-        <li>TRPV5/6 represents epithelial Ca²⁺ entry channels such as renal TRPV5 and intestinal TRPV6. SALT does not model dynamic channel regulation by intracellular Ca²⁺. Instead, excess Ca²⁺ entry without matching basolateral extrusion appears as an intracellular Ca²⁺ accumulation tendency.</li>
-        <li>CFTR is represented as a regulated epithelial anion exit pathway, with Cl⁻ exit and a smaller HCO₃⁻ exit tendency. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.</li>
-        <li>NKCC is represented as a generalized sodium-potassium-chloride cotransporter class, covering NKCC1-like secretory layouts and NKCC2-like absorptive layouts without making separate research-grade isoform rules.</li>
-        <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
-        <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
-        <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
-        <li>H⁺ is not plotted on the same concentration scale as bulk solutes. Acid/base behavior is reported as pH and net acid/base tendencies rather than a buffered quantitative pH calculation.</li>
-        <li>Passive flux currently uses chemical concentration gradients only. Electrochemical context is shown as a display-only teaching interpretation inferred from modeled charge tendencies; it does not alter flux.</li>
-        <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
-        <li>Charge and polarity outputs are display-only tendencies computed from modeled ion fluxes.</li>
+        <li><b>Audience:</b> This About panel is written for instructors and reviewers. A later student-facing version can use less implementation detail.</li>
+        <li><b>Purpose:</b> SALT is a qualitative teaching model for exploring epithelial pathway logic: which membrane steps are present, which are missing, and what consequences follow.</li>
+        <li><b>Units:</b> Fluxes, concentration shifts, water tendencies, and charge tendencies use arbitrary teaching units. The model is not intended to produce research-grade flux magnitudes.</li>
+        <li><b>Core distinction:</b> The app separates one-membrane flux tendencies from completed transepithelial flux. A transporter can move solute into or out of the cell even when a full apical-to-basolateral pathway is incomplete.</li>
+        <li><b>Reservoirs and surfaces:</b> Bulk bath concentrations are fixed by default. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
+        <li><b>Direction convention:</b> Flux graphs use one shared convention: positive points toward the basolateral/blood side and negative points toward the apical/lumen side.</li>
+        <li><b>Exploration:</b> Tissue choices filter which transporters are offered, but they do not remove transporters already placed. Unusual layouts are allowed so users can observe their consequences.</li>
       </ul>
-      <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
+      <h3 className="text-lg font-semibold mt-4 mb-1">Teaching Abstractions &amp; Limits</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
-        <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
-        <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, GLUT2, and TRPV5/6 can reverse direction if the gradient reverses.</li>
-        <li>CFTR is handled as a regulated anion exit pathway rather than a purely gradient-driven passive channel.</li>
-        <li>Na⁺-coupled cotransporters and exchangers (SGLT, NaPi, NCC, NKCC, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase to be present as gradient support.</li>
-        <li>Completed transepithelial flux is calculated only when compatible entry and exit pathways exist on opposite membranes. Otherwise, one-sided flux can still contribute to intracellular accumulation or depletion.</li>
-        <li>ROMK can provide K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts, but the generalized NKCC class is not hard-gated by ROMK.</li>
+        <li><b>Electrochemical context:</b> Chemical gradients drive passive flux in the current model. Electrical effects are shown as display-only context inferred from modeled polarity; they do not alter flux, and no membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculation is performed.</li>
+        <li><b>Charge and polarity:</b> Charge outputs are teaching tendencies computed from modeled ion fluxes. They are intended to flag likely electrical consequences, not to solve a steady-state electrical circuit.</li>
+        <li><b>Water:</b> H₂O is represented as osmolality and water movement tendency. The app does not calculate true cell volume.</li>
+        <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
+        <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, osmolality, and charge/polarity calculations.</li>
+        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase provides Na⁺ gradient support and basolateral Na⁺ clearance. NaPi can use implicit basolateral phosphate exit when pump support is present. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+      </ul>
+      <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
+      <ul className="list-disc ml-6 mb-3 text-sm">
+        <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
+        <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
+        <li><b>Passive pathways:</b> ENaC, ROMK, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses.</li>
+        <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
+        <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
+        <li><b>Coupled transport:</b> The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
+        <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled.</li>
+        <li><b>NKCC and K⁺ recycling:</b> ROMK can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts, but the generalized NKCC class is not hard-gated by ROMK.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
@@ -1754,30 +1731,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
       <h2 className="text-xl font-bold mb-4">Model Settings</h2>
-      <div className="mb-4 text-sm text-gray-700">
-        <label className="block mb-2 font-semibold">Bath Concentrations</label>
-        <label className="block mb-2">
-          <input
-            type="radio"
-            checked={ecfModel === 'infinite'}
-            onChange={() => setEcfModel('infinite')}
-          />{' '}
-          Fixed reservoirs <span className="text-gray-500">(no bath concentration change)</span>
-        </label>
-        <label className="block mb-2">
-          <input
-            type="radio"
-            checked={ecfModel === 'finite'}
-            disabled
-            aria-describedby="finite-pools-coming-soon"
-            onChange={() => {}}
-          />{' '}
-          Finite pools <span id="finite-pools-coming-soon" className="text-gray-500">(coming soon)</span>
-        </label>
-        <div className="ml-4 mb-2 text-gray-500">
-          Pool size controls will be available when finite pools are implemented.
-        </div>
-      </div>
       <div className="mb-4 text-sm text-gray-700">
         <label className="block mb-2 font-semibold">Electrochemical Feedback</label>
         <label className="block mb-2">
