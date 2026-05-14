@@ -241,6 +241,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'ClCKb',    name: 'ClC-Kb',     type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', density: 1 },
   { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NaPi',     name: 'NaPi',       type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
@@ -262,7 +263,7 @@ const INITIAL_TRANSPORTERS = [
 ];
 
 const TRANSPORTER_GROUPS = [
-  { label: 'Channels', ids: ['AQP', 'ENaC', 'GLUT2', 'ROMK', 'ClCKb'] },
+  { label: 'Channels', ids: ['AQP', 'ENaC', 'GLUT2', 'TRPV56', 'ROMK', 'ClCKb'] },
   { label: 'Cotransporters', ids: ['SGLT', 'NaPi', 'NaAA', 'PepT', 'NCC', 'NKCC2', 'NBCe1'] },
   { label: 'Organic solute carriers', ids: ['AAFacilitator', 'OAT', 'OCT', 'MATE'] },
   { label: 'Exchangers', ids: ['NHE3', 'NCX1', 'AE1', 'Pendrin'] },
@@ -278,7 +279,7 @@ const TISSUE_OPTIONS = [
   {
     value: 'generic',
     label: 'Generic epithelium',
-    transporterIds: ['AQP', 'ENaC', 'GLUT2', 'ClCKb', 'NHE3', 'NBCe1', 'AE1', 'Pendrin', 'NaKATPase', 'HATPase', 'PMCA', 'NaAA', 'AAFacilitator', 'PepT']
+    transporterIds: ['AQP', 'ENaC', 'GLUT2', 'TRPV56', 'ClCKb', 'NHE3', 'NBCe1', 'AE1', 'Pendrin', 'NaKATPase', 'HATPase', 'PMCA', 'NaAA', 'AAFacilitator', 'PepT']
   },
   {
     value: 'proximal-tubule',
@@ -293,7 +294,7 @@ const TISSUE_OPTIONS = [
   {
     value: 'distal-convoluted-tubule',
     label: 'Distal convoluted tubule',
-    transporterIds: ['NCC', 'ClCKb', 'NaKATPase', 'PMCA', 'NCX1']
+    transporterIds: ['TRPV56', 'NCC', 'ClCKb', 'NaKATPase', 'PMCA', 'NCX1']
   },
   {
     value: 'collecting-duct-principal',
@@ -313,7 +314,7 @@ const TISSUE_OPTIONS = [
   {
     value: 'small-intestine',
     label: 'Small intestine',
-    transporterIds: ['AQP', 'SGLT', 'GLUT2', 'NHE3', 'NaKATPase', 'ClCKb', 'NaAA', 'AAFacilitator', 'PepT', 'OCT', 'MATE']
+    transporterIds: ['AQP', 'SGLT', 'GLUT2', 'TRPV56', 'NHE3', 'NaKATPase', 'ClCKb', 'NaAA', 'AAFacilitator', 'PepT', 'OCT', 'MATE', 'PMCA', 'NCX1']
   }
 ];
 
@@ -330,6 +331,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   ClCKb: 'ClC-Kb chloride channel: passive Cl- flux follows the chloride gradient.',
   ENaC: 'Epithelial sodium channel: passive Na+ flux follows the Na+ gradient.',
   GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
+  TRPV56: 'TRPV5/6 epithelial Ca2+ channel class: passive Ca2+ flux follows the Ca2+ gradient. SALT does not model dynamic inhibition by intracellular Ca2+.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
   NaPi: 'NaPi cotransporter class, e.g., NaPi-IIa and NaPi-IIc: moves Na+ and phosphate together.',
@@ -380,6 +382,7 @@ const PASSIVE_SOLUTE_CHANNELS = {
   ENaC: 'Na+',
   ClCKb: 'Cl-',
   GLUT2: 'Glucose',
+  TRPV56: 'Ca2+',
   ROMK: 'K+'
 };
 const ACTIVE_CELL_CONCENTRATION_GAIN = {
@@ -876,7 +879,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
   const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT','NaPi','ENaC','NCC','NKCC2'], ['NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC2','NCC','ClCKb','AE1','Pendrin'], ['NKCC2','NCC','ClCKb','AE1','Pendrin'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const caTransEpiFlux = transepithelialFlux('Ca2+', ['NCX1','PMCA'], ['NCX1','PMCA'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let phosphateTransEpiFlux = 0;
   if ((apicalFlux.Phosphate || 0) > 0 && (basolateralFlux.Phosphate || 0) < 0) {
     phosphateTransEpiFlux = Math.min(Math.abs(apicalFlux.Phosphate), Math.abs(basolateralFlux.Phosphate));
@@ -1264,6 +1267,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>The tissue/segment setting filters which transporters are offered in the add-transporter controls. It does not remove transporters that have already been placed, so unusual layouts can still be explored.</li>
         <li>SGLT-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
         <li>NaPi-driven phosphate entry can use a teaching abstraction for basolateral phosphate exit when Na⁺/K⁺-ATPase support is present, allowing phosphate absorption without adding a more speculative basolateral phosphate transporter.</li>
+        <li>TRPV5/6 represents epithelial Ca²⁺ entry channels such as renal TRPV5 and intestinal TRPV6. SALT does not model dynamic channel regulation by intracellular Ca²⁺. Instead, excess Ca²⁺ entry without matching basolateral extrusion appears as an intracellular Ca²⁺ accumulation tendency.</li>
         <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
@@ -1275,7 +1279,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">General Transmembrane Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
-        <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, and GLUT2 can reverse direction if the gradient reverses.</li>
+        <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, GLUT2, and TRPV5/6 can reverse direction if the gradient reverses.</li>
         <li>Na⁺-coupled cotransporters and exchangers (SGLT, NaPi, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase to be present as gradient support.</li>
         <li>Completed transepithelial flux is calculated only when compatible entry and exit pathways exist on opposite membranes. Otherwise, one-sided flux can still contribute to intracellular accumulation or depletion.</li>
         <li>NKCC2 has an additional teaching rule: it is inactive unless ROMK is present on the same membrane.</li>
@@ -1350,7 +1354,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>NCX1:</b> sodium-calcium exchanger 1<br/>
           <i>Action:</i> Na⁺-Ca²⁺ exchanger; exchanges 3 Na⁺ and 1 Ca²⁺ in opposite directions.<br/>
-          <i>Rule:</i> Transepithelial Ca²⁺ flux requires NCX1 or PMCA on both membranes.
+          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support. Can complete Ca²⁺ flux when paired with TRPV5/6 on the opposite membrane.
         </li>
         <li>
           <b>NHE3:</b> sodium-hydrogen exchanger 3<br/>
@@ -1380,7 +1384,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>PMCA:</b> plasma membrane calcium ATPase<br/>
           <i>Action:</i> Ca²⁺ pump; pumps Ca²⁺ out using ATP.<br/>
-          <i>Rule:</i> For transepithelial Ca²⁺ flux, PMCA or NCX1 must be on both membranes.
+          <i>Rule:</i> Can complete Ca²⁺ flux when paired with TRPV5/6 on the opposite membrane.
         </li>
         <li>
           <b>PepT:</b> peptide transporter class; representative members include PepT1 and PepT2<br/>
@@ -1401,6 +1405,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
           <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT2 must be on opposite membranes.
+        </li>
+        <li>
+          <b>TRPV5/6:</b> epithelial calcium channel class; representative members include renal TRPV5 and intestinal TRPV6<br/>
+          <i>Action:</i> Passive Ca²⁺ channel; Ca²⁺ flux follows the local Ca²⁺ gradient.<br/>
+          <i>Rule:</i> Completed epithelial Ca²⁺ movement requires TRPV5/6 on one membrane and PMCA or NCX1 on the opposite membrane; apical TRPV5/6 plus basolateral extrusion produces absorption. SALT does not model dynamic channel regulation by intracellular Ca²⁺, so unmatched entry is shown as an intracellular Ca²⁺ accumulation tendency.
         </li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
@@ -1432,6 +1441,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC2 can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support provides modeled basolateral Na⁺ clearance.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux and same-membrane support for NKCC2.</li>
         <li><b>Cl⁻:</b> NKCC2, NCC, ClC-Kb, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
+        <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> Apical NaPi plus Na⁺/K⁺-ATPase support produces phosphate absorption using an implicit basolateral phosphate exit teaching rule.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
@@ -1651,6 +1661,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           return <><b>Epithelial sodium channel</b>: passive Na⁺ flux follows the Na⁺ gradient.<br/></>;
         case 'GLUT2':
           return <><b>Glucose transporter 2</b>: passive glucose flux follows the glucose gradient.<br/></>;
+        case 'TRPV56':
+          return <><b>TRPV5/6 epithelial calcium channel class</b>: passive Ca²⁺ flux follows the Ca²⁺ gradient. SALT does not model dynamic inhibition by intracellular Ca²⁺; unmatched entry is shown as intracellular Ca²⁺ accumulation tendency.<br/></>;
         case 'HATPase':
           return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
         case 'HKATPase':
