@@ -467,6 +467,13 @@ const FLUX_GROUPS = [
 const PASSIVE_CONDUCTANCE_SCALE = {
   GLUT2: 4
 };
+const ELECTROCHEMICAL_MEMBRANE_PATHWAYS = {
+  CFTR: ['Cl-', 'HCO3-'],
+  ClCKb: ['Cl-'],
+  ENaC: ['Na+'],
+  ROMK: ['K+'],
+  TRPV56: ['Ca2+']
+};
 const SUPPORT_PUMP_ID = 'NaKATPase';
 const CELL_IMBALANCE_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
@@ -1288,9 +1295,117 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       : 'bg-gray-400';
 
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
-  const tePotentialNeedleAngle = clamp(-tePotentialValue * 25, -60, 60);
+  const tePotentialNeedleAngle = clamp(-tePotentialValue * 45, -60, 60);
   const acidBaseNeedleAngle = clamp((acidBaseReport?.transepithelial?.value ?? 0) * 25, -60, 60);
   const waterNeedleAngle = clamp((waterReport?.netTransepithelial?.value ?? 0) * 45, -60, 60);
+  const membraneDirectionText = (placement, sign) => {
+    if (sign === 0) return 'no strong tendency';
+    if (placement === 'apical') return sign > 0 ? 'lumen to cell' : 'cell to lumen';
+    return sign > 0 ? 'blood to cell' : 'cell to blood';
+  };
+  const epithelialDirectionText = sign => {
+    if (sign === 0) return 'no strong tendency';
+    return sign > 0 ? 'toward blood' : 'toward lumen';
+  };
+  const combinedElectrochemicalText = (chemicalSign, electricalSign) => {
+    if (chemicalSign === 0 && electricalSign === 0) return 'little chemical or electrical tendency detected';
+    if (electricalSign === 0) return 'chemical gradient shown; little electrical tendency detected';
+    if (chemicalSign === 0) return 'little chemical gradient; electrical tendency dominates the display';
+    return chemicalSign === electricalSign
+      ? 'chemical and electrical tendencies align'
+      : 'electrical tendency opposes chemical gradient';
+  };
+  const membraneChemicalSign = (placement, ion) => {
+    if (!result) return 0;
+    const outside = placement === 'apical'
+      ? result.concentrations.apicalSurface?.[ion]
+      : result.concentrations.basolateralSurface?.[ion];
+    const inside = result.concentrations.icf?.[ion];
+    const delta = Number(outside ?? 0) - Number(inside ?? 0);
+    if (Math.abs(delta) < CELL_IMBALANCE_EPSILON) return 0;
+    return delta > 0 ? 1 : -1;
+  };
+  const membraneElectricalSign = (placement, ion) => {
+    const valence = ION_VALENCE[ion] || 0;
+    const polarity = chargeReport?.[placement]?.value || 0;
+    if (valence === 0 || Math.abs(polarity) < CHARGE_EPSILON) return 0;
+    const cellTendsPositive = polarity > 0;
+    if (valence > 0) return cellTendsPositive ? -1 : 1;
+    return cellTendsPositive ? 1 : -1;
+  };
+  const paracellularChemicalSign = ion => {
+    if (!result) return 0;
+    const apical = Number(result.concentrations.apicalSurface?.[ion] ?? 0);
+    const basolateral = Number(result.concentrations.basolateralSurface?.[ion] ?? 0);
+    const delta = apical - basolateral;
+    if (Math.abs(delta) < CELL_IMBALANCE_EPSILON) return 0;
+    return delta > 0 ? 1 : -1;
+  };
+  const paracellularElectricalSign = ion => {
+    const valence = ION_VALENCE[ion] || 0;
+    const transepithelialPolarity = chargeReport?.transepithelial?.value || 0;
+    if (valence === 0 || Math.abs(transepithelialPolarity) < CHARGE_EPSILON) return 0;
+    const lumenTendsNegative = transepithelialPolarity > 0;
+    if (valence > 0) return lumenTendsNegative ? -1 : 1;
+    return lumenTendsNegative ? 1 : -1;
+  };
+  const electrochemicalContextRows = result && chargeReport
+    ? [
+        ...transporters.flatMap(t => {
+          if (t.placement === 'none' || !ELECTROCHEMICAL_MEMBRANE_PATHWAYS[t.id]) return [];
+          return ELECTROCHEMICAL_MEMBRANE_PATHWAYS[t.id].map(ion => {
+            const chemicalSign = membraneChemicalSign(t.placement, ion);
+            const electricalSign = membraneElectricalSign(t.placement, ion);
+            return {
+              pathway: t.name,
+              membrane: t.placement === 'apical' ? 'Apical membrane' : 'Basolateral membrane',
+              ion: ION_LABEL[ion] || ion,
+              chemical: membraneDirectionText(t.placement, chemicalSign),
+              electrical: membraneDirectionText(t.placement, electricalSign),
+              interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
+            };
+          });
+        }),
+        ...(paracellularType === 'cation'
+          ? ['Na+', 'K+'].map(ion => {
+              const chemicalSign = paracellularChemicalSign(ion);
+              const electricalSign = paracellularElectricalSign(ion);
+              return {
+                pathway: 'Paracellular cation pore',
+                membrane: 'Paracellular pathway',
+                ion: ION_LABEL[ion] || ion,
+                chemical: epithelialDirectionText(chemicalSign),
+                electrical: epithelialDirectionText(electricalSign),
+                interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
+              };
+            })
+          : []),
+        ...(paracellularType === 'anion'
+          ? ['Cl-', 'HCO3-'].map(ion => {
+              const chemicalSign = paracellularChemicalSign(ion);
+              const electricalSign = paracellularElectricalSign(ion);
+              return {
+                pathway: 'Paracellular anion pore',
+                membrane: 'Paracellular pathway',
+                ion: ION_LABEL[ion] || ion,
+                chemical: epithelialDirectionText(chemicalSign),
+                electrical: epithelialDirectionText(electricalSign),
+                interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
+              };
+            })
+          : [])
+      ]
+    : [];
+  const electrochemicalTableRows = electrochemicalContextRows.length
+    ? electrochemicalContextRows
+    : [{
+        pathway: 'None',
+        membrane: 'No charged passive or paracellular pathway placed',
+        ion: 'none',
+        chemical: 'none',
+        electrical: 'none',
+        interpretation: 'Add ENaC, ROMK, ClC-Kb, CFTR, TRPV5/6, or a paracellular pore to show context'
+      }];
 
   const AccessibleTable = ({ caption, columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
@@ -1304,7 +1419,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       </thead>
       <tbody>
         {rows.map((row, index) => (
-          <tr key={row.ion || row.label || index} className="border-t">
+          <tr key={[row.pathway, row.membrane, row.ion || row.label, index].filter(Boolean).join('-')} className="border-t">
             {columns.map((column, columnIndex) => (
               columnIndex === 0
                 ? <th key={column.key} scope="row" className="px-2 py-1 border font-semibold">{row[column.key]}</th>
@@ -1347,7 +1462,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
         <li>H⁺ is not plotted on the same concentration scale as bulk solutes. Acid/base behavior is reported as pH and net acid/base tendencies rather than a buffered quantitative pH calculation.</li>
-        <li>Passive flux currently uses chemical concentration gradients only. Electrochemical feedback is shown as a coming-soon extension and does not yet alter flux.</li>
+        <li>Passive flux currently uses chemical concentration gradients only. Electrochemical context is shown as a display-only teaching interpretation inferred from modeled charge tendencies; it does not alter flux.</li>
         <li>Cell osmolality includes modeled mobile solutes plus fixed intracellular osmoles, representing non-transported proteins, metabolites, phosphates, and other intracellular osmolytes.</li>
         <li>Charge and polarity outputs are display-only tendencies computed from modeled ion fluxes.</li>
       </ul>
@@ -1676,7 +1791,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           Polarity affects passive flux <span id="electrochemical-feedback-coming-soon" className="text-gray-500">(coming soon)</span>
         </label>
         <div className="text-gray-500">
-          When off, the app reports charge and polarity tendencies without changing flux.
+          Electrochemical context is shown in results, but remains display-only and does not change flux.
         </div>
       </div>
       <div className="mb-4 text-sm text-gray-700">
@@ -1956,9 +2071,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       <div
                         className="border rounded p-3 bg-white"
                         role="img"
-                        aria-label={'Transepithelial potential tendency: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
+                        aria-label={'Transepithelial potential: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
                       >
-                        <div className="font-semibold text-sm mb-1">Transepithelial Potential Tendency</div>
+                        <div className="font-semibold text-sm mb-1">Transepithelial Potential</div>
                         <div className="flex items-center gap-3">
                           <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
                           <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
@@ -1977,9 +2092,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         <div
                           className="border rounded p-3 bg-white"
                           role="img"
-                          aria-label={'Net epithelial acid base tendency: ' + acidBaseReport.transepithelial.direction + ', ' + acidBaseReport.transepithelial.strength + ', ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid base units.'}
+                          aria-label={'Net acid base flux: ' + acidBaseReport.transepithelial.direction + ', ' + acidBaseReport.transepithelial.strength + ', ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid base units.'}
                         >
-                          <div className="font-semibold text-sm mb-1">Net Acid/Base Tendency</div>
+                          <div className="font-semibold text-sm mb-1">Net Acid/Base Flux</div>
                           <div className="flex items-center gap-3">
                             <div className="text-xs text-gray-600 text-right w-20">Base secretion</div>
                             <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
@@ -1999,9 +2114,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         <div
                           className="border rounded p-3 bg-white"
                           role="img"
-                          aria-label={'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ', ' + waterReport.netTransepithelial.strength + ', ' + formatWaterValue(waterReport.netTransepithelial.value) + ' water tendency units.'}
+                          aria-label={'Net water flux: ' + waterReport.netTransepithelial.direction + ', ' + waterReport.netTransepithelial.strength + ', ' + formatWaterValue(waterReport.netTransepithelial.value) + ' water tendency units.'}
                         >
-                          <div className="font-semibold text-sm mb-1">Net Epithelial Water Tendency</div>
+                          <div className="font-semibold text-sm mb-1">Net Water Flux</div>
                           <div className="flex items-center gap-3">
                             <div className="text-xs text-gray-600 text-right w-20">Secretion</div>
                             <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
@@ -2047,6 +2162,19 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     chargeReport.cell,
                     chargeReport.transepithelial
                   ]}
+                />
+                <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
+                <AccessibleTable
+                  caption="Display-only electrochemical context. Electrical tendencies are inferred from modeled polarity; no Nernst potential, membrane voltage, or electrochemical feedback is calculated."
+                  columns={[
+                    { key: 'pathway', label: 'Pathway' },
+                    { key: 'membrane', label: 'Membrane or path' },
+                    { key: 'ion', label: 'Ion' },
+                    { key: 'chemical', label: 'Chemical gradient favors' },
+                    { key: 'electrical', label: 'Electrical tendency favors' },
+                    { key: 'interpretation', label: 'Combined interpretation' }
+                  ]}
+                  rows={electrochemicalTableRows}
                 />
               </div>
             )}
