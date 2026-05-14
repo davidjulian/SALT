@@ -25,10 +25,12 @@ const Button = ({ children, onClick, className = "", variant, size, ...props }) 
   </button>
 );
 
+const FLUX_ONLY_SOLUTES = ['AA', 'Peptide', 'OA-', 'OC+'];
+
 function osmolality(comp) {
   // Teaching model: approximate osmotic strength from solutes only.
   return Object.entries(comp)
-    .filter(([ion]) => ion !== 'H2O')
+    .filter(([ion]) => ion !== 'H2O' && !FLUX_ONLY_SOLUTES.includes(ion))
     .reduce((sum, [ion, conc]) => sum + Math.abs(conc), 0);
 }
 
@@ -44,6 +46,10 @@ const ION_VALENCE = {
   'HCO3-': -1,
   'Ca2+': 2,
   Phosphate: -2,
+  'OA-': 0,
+  'OC+': 0,
+  AA: 0,
+  Peptide: 0,
   Glucose: 0,
   H2O: 0
 };
@@ -183,8 +189,8 @@ function buildWaterReport(apicalECF, icf, basolateralECF, tList, paracellularTyp
   const mobileIcfOsm = osmolality(icf);
   const icfOsm = mobileIcfOsm + FIXED_INTRACELLULAR_OSMOLES;
   const basolateralOsm = osmolality(basolateralECF);
-  const apicalWaterPath = tList.some(t => ['AQP2', 'AQP3'].includes(t.id) && t.placement === 'apical');
-  const basolateralWaterPath = tList.some(t => ['AQP2', 'AQP3'].includes(t.id) && t.placement === 'basolateral');
+  const apicalWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'apical');
+  const basolateralWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'basolateral');
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
   const hasParacellularPath = paracellularType === 'cation';
   const osmoticSoluteFlux = transepiFluxDataNoH2O.reduce((sum, row) => sum + row.transepithelial, 0);
@@ -229,31 +235,36 @@ function buildWaterReport(apicalECF, icf, basolateralECF, tList, paracellularTyp
 }
 
 const INITIAL_TRANSPORTERS = [
-  { id: 'AQP2',     name: 'AQP2',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AQP3',     name: 'AQP3',       type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'AQP',      name: 'AQP',        type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'AE1',      name: 'AE1',        type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ClCKb',    name: 'ClC-Kb',     type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaPiIIa',  name: 'NaPi-IIa',   type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaPi',     name: 'NaPi',       type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
   { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
   { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NKCC2',    name: 'NKCC2',      type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', density: 1 },
   { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaAA',     name: 'Na⁺-AA',     type: 'symporter',  stoich: { 'Na+': 1, AA: 1 },    kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'OAT',      name: 'OAT',        type: 'carrier',    stoich: { 'OA-': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'OCT',      name: 'OCT',        type: 'carrier',    stoich: { 'OC+': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
+  { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'Pendrin',  name: 'Pendrin',    type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ROMK',     name: 'ROMK',       type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'SGLT2',    name: 'SGLT2',      type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
+  { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
 ];
 
 const TRANSPORTER_GROUPS = [
-  { label: 'Water pathways', ids: ['AQP2', 'AQP3'] },
-  { label: 'Channels', ids: ['ENaC', 'GLUT2', 'ROMK', 'ClCKb'] },
-  { label: 'Cotransporters', ids: ['SGLT2', 'NaPiIIa', 'NCC', 'NKCC2', 'NBCe1'] },
+  { label: 'Channels', ids: ['AQP', 'ENaC', 'GLUT2', 'ROMK', 'ClCKb'] },
+  { label: 'Cotransporters', ids: ['SGLT', 'NaPi', 'NaAA', 'PepT', 'NCC', 'NKCC2', 'NBCe1'] },
+  { label: 'Organic solute carriers', ids: ['AAFacilitator', 'OAT', 'OCT', 'MATE'] },
   { label: 'Exchangers', ids: ['NHE3', 'NCX1', 'AE1', 'Pendrin'] },
   { label: 'Pumps', ids: ['NaKATPase', 'HATPase', 'HKATPase', 'PMCA'] }
 ];
@@ -267,12 +278,12 @@ const TISSUE_OPTIONS = [
   {
     value: 'generic',
     label: 'Generic epithelium',
-    transporterIds: ['AQP2', 'AQP3', 'ENaC', 'GLUT2', 'ClCKb', 'NHE3', 'NBCe1', 'AE1', 'Pendrin', 'NaKATPase', 'HATPase', 'PMCA']
+    transporterIds: ['AQP', 'ENaC', 'GLUT2', 'ClCKb', 'NHE3', 'NBCe1', 'AE1', 'Pendrin', 'NaKATPase', 'HATPase', 'PMCA', 'NaAA', 'AAFacilitator', 'PepT']
   },
   {
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
-    transporterIds: ['AQP2', 'AQP3', 'SGLT2', 'NaPiIIa', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1']
+    transporterIds: ['AQP', 'SGLT', 'NaPi', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'OCT', 'MATE']
   },
   {
     value: 'thick-ascending-limb',
@@ -287,7 +298,7 @@ const TISSUE_OPTIONS = [
   {
     value: 'collecting-duct-principal',
     label: 'Collecting duct principal cell',
-    transporterIds: ['AQP2', 'AQP3', 'ENaC', 'ROMK', 'NaKATPase']
+    transporterIds: ['AQP', 'ENaC', 'ROMK', 'NaKATPase']
   },
   {
     value: 'collecting-duct-alpha',
@@ -302,7 +313,7 @@ const TISSUE_OPTIONS = [
   {
     value: 'small-intestine',
     label: 'Small intestine',
-    transporterIds: ['AQP2', 'AQP3', 'SGLT2', 'GLUT2', 'NHE3', 'NaKATPase', 'ClCKb']
+    transporterIds: ['AQP', 'SGLT', 'GLUT2', 'NHE3', 'NaKATPase', 'ClCKb', 'NaAA', 'AAFacilitator', 'PepT', 'OCT', 'MATE']
   }
 ];
 
@@ -314,24 +325,29 @@ const DENSITY_OPTIONS = [
 
 const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1: exchanges Cl- and HCO3- in opposite directions.',
-  AQP2: 'Aquaporin 2: enables rapid H2O movement.',
-  AQP3: 'Aquaporin 3: enables rapid H2O movement.',
+  AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
+  AQP: 'AQP water channel class, e.g., AQP2, AQP3, AQP4: enables rapid H2O movement.',
   ClCKb: 'ClC-Kb chloride channel: passive Cl- flux follows the chloride gradient.',
   ENaC: 'Epithelial sodium channel: passive Na+ flux follows the Na+ gradient.',
   GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
-  NaPiIIa: 'NaPi-IIa: Na+-phosphate cotransporter; moves Na+ and phosphate together.',
+  NaPi: 'NaPi cotransporter class, e.g., NaPi-IIa and NaPi-IIc: moves Na+ and phosphate together.',
+  NaAA: 'Na+-AA cotransporter: generic Na+-coupled neutral amino acid transporter.',
   NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- together.',
   NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
   NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
   NKCC2: 'Sodium-potassium-chloride cotransporter: moves Na+, K+, and Cl- together.',
   NaKATPase: 'Sodium-potassium pump: pumps Na+ out and K+ in using ATP.',
+  OAT: 'OAT organic anion transporter class, e.g., OAT1 and OAT3: moves organic anions.',
+  OCT: 'OCT organic cation transporter class, e.g., OCT1 and OCT2: moves organic cations.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
+  MATE: 'MATE transporter class, e.g., MATE1 and MATE2-K: exchanges H+ and organic cations.',
+  PepT: 'PepT peptide transporter class, e.g., PepT1 and PepT2: moves H+ and small peptides together.',
   Pendrin: 'Pendrin: exchanges Cl- and HCO3- in opposite directions.',
   ROMK: 'Potassium channel: passive K+ flux follows the K+ gradient.',
-  SGLT2: 'Sodium-glucose cotransporter: moves Na+ and glucose together.'
+  SGLT: 'SGLT cotransporter class, e.g., SGLT1 and SGLT2: moves Na+ and glucose together.'
 };
 
 const INITIAL_CONCENTRATIONS = {
@@ -349,6 +365,10 @@ const ION_LABEL = {
   'HCO3-': 'HCO₃⁻',
   'Ca2+': 'Ca²⁺',
   Phosphate: 'Pi',
+  'OA-': 'OA⁻',
+  'OC+': 'OC⁺',
+  AA: 'AA',
+  Peptide: 'Peptide',
   Glucose: 'Glucose',
   H2O: 'H₂O'
 };
@@ -365,6 +385,11 @@ const PASSIVE_SOLUTE_CHANNELS = {
 const ACTIVE_CELL_CONCENTRATION_GAIN = {
   Glucose: 20
 };
+const FLUX_GROUPS = [
+  { key: 'ions', label: 'Ion Fluxes', solutes: ['Na+', 'K+', 'Cl-', 'H+', 'HCO3-', 'Ca2+', 'Phosphate'] },
+  { key: 'nutrients', label: 'Nutrient Fluxes', solutes: ['Glucose', 'AA', 'Peptide'] },
+  { key: 'organic', label: 'Organic Ion Fluxes', solutes: ['OA-', 'OC+'] }
+];
 const PASSIVE_CONDUCTANCE_SCALE = {
   GLUT2: 4
 };
@@ -372,7 +397,7 @@ const SUPPORT_PUMP_ID = 'NaKATPase';
 const CELL_IMBALANCE_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
-const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID, 'AE1', 'Pendrin'];
+const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID, 'AE1', 'Pendrin', 'MATE', 'PepT'];
 
 function cloneConcentrations(source) {
   return {
@@ -646,6 +671,13 @@ function transepithelialFlux(ion, entryIds, exitIds, requirePump, apicalFlux, ba
   return 0;
 }
 
+function activeStoichForPlacement(transporter) {
+  if (transporter.id === 'OAT') {
+    return { 'OA-': transporter.placement === 'apical' ? -1 : 1 };
+  }
+  return transporter.stoich;
+}
+
 const calculateFluxesAndConcs = (tList = transporters) => {
   // Bulk baths are fixed teaching reservoirs; local surface layers are computed below.
   const baseline = baseConcentrations;
@@ -659,7 +691,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
   const apicalFlux = {};
   const basolateralFlux = {};
-  Object.keys(baseline.apicalECF).forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
+  const fluxSolutes = Array.from(new Set([
+    ...Object.keys(baseline.apicalECF),
+    ...FLUX_ONLY_SOLUTES,
+    ...tList.flatMap(t => Object.keys(t.stoich))
+  ]));
+  fluxSolutes.forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
   const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
   const passiveChannels = [];
@@ -673,13 +710,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       if (!romkSame) return;
     }
     if (t.placement === 'none') return;
-    if (Object.keys(t.stoich).includes('H2O')) return;
+    const effectiveStoich = activeStoichForPlacement(t);
+    if (Object.keys(effectiveStoich).includes('H2O')) return;
     if (PASSIVE_SOLUTE_CHANNELS[t.id]) {
       passiveChannels.push(t);
       return;
     }
     if (t.id === SUPPORT_PUMP_ID) return;
-    if (t.stoich['Na+'] && !hasNaKATPase) return;
+    if (effectiveStoich['Na+'] && !hasNaKATPase) return;
 
     let rate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
     if (t.id === 'NHE3') {
@@ -689,21 +727,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       const sigma = 0.05;
       rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
     }
-    if (!COUPLED_MISMATCH_EXCLUSIONS.includes(t.id) && coupledSolutes(t.stoich).length > 1) {
+    if (!COUPLED_MISMATCH_EXCLUSIONS.includes(t.id) && coupledSolutes(effectiveStoich).length > 1) {
       coupledEvents.push({
         id: t.id,
         name: t.name,
         placement: t.placement,
         rate,
-        stoich: { ...t.stoich }
+        stoich: { ...effectiveStoich }
       });
     }
     fluxEvents.push({
       id: t.id,
       name: t.name,
       placement: t.placement,
-      type: coupledSolutes(t.stoich).length > 1 ? 'coupled' : 'active',
-      solutes: Object.entries(t.stoich)
+      type: coupledSolutes(effectiveStoich).length > 1 ? 'coupled' : 'active',
+      solutes: Object.entries(effectiveStoich)
         .filter(([ion]) => ion !== 'H2O')
         .map(([ion, coeff]) => ({
           ion,
@@ -711,7 +749,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           flux: rate * coeff
         }))
     });
-    Object.entries(t.stoich).forEach(([ion, coeff]) => {
+    Object.entries(effectiveStoich).forEach(([ion, coeff]) => {
       const delta = rate * coeff;
       if (t.placement === 'apical') apicalFlux[ion] += delta;
       else basolateralFlux[ion] += delta;
@@ -731,7 +769,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       solutes: [{ ion: 'Na+', coeff: -1, flux: -supportClearance['Na+'] }]
     });
   }
-  const apicalNaPiPhosphateLoad = tList.some(t => t.id === 'NaPiIIa' && t.placement === 'apical')
+  const apicalNaPiPhosphateLoad = tList.some(t => t.id === 'NaPi' && t.placement === 'apical')
     ? Math.max(apicalFlux.Phosphate || 0, 0)
     : 0;
   if (hasNaKATPase && apicalNaPiPhosphateLoad > 0) {
@@ -749,7 +787,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const activeNetFlux = {};
   Object.keys(apicalFlux).forEach(ion => { activeNetFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
   const prePassiveICF = { ...baseline.icf };
-  Object.entries(activeNetFlux).forEach(([ion, flux]) => { prePassiveICF[ion] += activeCellConcentrationDelta(ion, flux); });
+  Object.entries(activeNetFlux)
+    .filter(([ion]) => !FLUX_ONLY_SOLUTES.includes(ion))
+    .forEach(([ion, flux]) => { prePassiveICF[ion] += activeCellConcentrationDelta(ion, flux); });
   prePassiveICF['H+'] = Math.max(prePassiveICF['H+'], 1e-8);
 
   const passiveNetFlux = {};
@@ -786,7 +826,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
 
   const newICF = { ...prePassiveICF };
-  Object.entries(passiveNetFlux).forEach(([ion, flux]) => { newICF[ion] += flux; });
+  Object.entries(passiveNetFlux)
+    .filter(([ion]) => !FLUX_ONLY_SOLUTES.includes(ion))
+    .forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
   const cellImbalanceReport = buildCellImbalanceReport(baseline.icf, newICF);
   const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
@@ -814,8 +856,25 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
 
   // --- Transepithelial Fluxes using ONLY current tick values ---
-  const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT2'], ['GLUT2'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT2','NaPiIIa','ENaC','NCC','NKCC2'], ['NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT'], ['GLUT2'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const aaTransEpiFlux = transepithelialFlux('AA', ['NaAA'], ['AAFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const oaTransEpiFlux = transepithelialFlux('OA-', ['OAT'], ['OAT'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const ocTransEpiFlux = transepithelialFlux('OC+', ['OCT'], ['MATE'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  let peptideTransEpiFlux = 0;
+  if (tList.some(t => t.id === 'PepT' && t.placement !== 'none') && tList.some(t => t.id === 'AAFacilitator' && t.placement !== 'none')) {
+    peptideTransEpiFlux = transepithelialFlux('Peptide', ['PepT'], ['AAFacilitator'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+    if (peptideTransEpiFlux === 0) {
+      const pepT = tList.find(t => t.id === 'PepT' && t.placement !== 'none');
+      const aaExit = tList.find(t => t.id === 'AAFacilitator' && t.placement !== 'none' && t.placement !== pepT.placement);
+      if (pepT && aaExit) {
+        const pepRate = Math.abs(pepT.kinetics.maxRate / (pepT.kinetics.Km + 1) * pepT.density);
+        const aaRate = Math.abs(aaExit.kinetics.maxRate / (aaExit.kinetics.Km + 1) * aaExit.density);
+        const limiting = Math.min(pepRate, aaRate);
+        peptideTransEpiFlux = pepT.placement === 'apical' ? limiting : -limiting;
+      }
+    }
+  }
+  const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT','NaPi','ENaC','NCC','NKCC2'], ['NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC2','NCC','ClCKb','AE1','Pendrin'], ['NKCC2','NCC','ClCKb','AE1','Pendrin'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['NCX1','PMCA'], ['NCX1','PMCA'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let phosphateTransEpiFlux = 0;
@@ -869,6 +928,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const transepiFluxDataNoH2O = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
     switch (ion) {
       case 'Glucose': return { ion, transepithelial: glucoseTransEpiFlux };
+      case 'AA':      return { ion, transepithelial: aaTransEpiFlux };
+      case 'Peptide': return { ion, transepithelial: peptideTransEpiFlux };
+      case 'OA-':     return { ion, transepithelial: oaTransEpiFlux };
+      case 'OC+':     return { ion, transepithelial: ocTransEpiFlux };
       case 'Na+':     return { ion, transepithelial: naTransEpiFlux };
       case 'K+':      return { ion, transepithelial: kTransEpiFlux };
       case 'Cl-':     return { ion, transepithelial: clTransEpiFlux };
@@ -954,13 +1017,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   // --- Derived Data for Display ---
   const acidBaseReport = result?.acidBaseReport;
 
-  const fluxData = result
-    ? Object.keys(result.netFlux).filter(ion => ion !== 'H2O').map(ion => ({
-      ion: ION_LABEL[ion] || ion,
-      apical: result.apicalFlux[ion],
-      basolateral: result.basolateralFlux[ion]
-      }))
-    : [];
   const concentrationIons = result
     ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
     : [];
@@ -985,9 +1041,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic: require a proton extruder (NHE3, HATPase, HKATPase) on one membrane and NBCe1 on the opposite membrane (plus Na⁺/K⁺ ATPase for NHE3/NBCe1)
   const transepiFluxData = result?.transepiFluxData || [];
   const soluteTransepiFluxData = transepiFluxData.filter(row => row.ion !== 'H2O');
-  const soluteTransepiFluxDisplayData = soluteTransepiFluxData.map(row => ({
-    ...row,
-    ion: ION_LABEL[row.ion] || row.ion
+  const transepithelialByIon = Object.fromEntries(soluteTransepiFluxData.map(row => [row.ion, row.transepithelial || 0]));
+  const directionalFluxRows = result
+    ? FLUX_GROUPS.flatMap(group => group.solutes.map(ion => ({
+      group: group.key,
+      groupLabel: group.label,
+      ion,
+      label: ION_LABEL[ion] || ion,
+      apicalStep: result.apicalFlux[ion] || 0,
+      basolateralStep: -(result.basolateralFlux[ion] || 0),
+      paracellularStep: result.paraFlux[ion] || 0,
+      transepithelial: transepithelialByIon[ion] || 0
+    })))
+    : [];
+  const directionalFluxGroups = FLUX_GROUPS.map(group => ({
+    ...group,
+    rows: directionalFluxRows.filter(row => row.group === group.key)
   }));
 
   const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
@@ -1094,10 +1163,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     </section>
   );
 
-  const netTEFlux =
-    soluteTransepiFluxData
-      .reduce((sum, row) => sum + row.transepithelial, 0)
-      .toFixed(3);
   const waterReport = result?.waterReport;
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
@@ -1149,7 +1214,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
   const tePotentialNeedleAngle = clamp(-tePotentialValue * 25, -60, 60);
   const acidBaseNeedleAngle = clamp((acidBaseReport?.transepithelial?.value ?? 0) * 25, -60, 60);
-  const waterNeedleAngle = clamp((waterReport?.netTransepithelial?.value ?? 0) * 25, -60, 60);
+  const waterNeedleAngle = clamp((waterReport?.netTransepithelial?.value ?? 0) * 45, -60, 60);
 
   const AccessibleTable = ({ caption, columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
@@ -1194,9 +1259,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>The model separates membrane flux tendencies from completed transepithelial flux. A transporter can move solute across one membrane even when a complete apical-to-basolateral pathway is missing.</li>
         <li>Apical and basolateral bath concentrations are treated as fixed reservoirs. Finite ECF pools are shown as a coming-soon teaching extension.</li>
         <li>The app distinguishes fixed bulk bath concentrations from local surface-layer concentrations. Surface values shift with transporter flux and partial mixing, so students can see how local gradients may differ from the surrounding reservoir.</li>
+        <li>Flux graphs use a shared directional convention: positive values point toward the basolateral/blood side and negative values point toward the apical/lumen side. Paracellular flux is shown as a separate pathway contribution when leaky junctions are enabled, and is included in net epithelial flux.</li>
+        <li>Amino acids, peptides, organic anions, and organic cations are treated as flux-only teaching cargo. They are not shown in concentration graphs, Settings concentration controls, osmolality, or charge/polarity calculations.</li>
         <li>The tissue/segment setting filters which transporters are offered in the add-transporter controls. It does not remove transporters that have already been placed, so unusual layouts can still be explored.</li>
-        <li>SGLT2-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
-        <li>NaPi-IIa-driven phosphate entry can use a teaching abstraction for basolateral phosphate exit when Na⁺/K⁺-ATPase support is present, allowing phosphate absorption without adding a more speculative basolateral phosphate transporter.</li>
+        <li>SGLT-driven glucose entry can raise the modeled cell glucose concentration. GLUT2 then follows the gradient between the adjacent bath and that displayed cell glucose value, and is treated as a high-capacity facilitated pathway in this teaching model.</li>
+        <li>NaPi-driven phosphate entry can use a teaching abstraction for basolateral phosphate exit when Na⁺/K⁺-ATPase support is present, allowing phosphate absorption without adding a more speculative basolateral phosphate transporter.</li>
         <li>Na⁺/K⁺-ATPase is treated as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ recycling stoichiometry is not explicitly balanced in this teaching layer.</li>
         <li>The coupled transport status light compares linked transporter stoichiometry with completed transepithelial flux and flags layouts that may not represent a steady-state pathway.</li>
         <li>When solutes enter or leave the cell without matching pathway completion, the app reports intracellular accumulation or depletion tendencies.</li>
@@ -1209,7 +1276,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li>Transporters are only active if placed on the apical or basolateral membrane.</li>
         <li>Passive channels and facilitated carriers follow their transmembrane concentration gradients in this model. ENaC, ROMK, and GLUT2 can reverse direction if the gradient reverses.</li>
-        <li>Na⁺-coupled cotransporters and exchangers (SGLT2, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase to be present as gradient support.</li>
+        <li>Na⁺-coupled cotransporters and exchangers (SGLT, NaPi, NCC, NKCC2, NHE3, NBCe1, etc.) require Na⁺/K⁺ ATPase to be present as gradient support.</li>
         <li>Completed transepithelial flux is calculated only when compatible entry and exit pathways exist on opposite membranes. Otherwise, one-sided flux can still contribute to intracellular accumulation or depletion.</li>
         <li>NKCC2 has an additional teaching rule: it is inactive unless ROMK is present on the same membrane.</li>
       </ul>
@@ -1221,12 +1288,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can pair with an opposite-membrane proton extruder to support acid secretion/base absorption or the reverse, depending on placement.
         </li>
         <li>
-          <b>AQP2:</b> aquaporin 2<br/>
-          <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
+          <b>AA facilitator:</b> facilitated amino acid transporter class; representative examples include LAT/SLC7 family transporters<br/>
+          <i>Action:</i> Facilitated neutral amino acid movement.<br/>
+          <i>Rule:</i> Can provide amino acid exit or entry in a completed amino acid pathway with Na⁺-AA cotransport on the opposite membrane.
         </li>
         <li>
-          <b>AQP3:</b> aquaporin 3<br/>
+          <b>AQP:</b> aquaporin class; representative members include AQP2, AQP3, and AQP4<br/>
           <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
           <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
         </li>
@@ -1243,7 +1310,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>GLUT2:</b> glucose transporter 2<br/>
           <i>Action:</i> Facilitated glucose transporter; passive glucose flux follows the glucose gradient.<br/>
-          <i>Rule:</i> SGLT2 can raise modeled cell glucose enough to drive GLUT2. If the adjacent bath glucose is higher than the displayed cell glucose, GLUT2 favors glucose entry instead of exit.
+          <i>Rule:</i> SGLT can raise modeled cell glucose enough to drive GLUT2. If the adjacent bath glucose is higher than the displayed cell glucose, GLUT2 favors glucose entry instead of exit.
         </li>
         <li>
           <b>H⁺-ATPase:</b> proton ATPase<br/>
@@ -1256,9 +1323,19 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBCe1 on the opposite membrane.
         </li>
         <li>
-          <b>NaPi-IIa:</b> sodium-phosphate cotransporter IIa<br/>
+          <b>MATE:</b> multidrug and toxin extrusion transporter class; representative members include MATE1 and MATE2-K<br/>
+          <i>Action:</i> H⁺/organic cation exchange.<br/>
+          <i>Rule:</i> Can pair with OCT on the opposite membrane for organic cation transport.
+        </li>
+        <li>
+          <b>NaPi:</b> sodium-phosphate cotransporter class; representative members include NaPi-IIa and NaPi-IIc<br/>
           <i>Action:</i> Na⁺-phosphate symporter; co-transports Na⁺ and phosphate together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺-ATPase support. When apical, phosphate absorption uses an implicit basolateral phosphate exit support rule in this teaching layer.
+        </li>
+        <li>
+          <b>Na⁺-AA:</b> sodium-amino acid cotransporter class; representative examples include neutral amino acid transport systems such as B⁰AT/SLC6 family transporters<br/>
+          <i>Action:</i> Na⁺-coupled neutral amino acid movement.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with an AA facilitator on the opposite membrane for completed amino acid transport.
         </li>
         <li>
           <b>NBCe1:</b> electrogenic sodium bicarbonate cotransporter 1<br/>
@@ -1291,9 +1368,24 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> In this teaching layer, it is modeled as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ stoichiometry is acknowledged but not explicitly balanced.
         </li>
         <li>
+          <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
+          <i>Action:</i> Organic anion movement.<br/>
+          <i>Rule:</i> Can provide organic anion movement in a completed organic anion pathway.
+        </li>
+        <li>
+          <b>OCT:</b> organic cation transporter class; representative members include OCT1 and OCT2<br/>
+          <i>Action:</i> Organic cation movement.<br/>
+          <i>Rule:</i> Can pair with MATE on the opposite membrane for organic cation transport.
+        </li>
+        <li>
           <b>PMCA:</b> plasma membrane calcium ATPase<br/>
           <i>Action:</i> Ca²⁺ pump; pumps Ca²⁺ out using ATP.<br/>
           <i>Rule:</i> For transepithelial Ca²⁺ flux, PMCA or NCX1 must be on both membranes.
+        </li>
+        <li>
+          <b>PepT:</b> peptide transporter class; representative members include PepT1 and PepT2<br/>
+          <i>Action:</i> H⁺-coupled small peptide movement.<br/>
+          <i>Rule:</i> Peptide-derived nutrient absorption can be completed by an AA facilitator on the opposite membrane, representing intracellular peptide hydrolysis in this teaching layer.
         </li>
         <li>
           <b>Pendrin:</b> Cl⁻/HCO₃⁻ exchanger<br/>
@@ -1306,15 +1398,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Required on the same membrane as NKCC2 for NKCC2 activity. As a passive channel, ROMK can also provide K⁺ membrane flux when a K⁺ gradient exists.
         </li>
         <li>
-          <b>SGLT2:</b> sodium-glucose cotransporter 2<br/>
+          <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
           <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT2 and GLUT2 must be on opposite membranes.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT2 must be on opposite membranes.
         </li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.<br/>
-        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient.
+        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient. Paracellular ion flux is displayed separately from membrane steps and is included in the net epithelial flux.
         </li>
           </ul>
 
@@ -1336,11 +1428,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li><b>Glucose:</b> SGLT2 on one membrane and GLUT2 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere).</li>
-        <li><b>Na⁺:</b> SGLT2, NaPi-IIa, ENaC, NCC, or NKCC2 can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support provides modeled basolateral Na⁺ clearance.</li>
+        <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere).</li>
+        <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC2 can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support provides modeled basolateral Na⁺ clearance.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux and same-membrane support for NKCC2.</li>
         <li><b>Cl⁻:</b> NKCC2, NCC, ClC-Kb, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
-        <li><b>Phosphate:</b> Apical NaPi-IIa plus Na⁺/K⁺-ATPase support produces phosphate absorption using an implicit basolateral phosphate exit teaching rule.</li>
+        <li><b>Phosphate:</b> Apical NaPi plus Na⁺/K⁺-ATPase support produces phosphate absorption using an implicit basolateral phosphate exit teaching rule.</li>
+        <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
+        <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
+        <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1, or pendrin on the opposite membrane. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1, pendrin, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, H₂O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
       </ul>
@@ -1546,10 +1641,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       switch (modalTransporter.id) {
         case 'AE1':
           return <><b>Anion exchanger 1</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions.<br/></>;
-        case 'AQP2':
-          return <><b>Aquaporin 2</b>: enables rapid H₂O movement.<br/></>;
-        case 'AQP3':
-          return <><b>Aquaporin 3</b>: enables rapid H₂O movement.<br/></>;
+        case 'AAFacilitator':
+          return <><b>AA facilitator</b>: generic facilitated neutral amino acid transporter; representative examples include LAT/SLC7 family transporters.<br/></>;
+        case 'AQP':
+          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; enables rapid H₂O movement.<br/></>;
         case 'ClCKb':
           return <><b>ClC-Kb chloride channel</b>: passive Cl⁻ flux follows the Cl⁻ gradient.<br/></>;
         case 'ENaC':
@@ -1560,8 +1655,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
         case 'HKATPase':
           return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
-        case 'NaPiIIa':
-          return <><b>Sodium-phosphate cotransporter IIa</b>: moves Na⁺ and phosphate together.<br/></>;
+        case 'MATE':
+          return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges H⁺ and organic cations.<br/></>;
+        case 'NaPi':
+          return <><b>NaPi cotransporter class</b>: representative members include NaPi-IIa and NaPi-IIc; moves Na⁺ and phosphate together.<br/></>;
+        case 'NaAA':
+          return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter.<br/></>;
         case 'NBCe1':
           return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: moves Na⁺ and HCO₃⁻ together.<br/></>;
         case 'NCC':
@@ -1574,14 +1673,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           return <><b>Sodium-potassium-chloride cotransporter</b>: moves Na⁺, K⁺, and 2 Cl⁻ together.<br/></>;
         case 'NaKATPase':
           return <><b>Sodium-potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
+        case 'OAT':
+          return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; moves organic anions.<br/></>;
+        case 'OCT':
+          return <><b>OCT transporter class</b>: representative members include OCT1 and OCT2; moves organic cations.<br/></>;
         case 'PMCA':
           return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
+        case 'PepT':
+          return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves H⁺ and small peptides together.<br/></>;
         case 'Pendrin':
           return <><b>Pendrin</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions.<br/></>;
         case 'ROMK':
           return <><b>Renal outer medullary potassium channel</b>: passive K⁺ flux follows the K⁺ gradient.<br/></>;
-        case 'SGLT2':
-          return <><b>Sodium/glucose cotransporter 2</b>: moves Na⁺ and glucose together.<br/></>;
+        case 'SGLT':
+          return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves Na⁺ and glucose together.<br/></>;
         default:
           return null;
       }
@@ -1653,35 +1758,48 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
             {resultsView === 'graphs' ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="font-semibold mb-2">Transmembrane Fluxes (positive = into ICF)</h3>
-                    <ResponsiveContainer width="100%" height={170}>
-                      <BarChart data={fluxData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                        <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
-                        <YAxis tick={{ fontSize: 12 }} />
-                        <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                        <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                        <Legend />
-                        <Bar dataKey="apical" name="Apical" fill="#2563eb" />
-                        <Bar dataKey="basolateral" name="Basolateral" fill="#059669" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">
-                      Transepithelial Fluxes, <span className="text-rose-400">Net = {netTEFlux}</span>
-                    </h3>
-                    <div className="text-xs text-gray-600 mb-2">Positive = absorption; negative = secretion.</div>
-                    <ResponsiveContainer width="100%" height={170}>
-                      <BarChart data={soluteTransepiFluxDisplayData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                        <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
-                        <YAxis tick={{ fontSize: 12 }} />
-                        <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                        <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                        <Bar dataKey="transepithelial" name="Net Transepithelial" fill="#fb7185" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                <div>
+                  <h3 className="font-semibold">Directional Fluxes</h3>
+                  <div className="text-xs text-gray-600 mb-2">Positive = toward blood; negative = toward lumen.</div>
+                  <div className="space-y-4">
+                    {directionalFluxGroups.filter(group => group.key === 'ions').map(group => (
+                      <div key={group.key}>
+                        <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                            <XAxis dataKey="label" interval={0} tick={{ fontSize: 12 }} height={36} />
+                            <YAxis tick={{ fontSize: 12 }} />
+                            <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                            <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                            <Legend />
+                            <Bar dataKey="apicalStep" name="Apical step" fill="#2563eb" />
+                            <Bar dataKey="basolateralStep" name="Basolateral step" fill="#059669" />
+                            <Bar dataKey="paracellularStep" name="Paracellular" fill="#d97706" />
+                            <Bar dataKey="transepithelial" name="Net epithelial" fill="#fb7185" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ))}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {directionalFluxGroups.filter(group => group.key !== 'ions').map(group => (
+                        <div key={group.key}>
+                          <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
+                          <ResponsiveContainer width="100%" height={150}>
+                            <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                              <XAxis dataKey="label" interval={0} tick={{ fontSize: 12 }} height={36} />
+                              <YAxis tick={{ fontSize: 12 }} />
+                              <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                              <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                              <Legend />
+                              <Bar dataKey="apicalStep" name="Apical step" fill="#2563eb" />
+                              <Bar dataKey="basolateralStep" name="Basolateral step" fill="#059669" />
+                              <Bar dataKey="paracellularStep" name="Paracellular" fill="#d97706" />
+                              <Bar dataKey="transepithelial" name="Net epithelial" fill="#fb7185" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -1702,13 +1820,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             ) : (
               <div className="space-y-6 overflow-auto">
                 <AccessibleTable
-                  caption="Transmembrane fluxes. Positive values indicate movement into the cell. Epithelial net movement is reported in the transepithelial flux table."
+                  caption="Directional fluxes. Positive values point toward blood; negative values point toward lumen."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
-                    { key: 'apical', label: 'Apical flux', format: formatTableValue },
-                    { key: 'basolateral', label: 'Basolateral flux', format: formatTableValue }
+                    { key: 'groupLabel', label: 'Flux group' },
+                    { key: 'apicalStep', label: 'Apical step', format: formatTableValue },
+                    { key: 'basolateralStep', label: 'Basolateral step', format: formatTableValue },
+                    { key: 'paracellularStep', label: 'Paracellular pathway', format: formatTableValue },
+                    { key: 'transepithelial', label: 'Net epithelial flux', format: formatTableValue },
+                    { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
                   ]}
-                  rows={fluxData}
+                  rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
                 />
                 <AccessibleTable
                   caption="Concentrations. Bulk reservoirs are fixed unless changed in Settings. Surface values are local teaching estimates based on transport and partial mixing."
@@ -1721,15 +1843,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     { key: 'basolateralBulk', label: 'Basolateral bulk', format: formatTableValue }
                   ]}
                   rows={concTableData}
-                />
-                <AccessibleTable
-                  caption="Transepithelial fluxes. Positive values indicate absorption and negative values indicate secretion."
-                  columns={[
-                    { key: 'ion', label: 'Ion or solute' },
-                    { key: 'transepithelial', label: 'Net transepithelial flux', format: formatTableValue },
-                    { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
-                  ]}
-                  rows={soluteTransepiFluxDisplayData.map(row => ({ ...row, direction: fluxDirection(row.transepithelial) }))}
                 />
               </div>
             )}
