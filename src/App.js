@@ -6,7 +6,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ReferenceLine
 } from 'recharts';
 // Simple Button for canvas use (replaces shadcn/ui)
@@ -471,11 +470,11 @@ const FLUX_BAR_SERIES = [
   { key: 'transepithelial', name: 'Net epithelial', color: '#fb7185' }
 ];
 const CONCENTRATION_COMPARTMENTS = [
-  { key: 'apicalBulk', label: 'Apical bulk' },
-  { key: 'apicalSurface', label: 'Apical surface' },
-  { key: 'icf', label: 'Cell' },
-  { key: 'basolateralSurface', label: 'Basolateral surface' },
-  { key: 'basolateralBulk', label: 'Basolateral bulk' }
+  { key: 'apicalBulk', label: 'Apical bulk', name: 'Apical Bulk', color: '#2dd4bf' },
+  { key: 'apicalSurface', label: 'Apical surface', name: 'Apical Surface', color: '#0f766e' },
+  { key: 'icf', label: 'Cell', name: 'ICF', color: '#8b5cf6', fillOpacity: 0.75 },
+  { key: 'basolateralSurface', label: 'Basolateral surface', name: 'Basolateral Surface', color: '#ea580c' },
+  { key: 'basolateralBulk', label: 'Basolateral bulk', name: 'Basolateral Bulk', color: '#fb923c' }
 ];
 const CHALLENGE_BANK = [
   {
@@ -2453,7 +2452,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   </div>
                   <div className="space-y-4">
                     {directionalFluxGroups.filter(group => group.key === 'ions').map(group => (
-                      <div key={group.key} className="border-t pt-3">
+                      <div key={group.key} className="pt-3">
                         <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
                         <ResponsiveContainer width="100%" height={180}>
                           <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
@@ -2470,7 +2469,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     ))}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {directionalFluxGroups.filter(group => group.key !== 'ions').map(group => (
-                        <div key={group.key} className="border-t pt-3">
+                        <div key={group.key} className="pt-3">
                           <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
                           <ResponsiveContainer width="100%" height={150}>
                             <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
@@ -2490,18 +2489,37 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 </section>
                 <div>
                   <h3 className="font-semibold">Concentrations</h3>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2" aria-label="Concentration graph legend">
+                    {CONCENTRATION_COMPARTMENTS.map(compartment => (
+                      <div key={compartment.key} className="inline-flex items-center gap-1">
+                        <span
+                          className="inline-block h-3 w-3 rounded-sm"
+                          style={{
+                            backgroundColor: compartment.color,
+                            opacity: compartment.fillOpacity ?? 1
+                          }}
+                          aria-hidden="true"
+                        />
+                        <span>{compartment.name}</span>
+                      </div>
+                    ))}
+                  </div>
                   <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view.</div>
                   <ResponsiveContainer width="100%" height={190}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} onClick={openConcentrationZoomFromChart}>
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
                       <YAxis domain={[0,150]} tick={{ fontSize: 12 }} />
                       <Tooltip content={<ConcentrationTooltip />} wrapperStyle={{ pointerEvents: 'none' }} />
-                      <Legend />
-                      <Bar dataKey="apicalBulk" name="Apical Bulk" fill="#2dd4bf" onClick={openConcentrationZoomFromChart} />
-                      <Bar dataKey="apicalSurface" name="Apical Surface" fill="#0f766e" onClick={openConcentrationZoomFromChart} />
-                      <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} onClick={openConcentrationZoomFromChart} />
-                      <Bar dataKey="basolateralSurface" name="Basolateral Surface" fill="#ea580c" onClick={openConcentrationZoomFromChart} />
-                      <Bar dataKey="basolateralBulk" name="Basolateral Bulk" fill="#fb923c" onClick={openConcentrationZoomFromChart} />
+                      {CONCENTRATION_COMPARTMENTS.map(compartment => (
+                        <Bar
+                          key={compartment.key}
+                          dataKey={compartment.key}
+                          name={compartment.name}
+                          fill={compartment.color}
+                          fillOpacity={compartment.fillOpacity}
+                          onClick={openConcentrationZoomFromChart}
+                        />
+                      ))}
                     </BarChart>
                   </ResponsiveContainer>
                   {zoomedConcentrationRow && (
