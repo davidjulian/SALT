@@ -464,6 +464,114 @@ const FLUX_GROUPS = [
   { key: 'nutrients', label: 'Nutrient Fluxes', solutes: ['Glucose', 'AA', 'Peptide'] },
   { key: 'organic', label: 'Organic Ion Fluxes', solutes: ['OA-', 'OC+'] }
 ];
+const CHALLENGE_BANK = [
+  {
+    id: 'glucose-absorption-starter',
+    title: 'Glucose Absorption Starter',
+    level: 'Bridge challenge',
+    tissuePreset: 'small-intestine',
+    goal: 'Build a compact pathway that produces net glucose absorption toward blood.',
+    allowedTransporters: ['NaKATPase', 'SGLT', 'GLUT2'],
+    targets: [
+      { metric: 'flux', solute: 'Glucose', direction: 'absorption', minMagnitude: 0.2, label: 'Net glucose absorption' },
+      { metric: 'flux', solute: 'Na+', direction: 'absorption', minMagnitude: 0.2, label: 'Supporting Na+ absorption' }
+    ],
+    constraints: {
+      maxTransporters: 3,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  },
+  {
+    id: 'chloride-secretion-crypt',
+    title: 'Chloride Secretion',
+    level: 'Challenge',
+    tissuePreset: 'small-intestine-crypt',
+    goal: 'Create net Cl- secretion toward the lumen using a secretory epithelial layout.',
+    allowedTransporters: ['AQP', 'CFTR', 'ClCKb', 'NKCC', 'ROMK', 'NaKATPase'],
+    targets: [
+      { metric: 'flux', solute: 'Cl-', direction: 'secretion', minMagnitude: 0.3, label: 'Net Cl- secretion' }
+    ],
+    constraints: {
+      maxTransporters: 5,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  },
+  {
+    id: 'calcium-absorption-dct',
+    title: 'Calcium Absorption',
+    level: 'Challenge',
+    tissuePreset: 'distal-convoluted-tubule',
+    goal: 'Build a Ca2+ entry and extrusion pathway that produces net Ca2+ absorption.',
+    allowedTransporters: ['TRPV56', 'PMCA', 'NCX1', 'NaKATPase', 'NCC', 'ClCKb'],
+    targets: [
+      { metric: 'flux', solute: 'Ca2+', direction: 'absorption', minMagnitude: 0.05, label: 'Net Ca2+ absorption' }
+    ],
+    constraints: {
+      maxTransporters: 4,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  },
+  {
+    id: 'calcium-absorption-low-tep',
+    title: 'Calcium Absorption: Low TEP',
+    level: 'Challenge',
+    tissuePreset: 'distal-convoluted-tubule',
+    goal: 'Produce net Ca2+ absorption while keeping the transepithelial potential weak or absent.',
+    allowedTransporters: ['TRPV56', 'PMCA', 'NCX1', 'NaKATPase', 'NCC', 'ClCKb'],
+    targets: [
+      { metric: 'flux', solute: 'Ca2+', direction: 'absorption', minMagnitude: 0.05, label: 'Net Ca2+ absorption' },
+      { metric: 'potential', mode: 'nearZero', maxMagnitude: 0.5, label: 'Low transepithelial potential' }
+    ],
+    constraints: {
+      maxTransporters: 4,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  },
+  {
+    id: 'calcium-absorption-lumen-negative',
+    title: 'Calcium Absorption: Lumen-Negative TEP',
+    level: 'Challenge',
+    tissuePreset: 'distal-convoluted-tubule',
+    goal: 'Produce net Ca2+ absorption while also generating a lumen-negative transepithelial tendency.',
+    allowedTransporters: ['TRPV56', 'PMCA', 'NCX1', 'NaKATPase', 'NCC', 'ClCKb'],
+    targets: [
+      { metric: 'flux', solute: 'Ca2+', direction: 'absorption', minMagnitude: 0.05, label: 'Net Ca2+ absorption' },
+      { metric: 'potential', direction: 'lumenNegative', minMagnitude: 0.25, label: 'Lumen-negative TEP' }
+    ],
+    constraints: {
+      maxTransporters: 4,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  },
+  {
+    id: 'bicarbonate-secretion-duct',
+    title: 'Bicarbonate Secretion',
+    level: 'Challenge',
+    tissuePreset: 'pancreatic-duct',
+    goal: 'Create net base secretion toward the lumen without turning on every duct transporter.',
+    allowedTransporters: ['AQP', 'CFTR', 'NBCe1', 'Pendrin', 'NHE3', 'NaKATPase', 'ClCKb'],
+    targets: [
+      { metric: 'acidBase', direction: 'baseSecretion', minMagnitude: 0.15, label: 'Net base secretion' },
+      { metric: 'flux', solute: 'HCO3-', direction: 'secretion', minMagnitude: 0.15, label: 'Net HCO3- secretion' }
+    ],
+    constraints: {
+      maxTransporters: 5,
+      maxHighDensity: 1
+    },
+    paracellular: { type: 'none', locked: true },
+    lockConcentrations: true
+  }
+];
 const PASSIVE_CONDUCTANCE_SCALE = {
   GLUT2: 4
 };
@@ -631,6 +739,187 @@ function buildCellImbalanceReport(baselineIcf, modeledIcf) {
     .filter(row => Math.abs(row.change) >= CELL_IMBALANCE_EPSILON);
 }
 
+function paracellularTypeLabel(type) {
+  if (type === 'cation') return 'Cation + Water Pore';
+  if (type === 'anion') return 'Anion Pore';
+  return 'Tight Junction';
+}
+
+function concentrationsMatch(current, expected) {
+  return ['apicalECF', 'icf', 'basolateralECF'].every(compartment =>
+    Object.keys(expected[compartment] || {}).every(ion =>
+      Math.abs(Number(current[compartment]?.[ion] ?? 0) - Number(expected[compartment]?.[ion] ?? 0)) < 1e-9
+    )
+  );
+}
+
+function challengeDirectionSign(direction) {
+  return ['absorption', 'acidSecretion', 'waterAbsorption', 'lumenNegative'].includes(direction) ? 1 : -1;
+}
+
+function challengeDirectionText(direction) {
+  const labels = {
+    absorption: 'toward blood',
+    secretion: 'toward lumen',
+    acidSecretion: 'acid secretion / base absorption',
+    baseSecretion: 'base secretion / acid absorption',
+    waterAbsorption: 'water absorption',
+    waterSecretion: 'water secretion',
+    lumenNegative: 'lumen-negative tendency',
+    lumenPositive: 'lumen-positive tendency'
+  };
+  return labels[direction] || direction;
+}
+
+function challengeMetricValue(result, target) {
+  if (!result) return 0;
+  if (target.metric === 'flux') {
+    return result.transepiFluxData?.find(row => row.ion === target.solute)?.transepithelial || 0;
+  }
+  if (target.metric === 'acidBase') {
+    return result.acidBaseReport?.transepithelial?.value || 0;
+  }
+  if (target.metric === 'water') {
+    return result.waterReport?.netTransepithelial?.value || 0;
+  }
+  if (target.metric === 'potential') {
+    return result.chargeReport?.transepithelial?.value || 0;
+  }
+  return 0;
+}
+
+function challengeMetricUnit(target) {
+  if (target.metric === 'acidBase') return 'acid/base units';
+  if (target.metric === 'water') return 'water tendency units';
+  if (target.metric === 'potential') return 'charge units';
+  return 'flux units';
+}
+
+function formatChallengeMetric(value, target) {
+  return Number(value || 0).toFixed(2) + ' ' + challengeMetricUnit(target);
+}
+
+function challengeFeedback(value, signedValue, minMagnitude) {
+  if (signedValue >= minMagnitude) return 'Target met';
+  if (Math.abs(value) < 0.001) return 'No strong tendency yet';
+  if (signedValue < 0) return 'Opposite direction';
+  return 'Right direction, too small';
+}
+
+function challengeNearZeroFeedback(value, maxMagnitude, target) {
+  if (Math.abs(value) <= maxMagnitude) return 'Target met';
+  if (target.metric === 'potential') {
+    return value > 0 ? 'TEP too lumen-negative' : 'TEP too lumen-positive';
+  }
+  return 'Magnitude too large';
+}
+
+function evaluateChallengeTarget(target, result) {
+  const value = challengeMetricValue(result, target);
+  if (target.mode === 'nearZero') {
+    const maxMagnitude = target.maxMagnitude ?? target.minMagnitude ?? 0;
+    const met = Math.abs(value) <= maxMagnitude;
+    return {
+      label: target.label,
+      target: 'near zero; no more than ' + formatChallengeMetric(maxMagnitude, target) + ' in either direction',
+      current: formatChallengeMetric(value, target),
+      status: met ? 'Met' : 'Not yet',
+      feedback: challengeNearZeroFeedback(value, maxMagnitude, target),
+      met
+    };
+  }
+
+  const signedValue = value * challengeDirectionSign(target.direction);
+  const minMagnitude = target.minMagnitude || 0;
+  const met = signedValue >= minMagnitude;
+  return {
+    label: target.label,
+    target: challengeDirectionText(target.direction) + ', at least ' + formatChallengeMetric(minMagnitude, target),
+    current: formatChallengeMetric(value, target),
+    status: met ? 'Met' : 'Not yet',
+    feedback: challengeFeedback(value, signedValue, minMagnitude),
+    met
+  };
+}
+
+function evaluateChallenge(challenge, result, transporters, baseConcentrations, paracellularType) {
+  const targetRows = challenge.targets.map(target => evaluateChallengeTarget(target, result));
+
+  const allowedSet = new Set(challenge.allowedTransporters);
+  const disallowed = transporters.filter(t => !allowedSet.has(t.id));
+  const constraintRows = [
+    {
+      label: 'Transporter set',
+      target: 'Use only the challenge transporters',
+      current: disallowed.length ? Array.from(new Set(disallowed.map(t => t.name))).join(', ') : 'All placed transporters are allowed',
+      status: disallowed.length ? 'Check' : 'Met',
+      met: disallowed.length === 0
+    }
+  ];
+
+  if (challenge.constraints?.maxTransporters != null) {
+    const maxTransporters = challenge.constraints.maxTransporters;
+    constraintRows.push({
+      label: 'Transporter count',
+      target: String(maxTransporters) + ' or fewer',
+      current: String(transporters.length),
+      status: transporters.length <= maxTransporters ? 'Met' : 'Check',
+      met: transporters.length <= maxTransporters
+    });
+  }
+
+  if (challenge.constraints?.maxHighDensity != null) {
+    const maxHighDensity = challenge.constraints.maxHighDensity;
+    const highDensityCount = transporters.filter(t => t.density === 2).length;
+    constraintRows.push({
+      label: 'High-density limit',
+      target: String(maxHighDensity) + ' or fewer',
+      current: String(highDensityCount),
+      status: highDensityCount <= maxHighDensity ? 'Met' : 'Check',
+      met: highDensityCount <= maxHighDensity
+    });
+  }
+
+  if (challenge.lockConcentrations) {
+    const expected = challenge.baseConcentrations || INITIAL_CONCENTRATIONS;
+    const met = concentrationsMatch(baseConcentrations, expected);
+    constraintRows.push({
+      label: 'Starting concentrations',
+      target: 'Use the loaded challenge reservoirs',
+      current: met ? 'Loaded' : 'Changed in Settings',
+      status: met ? 'Met' : 'Check',
+      met
+    });
+  }
+
+  if (challenge.paracellular?.locked) {
+    const expectedType = challenge.paracellular.type || 'none';
+    const met = paracellularType === expectedType;
+    constraintRows.push({
+      label: 'Paracellular pathway',
+      target: paracellularTypeLabel(expectedType),
+      current: paracellularTypeLabel(paracellularType),
+      status: met ? 'Met' : 'Check',
+      met
+    });
+  }
+
+  const allTargetsMet = targetRows.every(row => row.met);
+  const allConstraintsMet = constraintRows.every(row => row.met);
+  const state = allTargetsMet && allConstraintsMet
+    ? 'success'
+    : transporters.length === 0
+      ? 'ready'
+      : 'iterate';
+
+  return {
+    state,
+    label: state === 'success' ? 'Challenge met' : state === 'ready' ? 'Ready to build' : 'Keep iterating',
+    targetRows,
+    constraintRows
+  };
+}
+
 export default function App() {
   // State
   const [showAbout, setShowAbout] = useState(false);
@@ -642,6 +931,8 @@ export default function App() {
   const [resultsView, setResultsView] = useState('graphs');
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
   const [tissuePreset, setTissuePreset] = useState('all');
+  const [activityMode, setActivityMode] = useState('explore');
+  const [selectedChallengeId, setSelectedChallengeId] = useState(CHALLENGE_BANK[0].id);
 
   const [electrochemicalFeedback] = useState(false);
 
@@ -1116,15 +1407,57 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
   const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
+  const challengeMode = activityMode === 'challenge';
+  const activeChallenge = CHALLENGE_BANK.find(challenge => challenge.id === selectedChallengeId) || CHALLENGE_BANK[0];
+  const challengeReport = challengeMode && result
+    ? evaluateChallenge(activeChallenge, result, transporters, baseConcentrations, paracellularType)
+    : null;
+  const challengeParacellularLocked = challengeMode && !!activeChallenge.paracellular?.locked;
+  const challengeParacellularType = activeChallenge.paracellular?.type || 'none';
+  const challengeStatusClass = challengeReport?.state === 'success'
+    ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+    : challengeReport?.state === 'iterate'
+      ? 'border-amber-300 bg-amber-50 text-amber-900'
+      : 'border-blue-200 bg-blue-50 text-blue-900';
+  const buildTransporterInstance = (entry, index) => {
+    const template = transporterTemplateById(entry.id);
+    if (!template) return null;
+    return {
+      ...template,
+      kinetics: { ...template.kinetics },
+      placement: entry.placement,
+      density: entry.density || 1,
+      uid: entry.id + '-' + entry.placement + '-challenge-' + index + '-' + Date.now()
+    };
+  };
+  const applyChallengeParacellular = challenge => {
+    setParacellularType(challenge.paracellular?.type || 'none');
+    setParaCationPerm(challenge.paracellular?.cationPerm ?? 1.0);
+    setParaAnionPerm(challenge.paracellular?.anionPerm ?? 1.0);
+  };
+  const loadChallenge = challenge => {
+    if (!challenge) return;
+    setActivityMode('challenge');
+    setSelectedChallengeId(challenge.id);
+    setTissuePreset(challenge.tissuePreset);
+    setBaseConcentrations(cloneConcentrations(challenge.baseConcentrations || INITIAL_CONCENTRATIONS));
+    applyChallengeParacellular(challenge);
+    setTransporters((challenge.startingTransporters || [])
+      .map((entry, index) => buildTransporterInstance(entry, index))
+      .filter(Boolean));
+  };
   const membraneTransporters = placement => transporters.filter(t => t.placement === placement);
   const transporterIsOnMembrane = (id, placement) => transporters.some(t => t.id === id && t.placement === placement);
-  const tissueOption = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
+  const tissueOption = TISSUE_OPTIONS.find(option => option.value === (challengeMode ? activeChallenge.tissuePreset : tissuePreset)) || TISSUE_OPTIONS[0];
   const allTissueOption = TISSUE_OPTIONS[0];
   const groupedTissueOptions = TISSUE_OPTION_GROUPS.map(group => ({
     group,
     options: TISSUE_OPTIONS.filter(option => option.group === group)
   })).filter(group => group.options.length > 0);
-  const visibleTransporterIds = new Set(tissueOption.transporterIds);
+  const challengeAllowedIds = new Set(activeChallenge.allowedTransporters);
+  const visibleTransporterIds = new Set(
+    tissueOption.transporterIds.filter(id => !challengeMode || challengeAllowedIds.has(id))
+  );
 
   const renderTransporterChooser = placement => (
     <div className="space-y-3">
@@ -1430,6 +1763,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Reservoirs and surfaces:</b> Bulk bath concentrations are fixed by default. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
         <li><b>Direction convention:</b> Flux graphs use one shared convention: positive points toward the basolateral/blood side and negative points toward the apical/lumen side.</li>
         <li><b>Exploration:</b> Tissue choices filter which transporters are offered, but they do not remove transporters already placed. Unusual layouts are allowed so users can observe their consequences.</li>
+        <li><b>Challenge mode:</b> Challenges add goals, constraints, and progress checks around the same qualitative model; they do not change the underlying flux rules.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Teaching Abstractions &amp; Limits</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
@@ -1636,13 +1970,88 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
 <Button variant="outline" onClick={() => setTransporters([])}>Reset</Button>
 </div>
+
+<fieldset className="border rounded p-2 bg-white mb-4">
+  <legend className="text-sm font-semibold px-1">Activity</legend>
+  <div className="flex flex-wrap gap-3 text-sm">
+    <label className="inline-flex items-center gap-1">
+      <input
+        type="radio"
+        name="activity-mode"
+        value="explore"
+        checked={activityMode === 'explore'}
+        onChange={() => setActivityMode('explore')}
+      />
+      Explore
+    </label>
+    <label className="inline-flex items-center gap-1">
+      <input
+        type="radio"
+        name="activity-mode"
+        value="challenge"
+        checked={challengeMode}
+        onChange={() => {
+          loadChallenge(activeChallenge);
+        }}
+      />
+      Challenge
+    </label>
+  </div>
+</fieldset>
+
+{challengeMode && (
+  <section className="border rounded p-3 bg-blue-50 mb-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-blue-800">{activeChallenge.level}</div>
+      {challengeReport && (
+        <div className={'rounded border px-2 py-0.5 text-xs font-semibold ' + challengeStatusClass} role="status">
+          {challengeReport.label}
+        </div>
+      )}
+    </div>
+    <label className="block text-sm font-semibold mb-1" htmlFor="challenge-select">Challenge</label>
+    <select
+      id="challenge-select"
+      value={activeChallenge.id}
+      onChange={e => {
+        const nextId = e.target.value;
+        const nextChallenge = CHALLENGE_BANK.find(challenge => challenge.id === nextId);
+        loadChallenge(nextChallenge);
+      }}
+      className="w-full border rounded p-1 bg-white mb-3"
+    >
+      {CHALLENGE_BANK.map(challenge => (
+        <option key={challenge.id} value={challenge.id}>{challenge.title}</option>
+      ))}
+    </select>
+    <h2 className="text-base font-semibold mb-1">{activeChallenge.title}</h2>
+    <p className="text-sm text-gray-700 mb-2">{activeChallenge.goal}</p>
+    <dl className="text-xs text-gray-700 space-y-1 mb-3">
+      <div>
+        <dt className="font-semibold inline">Tissue: </dt>
+        <dd className="inline">{TISSUE_OPTIONS.find(option => option.value === activeChallenge.tissuePreset)?.label || activeChallenge.tissuePreset}</dd>
+      </div>
+      <div>
+        <dt className="font-semibold inline">Allowed: </dt>
+        <dd className="inline">{activeChallenge.allowedTransporters.map(id => transporterTemplateById(id)?.name || id).join(', ')}</dd>
+      </div>
+      <div>
+        <dt className="font-semibold inline">Limits: </dt>
+        <dd className="inline">
+          {activeChallenge.constraints?.maxTransporters || 'Any'} transporters; {activeChallenge.constraints?.maxHighDensity ?? 'any'} high-density maximum
+        </dd>
+      </div>
+    </dl>
+  </section>
+)}
            
         <div className="mt-4">
   <h2 className="text-base font-semibold mb-2">Tissue</h2>
   <select
     value={tissueOption.value}
     onChange={e => setTissuePreset(e.target.value)}
-    className="w-full border rounded p-1"
+    disabled={challengeMode}
+    className={'w-full border rounded p-1 ' + (challengeMode ? 'bg-gray-100 text-gray-600' : '')}
     aria-label="Tissue transporter set"
   >
     <option value={allTissueOption.value}>{allTissueOption.label}</option>
@@ -1655,7 +2064,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ))}
   </select>
   <div className="text-xs text-gray-500 mt-1">
-    Filters the add-transporter list; already-added transporters remain active.
+    {challengeMode ? 'Locked by the selected challenge; already-added transporters remain active.' : 'Filters the add-transporter list; already-added transporters remain active.'}
   </div>
 </div>
 
@@ -1665,11 +2074,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     <tbody>
       <tr>
         <td className="px-2 py-1">
-         <select value={paracellularType} onChange={e => setParacellularType(e.target.value)} className="w-full border rounded p-1">
+         <select
+           value={challengeParacellularLocked ? challengeParacellularType : paracellularType}
+           onChange={e => setParacellularType(e.target.value)}
+           disabled={challengeParacellularLocked}
+           className={'w-full border rounded p-1 ' + (challengeParacellularLocked ? 'bg-gray-100 text-gray-600' : '')}
+           aria-label="Paracellular pathway"
+         >
   <option value="none">Tight Junction</option>
   <option value="cation">Cation + Water Pore</option>
   <option value="anion">Anion Pore</option>
 </select>
+          {challengeParacellularLocked && (
+            <div className="text-xs text-gray-500 mt-1">
+              Locked for this challenge: {paracellularTypeLabel(challengeParacellularType)}.
+            </div>
+          )}
 
         </td>
         <td className="px-2 py-1">
@@ -1899,6 +2319,28 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 {simulationSummary.map(line => <li key={line}>{line}</li>)}
               </ul>
             </section>
+
+            {challengeMode && challengeReport && (
+              <section className={'border rounded p-3 ' + challengeStatusClass}>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h2 className="font-semibold">Challenge Progress</h2>
+                  <div className="text-sm font-semibold" role="status">{challengeReport.label}</div>
+                </div>
+                <div className="overflow-auto">
+                  <AccessibleTable
+                    caption="Challenge targets based on the current model output."
+                    columns={[
+                      { key: 'label', label: 'Target' },
+                      { key: 'target', label: 'Goal' },
+                      { key: 'current', label: 'Current output' },
+                      { key: 'status', label: 'Status' },
+                      { key: 'feedback', label: 'Feedback' }
+                    ]}
+                    rows={challengeReport.targetRows}
+                  />
+                </div>
+              </section>
+            )}
 
             <fieldset className="flex items-center gap-3 text-sm">
               <legend className="font-semibold mr-1">Results view</legend>
