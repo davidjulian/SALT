@@ -464,6 +464,19 @@ const FLUX_GROUPS = [
   { key: 'nutrients', label: 'Nutrient Fluxes', solutes: ['Glucose', 'AA', 'Peptide'] },
   { key: 'organic', label: 'Organic Ion Fluxes', solutes: ['OA-', 'OC+'] }
 ];
+const FLUX_BAR_SERIES = [
+  { key: 'apicalStep', name: 'Apical step', color: '#2563eb' },
+  { key: 'basolateralStep', name: 'Basolateral step', color: '#059669' },
+  { key: 'paracellularStep', name: 'Paracellular', color: '#d97706' },
+  { key: 'transepithelial', name: 'Net epithelial', color: '#fb7185' }
+];
+const CONCENTRATION_COMPARTMENTS = [
+  { key: 'apicalBulk', label: 'Apical bulk' },
+  { key: 'apicalSurface', label: 'Apical surface' },
+  { key: 'icf', label: 'Cell' },
+  { key: 'basolateralSurface', label: 'Basolateral surface' },
+  { key: 'basolateralBulk', label: 'Basolateral bulk' }
+];
 const CHALLENGE_BANK = [
   {
     id: 'glucose-absorption-starter',
@@ -753,6 +766,25 @@ function concentrationsMatch(current, expected) {
   );
 }
 
+function niceConcentrationAxisMax(value) {
+  const raw = Math.max(Number(value || 0) * 1.15, 0.01);
+  const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+  const scaled = raw / magnitude;
+  const steps = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
+  const step = steps.find(candidate => scaled <= candidate) || 10;
+  return step * magnitude;
+}
+
+function formatConcentrationAxisTick(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return value;
+  const magnitude = Math.abs(numeric);
+  if (magnitude >= 100) return String(Math.round(numeric));
+  if (magnitude >= 10) return String(Number(numeric.toFixed(1)));
+  if (magnitude >= 1) return String(Number(numeric.toFixed(2)));
+  return String(Number(numeric.toFixed(4)));
+}
+
 function challengeDirectionSign(direction) {
   return ['absorption', 'acidSecretion', 'waterAbsorption', 'lumenNegative'].includes(direction) ? 1 : -1;
 }
@@ -929,6 +961,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [resultsView, setResultsView] = useState('graphs');
+  const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
   const [tissuePreset, setTissuePreset] = useState('all');
   const [activityMode, setActivityMode] = useState('explore');
@@ -1367,6 +1400,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
     : [];
   const concData = concentrationIons.map(ion => ({
+    ionKey: ion,
     ion: ION_LABEL[ion] || ion,
     apicalBulk: result.concentrations.apicalECF[ion],
     apicalSurface: result.concentrations.apicalSurface?.[ion] ?? result.concentrations.apicalECF[ion],
@@ -1375,6 +1409,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     basolateralBulk: result.concentrations.basolateralECF[ion]
   }));
   const concTableData = concentrationIons.map(ion => ({
+    ionKey: ion,
     ion: ION_LABEL[ion] || ion,
     apicalBulk: result.concentrations.apicalECF[ion],
     apicalSurface: result.concentrations.apicalSurface?.[ion] ?? result.concentrations.apicalECF[ion],
@@ -1382,6 +1417,39 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     basolateralSurface: result.concentrations.basolateralSurface?.[ion] ?? result.concentrations.basolateralECF[ion],
     basolateralBulk: result.concentrations.basolateralECF[ion]
   }));
+  const openConcentrationZoomFromChart = data => {
+    const ionKey = data?.payload?.ionKey || data?.activePayload?.[0]?.payload?.ionKey;
+    if (ionKey) setZoomedConcentrationIon(ionKey);
+  };
+  const zoomedConcentrationRow = zoomedConcentrationIon
+    ? concData.find(row => row.ionKey === zoomedConcentrationIon)
+    : null;
+  const zoomedConcentrationData = zoomedConcentrationRow
+    ? CONCENTRATION_COMPARTMENTS.map(compartment => ({
+        compartment: compartment.label,
+        concentration: Number(zoomedConcentrationRow[compartment.key] ?? 0)
+      }))
+    : [];
+  const zoomedConcentrationMax = zoomedConcentrationData.reduce((max, row) => Math.max(max, row.concentration), 0);
+  const zoomedConcentrationDomainMax = niceConcentrationAxisMax(zoomedConcentrationMax);
+  const ConcentrationTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const row = payload[0]?.payload;
+    if (!row) return null;
+    return (
+      <div className="bg-white border rounded shadow-lg p-2 text-xs text-gray-700 max-w-xs">
+        <div className="font-semibold text-sm mb-1">{label}</div>
+        <div className="space-y-0.5">
+          {payload.map(item => (
+            <div key={item.dataKey} className="flex items-center justify-between gap-4">
+              <span>{item.name}</span>
+              <span className="font-mono">{Number(item.value ?? 0).toFixed(3)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
 // For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic uses pathway completion rules rather than buffered pH kinetics.
@@ -2368,12 +2436,24 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
             {resultsView === 'graphs' ? (
               <div className="space-y-4">
-                <div>
+                <section className="border rounded p-3 bg-white">
                   <h3 className="font-semibold">Directional Fluxes</h3>
                   <div className="text-xs text-gray-600 mb-2">Positive = toward blood; negative = toward lumen.</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3" aria-label="Shared flux graph legend">
+                    {FLUX_BAR_SERIES.map(series => (
+                      <div key={series.key} className="inline-flex items-center gap-1">
+                        <span
+                          className="inline-block h-3 w-3 rounded-sm"
+                          style={{ backgroundColor: series.color }}
+                          aria-hidden="true"
+                        />
+                        <span>{series.name}</span>
+                      </div>
+                    ))}
+                  </div>
                   <div className="space-y-4">
                     {directionalFluxGroups.filter(group => group.key === 'ions').map(group => (
-                      <div key={group.key}>
+                      <div key={group.key} className="border-t pt-3">
                         <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
                         <ResponsiveContainer width="100%" height={180}>
                           <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
@@ -2381,18 +2461,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                             <YAxis tick={{ fontSize: 12 }} />
                             <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                             <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                            <Legend />
-                            <Bar dataKey="apicalStep" name="Apical step" fill="#2563eb" />
-                            <Bar dataKey="basolateralStep" name="Basolateral step" fill="#059669" />
-                            <Bar dataKey="paracellularStep" name="Paracellular" fill="#d97706" />
-                            <Bar dataKey="transepithelial" name="Net epithelial" fill="#fb7185" />
+                            {FLUX_BAR_SERIES.map(series => (
+                              <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
+                            ))}
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
                     ))}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {directionalFluxGroups.filter(group => group.key !== 'ions').map(group => (
-                        <div key={group.key}>
+                        <div key={group.key} className="border-t pt-3">
                           <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
                           <ResponsiveContainer width="100%" height={150}>
                             <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
@@ -2400,31 +2478,66 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                               <YAxis tick={{ fontSize: 12 }} />
                               <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                               <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                              <Legend />
-                              <Bar dataKey="apicalStep" name="Apical step" fill="#2563eb" />
-                              <Bar dataKey="basolateralStep" name="Basolateral step" fill="#059669" />
-                              <Bar dataKey="paracellularStep" name="Paracellular" fill="#d97706" />
-                              <Bar dataKey="transepithelial" name="Net epithelial" fill="#fb7185" />
+                              {FLUX_BAR_SERIES.map(series => (
+                                <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
+                              ))}
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                       ))}
                     </div>
                   </div>
-                </div>
+                </section>
                 <div>
-                  <h3 className="font-semibold mb-2">Concentrations</h3>
+                  <h3 className="font-semibold">Concentrations</h3>
+                  <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view.</div>
                   <ResponsiveContainer width="100%" height={190}>
-                    <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} onClick={openConcentrationZoomFromChart}>
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
-                      <YAxis domain={[0,150]} tick={{ fontSize: 12 }} /><Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} /><Legend />
-                      <Bar dataKey="apicalBulk" name="Apical Bulk" fill="#2dd4bf" />
-                      <Bar dataKey="apicalSurface" name="Apical Surface" fill="#0f766e" />
-                      <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} />
-                      <Bar dataKey="basolateralSurface" name="Basolateral Surface" fill="#ea580c" />
-                      <Bar dataKey="basolateralBulk" name="Basolateral Bulk" fill="#fb923c" />
+                      <YAxis domain={[0,150]} tick={{ fontSize: 12 }} />
+                      <Tooltip content={<ConcentrationTooltip />} wrapperStyle={{ pointerEvents: 'none' }} />
+                      <Legend />
+                      <Bar dataKey="apicalBulk" name="Apical Bulk" fill="#2dd4bf" onClick={openConcentrationZoomFromChart} />
+                      <Bar dataKey="apicalSurface" name="Apical Surface" fill="#0f766e" onClick={openConcentrationZoomFromChart} />
+                      <Bar dataKey="icf" name="ICF" fill="#8b5cf6" fillOpacity={0.75} onClick={openConcentrationZoomFromChart} />
+                      <Bar dataKey="basolateralSurface" name="Basolateral Surface" fill="#ea580c" onClick={openConcentrationZoomFromChart} />
+                      <Bar dataKey="basolateralBulk" name="Basolateral Bulk" fill="#fb923c" onClick={openConcentrationZoomFromChart} />
                     </BarChart>
                   </ResponsiveContainer>
+                  {zoomedConcentrationRow && (
+                    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40" onClick={() => setZoomedConcentrationIon(null)}>
+                      <section className="bg-white rounded-lg p-4 shadow-lg w-[92vw] max-w-xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <h4 className="font-semibold">Concentration Zoom: {zoomedConcentrationRow.ion}</h4>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setZoomedConcentrationIon(null)}
+                            aria-label="Close concentration zoom"
+                          >
+                            Close
+                          </Button>
+                        </div>
+                        <div
+                          role="img"
+                          aria-label={'Zoomed concentration view for ' + zoomedConcentrationRow.ion + '.'}
+                        >
+                          <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={zoomedConcentrationData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                              <XAxis dataKey="compartment" interval={0} tick={{ fontSize: 11 }} height={42} />
+                              <YAxis
+                                domain={[0, zoomedConcentrationDomainMax]}
+                                tick={{ fontSize: 11 }}
+                                tickFormatter={formatConcentrationAxisTick}
+                              />
+                              <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(4) : value)} />
+                              <Bar dataKey="concentration" name={zoomedConcentrationRow.ion + ' concentration'} fill="#2563eb" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </section>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
