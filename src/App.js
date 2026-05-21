@@ -411,7 +411,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
   NKCC: 'NKCC cotransporter class, e.g., NKCC1 and NKCC2: moves Na+, K+, and Cl- together.',
-  NaKATPase: 'Sodium-potassium pump: pumps Na+ out and K+ in using ATP.',
+  NaKATPase: 'Sodium-potassium pump: maintains low cell Na+ and high cell K+ gradients using ATP; modeled as gradient support, not a flux bar.',
   OAT: 'OAT organic anion transporter class, e.g., OAT1 and OAT3: moves organic anions.',
   OCT: 'OCT organic cation transporter class, e.g., OCT1 and OCT2: moves organic cations.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
@@ -429,6 +429,7 @@ const INITIAL_CONCENTRATIONS = {
 };
 
 const CONCENTRATION_EDIT_IONS = ['Na+', 'K+', 'Cl-', 'HCO3-', 'Ca2+', 'Phosphate', 'Glucose'];
+const CONCENTRATION_EDIT_COMPARTMENTS = ['apicalECF', 'basolateralECF'];
 const ION_LABEL = {
   'Na+': 'Na⁺',
   'K+': 'K⁺',
@@ -475,6 +476,11 @@ const CONCENTRATION_COMPARTMENTS = [
   { key: 'icf', label: 'Cell', name: 'ICF', color: '#8b5cf6', fillOpacity: 0.75 },
   { key: 'basolateralSurface', label: 'Basolateral surface', name: 'Basolateral Surface', color: '#ea580c' },
   { key: 'basolateralBulk', label: 'Basolateral bulk', name: 'Basolateral Bulk', color: '#fb923c' }
+];
+const SETTINGS_CONCENTRATION_COMPARTMENTS = [
+  { key: 'apicalECF', label: 'Apical bath', editable: true },
+  { key: 'icf', label: 'Cell, modeled', editable: false },
+  { key: 'basolateralECF', label: 'Basolateral bath', editable: true }
 ];
 const CHALLENGE_BANK = [
   {
@@ -606,6 +612,42 @@ function cloneConcentrations(source) {
     icf: { ...source.icf },
     basolateralECF: { ...source.basolateralECF }
   };
+}
+
+function naKATPaseSupportStrength(tList) {
+  const pumpDensities = tList
+    .filter(t => t.id === SUPPORT_PUMP_ID && t.placement !== 'none')
+    .map(t => Number(t.density) || 0);
+  if (!pumpDensities.length) return 0;
+  return Math.min(Math.max(...pumpDensities), 1);
+}
+
+function averageEditableReservoirConcentration(baseConcentrations, ion) {
+  const apical = Number(baseConcentrations.apicalECF?.[ion]);
+  const basolateral = Number(baseConcentrations.basolateralECF?.[ion]);
+  if (Number.isFinite(apical) && Number.isFinite(basolateral)) return (apical + basolateral) / 2;
+  if (Number.isFinite(apical)) return apical;
+  if (Number.isFinite(basolateral)) return basolateral;
+  return Number(INITIAL_CONCENTRATIONS.apicalECF[ion] ?? 0);
+}
+
+function deriveEffectiveStartingIcf(baseConcentrations, tList) {
+  const effectiveIcf = { ...baseConcentrations.icf };
+  const supportStrength = naKATPaseSupportStrength(tList);
+
+  ['Na+', 'K+'].forEach(ion => {
+    const ecfLikeValue = averageEditableReservoirConcentration(baseConcentrations, ion);
+    const normalCellValue = Number(baseConcentrations.icf?.[ion] ?? INITIAL_CONCENTRATIONS.icf[ion] ?? ecfLikeValue);
+    effectiveIcf[ion] = ecfLikeValue + (normalCellValue - ecfLikeValue) * supportStrength;
+  });
+
+  return effectiveIcf;
+}
+
+function naKATPaseSupportLabel(strength) {
+  if (strength <= 0) return 'none';
+  if (strength < 1) return 'partial';
+  return 'normal';
 }
 
 function surfaceClamp(value, bulkValue) {
@@ -758,7 +800,7 @@ function paracellularTypeLabel(type) {
 }
 
 function concentrationsMatch(current, expected) {
-  return ['apicalECF', 'icf', 'basolateralECF'].every(compartment =>
+  return CONCENTRATION_EDIT_COMPARTMENTS.every(compartment =>
     Object.keys(expected[compartment] || {}).every(ion =>
       Math.abs(Number(current[compartment]?.[ion] ?? 0) - Number(expected[compartment]?.[ion] ?? 0)) < 1e-9
     )
@@ -915,7 +957,7 @@ function evaluateChallenge(challenge, result, transporters, baseConcentrations, 
     const expected = challenge.baseConcentrations || INITIAL_CONCENTRATIONS;
     const met = concentrationsMatch(baseConcentrations, expected);
     constraintRows.push({
-      label: 'Starting concentrations',
+      label: 'Reservoir concentrations',
       target: 'Use the loaded challenge reservoirs',
       current: met ? 'Loaded' : 'Changed in Settings',
       status: met ? 'Met' : 'Check',
@@ -1028,6 +1070,7 @@ export default function App() {
   };
 
   const updateBaseConcentration = (compartment, ion, value) => {
+    if (!CONCENTRATION_EDIT_COMPARTMENTS.includes(compartment)) return;
     const numeric = Math.max(Number(value) || 0, 0);
     setBaseConcentrations(current => ({
       ...current,
@@ -1079,7 +1122,11 @@ function activeStoichForPlacement(transporter) {
 
 const calculateFluxesAndConcs = (tList = transporters) => {
   // Bulk baths are fixed teaching reservoirs; local surface layers are computed below.
-  const baseline = baseConcentrations;
+  const effectiveStartingIcf = deriveEffectiveStartingIcf(baseConcentrations, tList);
+  const baseline = {
+    ...baseConcentrations,
+    icf: effectiveStartingIcf
+  };
   const apicalECF = { ...baseline.apicalECF };
   const basolateralECF = { ...baseline.basolateralECF };
   const apicalFlux = {};
@@ -1091,7 +1138,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   ]));
   fluxSolutes.forEach(ion => { apicalFlux[ion] = 0; basolateralFlux[ion] = 0; });
 
-  const hasNaKATPase = tList.some(t => t.id === 'NaKATPase' && t.placement !== 'none');
+  const naKSupportStrength = naKATPaseSupportStrength(tList);
+  const hasNaKATPase = naKSupportStrength > 0;
   const passiveChannels = [];
   const coupledEvents = [];
   const fluxEvents = [];
@@ -1146,17 +1194,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   });
 
   const supportClearance = { 'Na+': 0, Phosphate: 0 };
+  const gradientMaintenanceFlux = { 'Na+': 0 };
   const activeNaCellLoad = (apicalFlux['Na+'] || 0) + (basolateralFlux['Na+'] || 0);
   if (hasNaKATPase && activeNaCellLoad > 0) {
-    supportClearance['Na+'] = activeNaCellLoad;
-    basolateralFlux['Na+'] -= supportClearance['Na+'];
-    fluxEvents.push({
-      id: SUPPORT_PUMP_ID,
-      name: 'Na⁺/K⁺-ATPase support',
-      placement: 'basolateral',
-      type: 'gradient-support',
-      solutes: [{ ion: 'Na+', coeff: -1, flux: -supportClearance['Na+'] }]
-    });
+    supportClearance['Na+'] = activeNaCellLoad * naKSupportStrength;
+    gradientMaintenanceFlux['Na+'] = -supportClearance['Na+'];
   }
   const apicalNaPiPhosphateLoad = tList.some(t => t.id === 'NaPi' && t.placement === 'apical')
     ? Math.max(apicalFlux.Phosphate || 0, 0)
@@ -1174,7 +1216,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
 
   const activeNetFlux = {};
-  Object.keys(apicalFlux).forEach(ion => { activeNetFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
+  Object.keys(apicalFlux).forEach(ion => {
+    activeNetFlux[ion] = apicalFlux[ion] + basolateralFlux[ion] + (gradientMaintenanceFlux[ion] || 0);
+  });
   const prePassiveICF = { ...baseline.icf };
   Object.entries(activeNetFlux)
     .filter(([ion]) => !FLUX_ONLY_SOLUTES.includes(ion))
@@ -1198,6 +1242,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       solutes: [{ ion, coeff: Math.sign(delta), flux: delta }]
     });
   });
+
+  const completionApicalFlux = { ...apicalFlux };
+  const completionBasolateralFlux = { ...basolateralFlux };
+  completionBasolateralFlux['Na+'] = (completionBasolateralFlux['Na+'] || 0) - supportClearance['Na+'];
 
   const netFlux = {};
   Object.keys(apicalFlux).forEach(ion => { netFlux[ion] = apicalFlux[ion] + basolateralFlux[ion]; });
@@ -1251,7 +1299,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       }
     }
   }
-  const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT','NaPi','ENaC','NCC','NKCC'], ['NaKATPase'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const naTransEpiFlux = transepithelialFlux('Na+', ['SGLT','NaPi','ENaC','NCC','NKCC'], ['NaKATPase'], true, completionApicalFlux, completionBasolateralFlux, tList, hasNaKATPase);
   const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','Pendrin'], ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let phosphateTransEpiFlux = 0;
@@ -1387,13 +1435,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     chargeReport,
     coupledMismatchReport,
     cellImbalanceReport,
-    acidBaseReport
+    acidBaseReport,
+    gradientSupportReport: {
+      strength: naKSupportStrength,
+      label: naKATPaseSupportLabel(naKSupportStrength)
+    }
   });
 };
 
 
   // --- Derived Data for Display ---
   const acidBaseReport = result?.acidBaseReport;
+  const settingsConcentrations = {
+    ...baseConcentrations,
+    icf: deriveEffectiveStartingIcf(baseConcentrations, transporters)
+  };
 
   const concentrationIons = result
     ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
@@ -1626,6 +1682,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const waterReport = result?.waterReport;
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
+  const gradientSupportReport = result?.gradientSupportReport;
   const coupledMismatchReport = result?.coupledMismatchReport;
   const cellImbalanceReport = result?.cellImbalanceReport || [];
   const cellImbalanceRows = cellImbalanceReport.length
@@ -1634,6 +1691,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
+  const formatSettingsConcentration = value => {
+    const numeric = Number(value ?? 0);
+    if (!Number.isFinite(numeric)) return '0';
+    if (numeric !== 0 && Math.abs(numeric) < 0.001) return numeric.toPrecision(2);
+    return String(Number(numeric.toFixed(3)));
+  };
   const fluxDirection = value => {
     const numeric = Number(value ?? 0);
     if (Math.abs(numeric) < 0.001) return 'none';
@@ -1651,6 +1714,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const simulationSummary = result ? [
     'Apical membrane: ' + membraneListText('apical') + '.',
     'Basolateral membrane: ' + membraneListText('basolateral') + '.',
+    gradientSupportReport
+      ? 'Na⁺/K⁺-ATPase gradient support: ' + gradientSupportReport.label + '; support sets steady-state Na⁺ and K⁺ gradients and is not shown as a separate Na⁺ or K⁺ flux bar.'
+      : '',
     keyTransepithelialRows.length
       ? 'Net transepithelial movement: ' + keyTransepithelialRows.map(row => row.ion + ' ' + fluxDirection(row.transepithelial)).join('; ') + '.'
       : 'No substantial net transepithelial solute or water movement is currently predicted.',
@@ -1827,7 +1893,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Purpose:</b> SALT is a qualitative teaching model for exploring epithelial pathway logic: which membrane steps are present, which are missing, and what consequences follow.</li>
         <li><b>Units:</b> Fluxes, concentration shifts, water tendencies, and charge tendencies use arbitrary teaching units. The model is not intended to produce research-grade flux magnitudes.</li>
         <li><b>Core distinction:</b> The app separates one-membrane flux tendencies from completed transepithelial flux. A transporter can move solute into or out of the cell even when a full apical-to-basolateral pathway is incomplete.</li>
-        <li><b>Reservoirs and surfaces:</b> Bulk bath concentrations are fixed by default. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
+        <li><b>Reservoirs and surfaces:</b> Bulk ECF bath concentrations are fixed by default and editable in Settings. ICF is model-derived from the steady-state cell condition. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
         <li><b>Direction convention:</b> Flux graphs use one shared convention: positive points toward the basolateral/blood side and negative points toward the apical/lumen side.</li>
         <li><b>Exploration:</b> Tissue choices filter which transporters are offered, but they do not remove transporters already placed. Unusual layouts are allowed so users can observe their consequences.</li>
         <li><b>Challenge mode:</b> Challenges add goals, constraints, and progress checks around the same qualitative model; they do not change the underlying flux rules.</li>
@@ -1840,7 +1906,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, osmolality, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase provides Na⁺ gradient support and basolateral Na⁺ clearance. NaPi can use implicit basolateral phosphate exit when pump support is present. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase sets steady-state Na⁺ and K⁺ gradients used by other transporters. It is modeled as gradient maintenance, not as a separate Na⁺ or K⁺ flux bar. NaPi can use implicit basolateral phosphate exit when pump support is present. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
@@ -1943,7 +2009,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
           <i>Biological action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
-          <i>Rule:</i> In this teaching layer, it is modeled as Na⁺ gradient support and basolateral Na⁺ clearance. Its K⁺ stoichiometry is acknowledged but not explicitly balanced.
+          <i>Rule:</i> In this teaching layer, it sets steady-state low Na⁺ and high K⁺ cell gradients for other transporters. Low density gives partial support; normal and high density provide normal teaching support. It is not displayed as a separate Na⁺ or K⁺ flux bar.
         </li>
         <li>
           <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
@@ -2012,7 +2078,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane (plus Na⁺/K⁺ ATPase anywhere).</li>
-        <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support provides modeled basolateral Na⁺ clearance.</li>
+        <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide Na⁺ entry/exit tendencies; Na⁺/K⁺ ATPase support maintains the low intracellular Na⁺ gradient used for completed Na⁺-coupled pathways.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux and K⁺ recycling support for NKCC-heavy layouts.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC-Kb, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
@@ -2242,32 +2308,45 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           </Button>
         </div>
         <p className="text-gray-500 mb-2">
-          These values set fixed bulk reservoirs and the starting cell composition. Local surface concentrations are calculated from transporter fluxes plus fixed partial mixing.
+          Apical and basolateral bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase support sets the Na⁺ and K⁺ gradients used by other transporters.
+        </p>
+        <p className="text-gray-500 mb-2">
+          Pump activity is modeled as gradient maintenance, not as a separate Na⁺ or K⁺ flux bar. Electrochemical context remains display-only and does not alter flux.
         </p>
         <table className="min-w-full table-auto text-left border">
+          <caption className="sr-only">Baseline concentration settings. Apical and basolateral ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
           <thead>
             <tr className="bg-gray-100">
               <th scope="col" className="px-2 py-1 border">Ion or solute</th>
-              <th scope="col" className="px-2 py-1 border">Apical bath</th>
-              <th scope="col" className="px-2 py-1 border">Cell</th>
-              <th scope="col" className="px-2 py-1 border">Basolateral bath</th>
+              {SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => (
+                <th key={compartment.key} scope="col" className="px-2 py-1 border">{compartment.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {CONCENTRATION_EDIT_IONS.map(ion => (
               <tr key={ion}>
                 <th scope="row" className="px-2 py-1 border font-semibold">{ION_LABEL[ion] || ion}</th>
-                {['apicalECF', 'icf', 'basolateralECF'].map(compartment => (
-                  <td key={compartment} className="px-2 py-1 border">
-                    <input
-                      type="number"
-                      min="0"
-                      step={ion === 'Ca2+' ? '0.0001' : '0.1'}
-                      value={baseConcentrations[compartment][ion]}
-                      onChange={e => updateBaseConcentration(compartment, ion, e.target.value)}
-                      className="border rounded p-1 w-full"
-                      aria-label={(ION_LABEL[ion] || ion) + ' ' + compartment + ' baseline concentration'}
-                    />
+                {SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => (
+                  <td key={compartment.key} className="px-2 py-1 border">
+                    {compartment.editable ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step={ion === 'Ca2+' ? '0.0001' : '0.1'}
+                        value={baseConcentrations[compartment.key][ion]}
+                        onChange={e => updateBaseConcentration(compartment.key, ion, e.target.value)}
+                        className="border rounded p-1 w-full"
+                        aria-label={(ION_LABEL[ion] || ion) + ' ' + compartment.label + ' reservoir concentration'}
+                      />
+                    ) : (
+                      <span
+                        className="block font-mono text-gray-700"
+                        aria-label={(ION_LABEL[ion] || ion) + ' modeled cell ICF concentration, not editable'}
+                      >
+                        {formatSettingsConcentration(settingsConcentrations[compartment.key][ion])}
+                      </span>
+                    )}
                   </td>
                 ))}
               </tr>
@@ -2327,7 +2406,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NKCC':
           return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves Na⁺, K⁺, and 2 Cl⁻ together.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium-potassium pump</b>: pumps 3 Na⁺ out and 2 K⁺ in per ATP.<br/></>;
+          return <><b>Sodium-potassium pump</b>: uses ATP to maintain low cell Na⁺ and high cell K⁺. SALT models it as steady-state gradient support, not as a separate Na⁺ or K⁺ flux bar.<br/></>;
         case 'OAT':
           return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; moves organic anions.<br/></>;
         case 'OCT':
@@ -2438,6 +2517,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <section className="border rounded p-3 bg-white">
                   <h3 className="font-semibold">Directional Fluxes</h3>
                   <div className="text-xs text-gray-600 mb-2">Positive = toward blood; negative = toward lumen.</div>
+                  <div className="text-xs text-gray-600 mb-2">Na⁺/K⁺-ATPase is represented as steady-state Na⁺/K⁺ gradient maintenance, not as its own Na⁺ or K⁺ flux bar.</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3" aria-label="Shared flux graph legend">
                     {FLUX_BAR_SERIES.map(series => (
                       <div key={series.key} className="inline-flex items-center gap-1">
@@ -2504,7 +2584,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       </div>
                     ))}
                   </div>
-                  <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view.</div>
+                  <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view. ICF values are model-derived from the steady-state cell condition.</div>
                   <ResponsiveContainer width="100%" height={190}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} onClick={openConcentrationZoomFromChart}>
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
@@ -2574,7 +2654,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
                 />
                 <AccessibleTable
-                  caption="Concentrations. Bulk reservoirs are fixed unless changed in Settings. Surface values are local teaching estimates based on transport and partial mixing."
+                  caption="Concentrations. Bulk ECF reservoirs are fixed unless changed in Settings; ICF is model-derived. Surface values are local teaching estimates based on transport and partial mixing."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
                     { key: 'apicalBulk', label: 'Apical bulk', format: formatTableValue },
@@ -2664,7 +2744,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <div className="mb-3">
                   <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
                   <AccessibleTable
-                    caption="Intracellular accumulation or depletion tendencies compared with the starting cell composition."
+                    caption="Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
                     columns={[
                       { key: 'label', label: 'Ion or solute' },
                       { key: 'direction', label: 'Tendency' },
