@@ -603,6 +603,7 @@ const ELECTROCHEMICAL_MEMBRANE_PATHWAYS = {
 };
 const SUPPORT_PUMP_ID = 'NaKATPase';
 const PUMP_K_LOADING_PER_NA_SUPPORT = 2 / 3;
+const PUMP_NA_EXTRUSION_PER_K_SUPPORT = 3 / 2;
 const CELL_IMBALANCE_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
@@ -686,6 +687,10 @@ function pumpSupportedKCompletion(apicalFlux, supportProfile) {
 
 function pumpKLoadingForNaSupport(supportedNaAbsorption) {
   return supportedNaAbsorption * PUMP_K_LOADING_PER_NA_SUPPORT;
+}
+
+function pumpNaExtrusionForKSupport(supportedKSecretion) {
+  return supportedKSecretion * PUMP_NA_EXTRUSION_PER_K_SUPPORT;
 }
 
 function surfaceClamp(value, bulkValue) {
@@ -1287,7 +1292,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const supportedNaAbsorption = pumpSupportedNaCompletion(apicalFlux, pumpSupportProfile);
   const supportedKSecretion = pumpSupportedKCompletion(apicalFlux, pumpSupportProfile);
   const hiddenPumpCellFlux = {
-    'Na+': -supportedNaAbsorption,
+    'Na+': -Math.max(supportedNaAbsorption, pumpNaExtrusionForKSupport(supportedKSecretion)),
     'K+': Math.max(pumpKLoadingForNaSupport(supportedNaAbsorption), supportedKSecretion)
   };
 
@@ -1998,7 +2003,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, osmolality, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. NaPi can use implicit basolateral phosphate exit when pump support is present. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi can use implicit basolateral phosphate exit when pump support is present. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
@@ -2101,7 +2106,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
           <i>Biological action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
-          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much basolateral Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. Pump-supported basolateral Na⁺ extrusion is displayed only when paired with apical Na⁺ entry, and K⁺ loading support is displayed only when paired with apical K⁺ exit. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation rather than a fully balanced steady state.
+          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much basolateral Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. Pump-supported basolateral Na⁺ extrusion is displayed only when paired with apical Na⁺ entry, and K⁺ loading support is displayed only when paired with apical K⁺ exit. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
         </li>
         <li>
           <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
@@ -2171,7 +2176,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical ROMK secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical ROMK secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC-Kb, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> Apical NaPi plus Na⁺/K⁺-ATPase support produces phosphate absorption using an implicit basolateral phosphate exit teaching rule.</li>
@@ -2498,7 +2503,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NKCC':
           return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves Na⁺, K⁺, and 2 Cl⁻ together.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading; supported flux appears only with matching apical Na⁺ entry or K⁺ exit pathways, not as a standalone Na⁺ or K⁺ flux bar.<br/></>;
+          return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading; supported flux appears only with matching apical Na⁺ entry or K⁺ exit pathways, not as a standalone Na⁺ or K⁺ flux bar. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
           return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; moves organic anions.<br/></>;
         case 'OCT':
