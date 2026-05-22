@@ -470,6 +470,7 @@ const FLUX_BAR_SERIES = [
   { key: 'paracellularStep', name: 'Paracellular', color: '#d97706' },
   { key: 'transepithelial', name: 'Net epithelial', color: '#fb7185' }
 ];
+const DIRECTIONAL_FLUX_GRAPH_EPSILON = 0.001;
 const CONCENTRATION_COMPARTMENTS = [
   { key: 'apicalBulk', label: 'Apical bulk', name: 'Apical Bulk', color: '#2dd4bf' },
   { key: 'apicalSurface', label: 'Apical surface', name: 'Apical Surface', color: '#0f766e' },
@@ -643,17 +644,12 @@ function averageEditableReservoirConcentration(baseConcentrations, ion) {
   return Number(INITIAL_CONCENTRATIONS.apicalECF[ion] ?? 0);
 }
 
-function hasNaKGradientDrainPathway(tList) {
-  return tList.some(t => ['ENaC', 'ROMK'].includes(t.id) && t.placement !== 'none');
-}
-
 function deriveEffectiveStartingIcf(baseConcentrations, tList) {
   const effectiveIcf = { ...baseConcentrations.icf };
   const supportProfile = naKATPaseSupportProfile(tList);
-  const useNormalNaKGradients = supportProfile.present || hasNaKGradientDrainPathway(tList);
 
   ['Na+', 'K+'].forEach(ion => {
-    if (useNormalNaKGradients) {
+    if (supportProfile.present) {
       effectiveIcf[ion] = Number(baseConcentrations.icf?.[ion] ?? INITIAL_CONCENTRATIONS.icf[ion] ?? effectiveIcf[ion]);
     } else {
       effectiveIcf[ion] = averageEditableReservoirConcentration(baseConcentrations, ion);
@@ -1594,6 +1590,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ...group,
     rows: directionalFluxRows.filter(row => row.group === group.key)
   }));
+  const visibleDirectionalFluxGroups = directionalFluxGroups.filter(group =>
+    group.key === 'ions' ||
+    group.rows.some(row =>
+      ['apicalStep', 'basolateralStep', 'paracellularStep', 'transepithelial']
+        .some(key => Math.abs(Number(row[key] || 0)) > DIRECTIONAL_FLUX_GRAPH_EPSILON)
+    )
+  );
+  const visibleIonDirectionalFluxGroups = visibleDirectionalFluxGroups.filter(group => group.key === 'ions');
+  const visibleSupplementalDirectionalFluxGroups = visibleDirectionalFluxGroups.filter(group => group.key !== 'ions');
 
   const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
   const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
@@ -2617,7 +2622,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     ))}
                   </div>
                   <div className="space-y-4">
-                    {directionalFluxGroups.filter(group => group.key === 'ions').map(group => (
+                    {visibleIonDirectionalFluxGroups.map(group => (
                       <div key={group.key} className="pt-3">
                         <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
                         <ResponsiveContainer width="100%" height={180}>
@@ -2633,24 +2638,26 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         </ResponsiveContainer>
                       </div>
                     ))}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {directionalFluxGroups.filter(group => group.key !== 'ions').map(group => (
-                        <div key={group.key} className="pt-3">
-                          <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
-                          <ResponsiveContainer width="100%" height={150}>
-                            <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                              <XAxis dataKey="label" interval={0} tick={{ fontSize: 12 }} height={36} />
-                              <YAxis tick={{ fontSize: 12 }} />
-                              <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
-                              <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                              {FLUX_BAR_SERIES.map(series => (
-                                <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
-                              ))}
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ))}
-                    </div>
+                    {visibleSupplementalDirectionalFluxGroups.length > 0 && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {visibleSupplementalDirectionalFluxGroups.map(group => (
+                          <div key={group.key} className="pt-3">
+                            <h4 className="font-semibold text-sm mb-1">{group.label}</h4>
+                            <ResponsiveContainer width="100%" height={150}>
+                              <BarChart data={group.rows} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
+                                <XAxis dataKey="label" interval={0} tick={{ fontSize: 12 }} height={36} />
+                                <YAxis tick={{ fontSize: 12 }} />
+                                <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                                <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
+                                {FLUX_BAR_SERIES.map(series => (
+                                  <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
+                                ))}
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </section>
                 <div>
