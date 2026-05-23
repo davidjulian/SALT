@@ -38,6 +38,8 @@ const WATER_EPSILON = 0.05;
 const NORMAL_OSMOLALITY = 284.2;
 const FIXED_INTRACELLULAR_OSMOLES = 111.2;
 const CHARGE_EPSILON = 0.05;
+const PARACELLULAR_TEP_DRIVE_MAX = 2;
+const PARACELLULAR_TEP_SENSITIVITY = 1.5;
 const ION_VALENCE = {
   'Na+': 1,
   'K+': 1,
@@ -148,6 +150,16 @@ function cellPolarityDirection(value) {
 function epithelialPolarityDirection(value) {
   if (Math.abs(value) < CHARGE_EPSILON) return 'no strong net tendency';
   return value > 0 ? 'lumen tends negative relative to blood' : 'lumen tends positive relative to blood';
+}
+
+function paracellularElectrochemicalDrive(ion, apicalConcentration, basolateralConcentration, transepithelialElectricalTendency) {
+  const chemicalDrive = Number(apicalConcentration ?? 0) - Number(basolateralConcentration ?? 0);
+  const electricalTendency = Number(transepithelialElectricalTendency || 0);
+  const valence = ION_VALENCE[ion] || 0;
+  if (valence === 0 || Math.abs(electricalTendency) < CHARGE_EPSILON) return chemicalDrive;
+  const boundedTep = Math.tanh(electricalTendency / PARACELLULAR_TEP_SENSITIVITY);
+  const electricalDrive = -valence * boundedTep * PARACELLULAR_TEP_DRIVE_MAX;
+  return chemicalDrive + electricalDrive;
 }
 
 function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
@@ -412,7 +424,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
   NKCC: 'NKCC cotransporter class: moves Na+, K+, and Cl- together. Includes NKCC1 and NKCC2.',
-  NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients when present. Density limits supported Na+ extrusion or K+ loading, and supported flux is only shown with matching apical Na+ entry or K+ exit pathways, not as a standalone flux bar.',
+  NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients.',
   OAT: 'OAT organic anion transporter class: moves organic anions. Includes OAT1 and OAT3.',
   OCT: 'OCT organic cation transporter class: moves organic cations. Includes OCT1 and OCT2.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
@@ -840,7 +852,7 @@ function buildCellImbalanceReport(baselineIcf, modeledIcf) {
 function paracellularTypeLabel(type) {
   if (type === 'cation') return 'Cation + Water Pore';
   if (type === 'anion') return 'Anion Pore';
-  return 'Tight Junction';
+  return 'Barrier';
 }
 
 function concentrationsMatch(current, expected) {
@@ -1337,22 +1349,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const paraFlux = {};
   Object.keys(baseline.apicalECF).forEach(ion => { paraFlux[ion] = 0; });
 
-  if (paracellularType === 'cation') {
-    ['Na+','K+'].forEach(ion => {
-      const cap = apicalSurface[ion];
-      const blp = basolateralSurface[ion];
-      paraFlux[ion] = paraCationPerm * (cap - blp);
-    });
-  }
-  if (paracellularType === 'anion') {
-    ['Cl-','HCO3-'].forEach(ion => {
-      const cap = apicalSurface[ion];
-      const blp = basolateralSurface[ion];
-      paraFlux[ion] = paraAnionPerm * (cap - blp);
-    });
-  }
-  Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
-
   // --- Transepithelial Fluxes using ONLY current tick values ---
   const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT'], ['GLUT2'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const aaTransEpiFlux = transepithelialFlux('AA', ['NaAA'], ['AAFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
@@ -1444,6 +1440,23 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     }
   });
 
+  const paracellularElectricalTendency = transepithelialChargeSum(transepiFluxDataNoH2O);
+  if (paracellularType === 'cation') {
+    ['Na+','K+'].forEach(ion => {
+      const cap = apicalSurface[ion];
+      const blp = basolateralSurface[ion];
+      paraFlux[ion] = paraCationPerm * paracellularElectrochemicalDrive(ion, cap, blp, paracellularElectricalTendency);
+    });
+  }
+  if (paracellularType === 'anion') {
+    ['Cl-','HCO3-'].forEach(ion => {
+      const cap = apicalSurface[ion];
+      const blp = basolateralSurface[ion];
+      paraFlux[ion] = paraAnionPerm * paracellularElectrochemicalDrive(ion, cap, blp, paracellularElectricalTendency);
+    });
+  }
+  Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
+
   // Add paracellular fluxes
   if (paracellularType !== 'none') {
     transepiFluxDataNoH2O.forEach(row => {
@@ -1513,6 +1526,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     coupledMismatchReport,
     cellImbalanceReport,
     acidBaseReport,
+    paracellularElectricalTendency,
     gradientSupportReport: {
       present: pumpSupportProfile.present,
       strength: pumpSupportProfile.gradientStrength,
@@ -1895,7 +1909,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const combinedElectrochemicalText = (chemicalSign, electricalSign) => {
     if (chemicalSign === 0 && electricalSign === 0) return 'little chemical or electrical tendency detected';
     if (electricalSign === 0) return 'chemical gradient shown; little electrical tendency detected';
-    if (chemicalSign === 0) return 'little chemical gradient; electrical tendency dominates the display';
+    if (chemicalSign === 0) return 'little chemical gradient; electrical tendency dominates';
     return chemicalSign === electricalSign
       ? 'chemical and electrical tendencies align'
       : 'electrical tendency opposes chemical gradient';
@@ -1928,7 +1942,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   };
   const paracellularElectricalSign = ion => {
     const valence = ION_VALENCE[ion] || 0;
-    const transepithelialPolarity = chargeReport?.transepithelial?.value || 0;
+    const transepithelialPolarity = result?.paracellularElectricalTendency ?? chargeReport?.transepithelial?.value ?? 0;
     if (valence === 0 || Math.abs(transepithelialPolarity) < CHARGE_EPSILON) return 0;
     const lumenTendsNegative = transepithelialPolarity > 0;
     if (valence > 0) return lumenTendsNegative ? -1 : 1;
@@ -1956,7 +1970,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               const chemicalSign = paracellularChemicalSign(ion);
               const electricalSign = paracellularElectricalSign(ion);
               return {
-                pathway: 'Paracellular cation pore',
+                pathway: 'Cation + Water Pore',
                 membrane: 'Paracellular pathway',
                 ion: ION_LABEL[ion] || ion,
                 chemical: epithelialDirectionText(chemicalSign),
@@ -1970,7 +1984,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               const chemicalSign = paracellularChemicalSign(ion);
               const electricalSign = paracellularElectricalSign(ion);
               return {
-                pathway: 'Paracellular anion pore',
+                pathway: 'Anion Pore',
                 membrane: 'Paracellular pathway',
                 ion: ION_LABEL[ion] || ion,
                 chemical: epithelialDirectionText(chemicalSign),
@@ -2058,7 +2072,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Teaching Abstractions &amp; Limits</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
-        <li><b>Electrochemical context:</b> Chemical gradients drive passive flux in the current model. Electrical effects are shown as display-only context inferred from modeled polarity; they do not alter flux, and no membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculation is performed.</li>
+        <li><b>Electrochemical context:</b> Membrane transporter fluxes use SALT's simplified teaching rules; electrochemical context for membrane transporters remains display-only. Paracellular ion pathways are passive transepithelial leaks influenced by concentration gradients and transepithelial electrical tendency. No membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculation is performed.</li>
         <li><b>Charge and polarity:</b> Charge outputs are teaching tendencies computed from modeled ion fluxes. They are intended to flag likely electrical consequences, not to solve a steady-state electrical circuit.</li>
         <li><b>Water:</b> H₂O is represented as osmolality and water movement tendency. The app does not calculate true cell volume.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
@@ -2070,11 +2084,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
-        <li><b>Passive pathways:</b> ENaC, Kir, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses.</li>
+        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses. Electrical context for these membrane pathways remains display-only.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The status light flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
-        <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled.</li>
+        <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
@@ -2212,10 +2226,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Paracellular Pathway Actions & Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li><b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.<br/>
-        <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient. Paracellular ion flux is displayed separately from membrane steps and is included in the net epithelial flux.
-        </li>
-          </ul>
+        <li><b>Paracellular pathway:</b> Movement of solutes and water between cells.</li>
+        <li><b>Barrier:</b> modeled as no paracellular solute or water flux. This is a teaching simplification; real tight junctions vary in permeability and selectivity.</li>
+        <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and paracellular H₂O movement down the transepithelial osmotic gradient.</li>
+        <li><b>Anion Pore:</b> Enables Cl⁻ flux, with some HCO₃⁻ permeability, down the transepithelial electrochemical tendency.</li>
+        <li>The magnitude depends on the permeability setting, the concentration gradient, and for ions the transepithelial electrical tendency. Paracellular flux is displayed separately from membrane steps and is included in the net epithelial flux.</li>
+      </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Water &amp; Osmolality Rules</h3>
       <ul className="list-disc ml-6 text-sm">
@@ -2372,7 +2388,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
            className={'w-full border rounded p-1 ' + (challengeParacellularLocked ? 'bg-gray-100 text-gray-600' : '')}
            aria-label="Paracellular pathway"
          >
-  <option value="none">Tight Junction</option>
+  <option value="none">Barrier</option>
   <option value="cation">Cation + Water Pore</option>
   <option value="anion">Anion Pore</option>
 </select>
@@ -2399,19 +2415,18 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg p-6 max-w-lg w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
       <h2 className="text-xl font-bold mb-2">Paracellular Pathway Settings</h2>
-      <div className="mb-4 text-sm text-gray-700 space-y-2">
-        <p>
-          <b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.
-        </p>
-        <p>
-          <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient. Paracellular ion flux is displayed separately from membrane steps and is included in the net epithelial flux.
-        </p>
+      <div className="mb-4 text-sm text-gray-700">
+        <p className="mb-2"><b>Paracellular pathway:</b> Movement of solutes and water between cells.</p>
+        <ul className="list-disc ml-6 space-y-1">
+          <li><b>Barrier:</b> No passive leak</li>
+          <li><b>Cation + Water Pore:</b> Permeable to Na⁺, K⁺, and water</li>
+          <li><b>Anion Pore:</b> Permeable to Cl⁻, with some HCO₃⁻ permeability.</li>
+        </ul>
       </div>
       {paracellularType === 'cation' && (
         <>
           <div className="mb-2">
-            <b>Cation + Water Selective Paracellular Pore</b>: Permeable to Na⁺, K⁺, and H₂O (e.g., Claudin-2 type).<br/>
-            <label className="block mt-2 text-sm">Permeability:</label>
+            <label className="block mt-2 text-sm">Cation + Water Pore permeability:</label>
             <input
               type="number"
               min="0"
@@ -2426,8 +2441,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       {paracellularType === 'anion' && (
         <>
           <div className="mb-2">
-            <b>Anion Selective Paracellular Pore</b>: Permeable to Cl⁻ and HCO₃⁻ (e.g., claudin-10a or claudin-17 type).<br/>
-            <label className="block mt-2 text-sm">Permeability:</label>
+            <label className="block mt-2 text-sm">Anion Pore permeability:</label>
             <input
               type="number"
               min="0"
@@ -2439,9 +2453,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           </div>
         </>
       )}
-      {paracellularType === 'none' && (
-        <div className="mb-2 text-gray-600"><b>Tight Junction</b>: No passive paracellular leak is enabled.</div>
-      )}
       <Button className="mt-2" onClick={() => setShowParaInfo(false)}>Close</Button>
     </div>
   </div>
@@ -2451,7 +2462,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
       <h2 className="text-xl font-bold mb-4">Model Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
-        <label className="block mb-2 font-semibold">Electrochemical Feedback</label>
+        <label className="block mb-2 font-semibold">Membrane Electrochemical Feedback</label>
         <label className="block mb-2">
           <input
             type="checkbox"
@@ -2460,10 +2471,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             aria-describedby="electrochemical-feedback-coming-soon"
             onChange={() => {}}
           />{' '}
-          Polarity affects passive flux <span id="electrochemical-feedback-coming-soon" className="text-gray-500">(coming soon)</span>
+          Polarity affects transcellular membrane flux <span id="electrochemical-feedback-coming-soon" className="text-gray-500">(coming soon)</span>
         </label>
         <div className="text-gray-500">
-          Electrochemical context is shown in results, but remains display-only and does not change flux.
+          Electrochemical context remains display-only for membrane transporters and does not change their flux. Paracellular ion pathways use concentration gradients plus transepithelial electrical tendency.
         </div>
       </div>
       <div className="mb-4 text-sm text-gray-700">
@@ -2477,7 +2488,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           Apical and basolateral bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
         </p>
         <p className="text-gray-500 mb-2">
-          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Electrochemical context remains display-only and does not alter flux.
+          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Electrochemical context remains display-only for membrane transporters and does not alter their flux.
         </p>
         <table className="min-w-full table-auto text-left border">
           <caption className="sr-only">Baseline concentration settings. Apical and basolateral ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
@@ -2918,7 +2929,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 </div>
                 <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 <AccessibleTable
-                  caption="Charge and polarity tendencies. These are display-only teaching units."
+                  caption="Charge and polarity tendencies in arbitrary teaching units."
                   columns={[
                     { key: 'label', label: 'Region' },
                     { key: 'direction', label: 'Tendency' },
@@ -2934,7 +2945,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
                 <AccessibleTable
-                  caption="Display-only electrochemical context. Electrical tendencies are inferred from modeled polarity; no Nernst potential, membrane voltage, or electrochemical feedback is calculated."
+                  caption="Electrochemical context. Membrane transporter context is display-only; paracellular ion leaks use the transepithelial electrical tendency qualitatively. No Nernst potential, membrane voltage, or Goldman-Hodgkin-Katz calculation is performed."
                   columns={[
                     { key: 'pathway', label: 'Pathway' },
                     { key: 'membrane', label: 'Membrane or path' },
