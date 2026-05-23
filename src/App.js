@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -258,7 +259,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'Pendrin',  name: 'Pendrin',    type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ROMK',     name: 'ROMK',       type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
 ];
 
@@ -396,7 +397,7 @@ const DENSITY_OPTIONS = [
 const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1: exchanges Cl- and HCO3- in opposite directions.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
-  AQP: 'AQP water channel class, e.g., AQP2, AQP3, AQP4: enables rapid H2O movement.',
+  AQP: 'AQP water channel class: enables rapid H2O movement. Includes AQP2, AQP3, AQP4.',
   CFTR: 'CFTR regulated anion channel: provides Cl- exit and a smaller HCO3- exit tendency in secretory layouts.',
   ClCKb: 'ClC-Kb chloride channel: passive Cl- flux follows the chloride gradient.',
   ENaC: 'Epithelial sodium channel: passive Na+ flux follows the Na+ gradient.',
@@ -404,22 +405,22 @@ const TRANSPORTER_DESCRIPTIONS = {
   TRPV56: 'TRPV5/6 epithelial Ca2+ channel class: passive Ca2+ flux follows the Ca2+ gradient. SALT does not model dynamic inhibition by intracellular Ca2+.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
-  NaPi: 'NaPi cotransporter class, e.g., NaPi-IIa and NaPi-IIc: moves Na+ and phosphate together.',
+  NaPi: 'NaPi cotransporter class: moves Na+ and phosphate together. Includes NaPi-IIa and NaPi-IIc.',
   NaAA: 'Na+-AA cotransporter: generic Na+-coupled neutral amino acid transporter.',
   NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- together.',
   NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
   NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
-  NKCC: 'NKCC cotransporter class, e.g., NKCC1 and NKCC2: moves Na+, K+, and Cl- together.',
+  NKCC: 'NKCC cotransporter class: moves Na+, K+, and Cl- together. Includes NKCC1 and NKCC2.',
   NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients when present. Density limits supported Na+ extrusion or K+ loading, and supported flux is only shown with matching apical Na+ entry or K+ exit pathways, not as a standalone flux bar.',
-  OAT: 'OAT organic anion transporter class, e.g., OAT1 and OAT3: moves organic anions.',
-  OCT: 'OCT organic cation transporter class, e.g., OCT1 and OCT2: moves organic cations.',
+  OAT: 'OAT organic anion transporter class: moves organic anions. Includes OAT1 and OAT3.',
+  OCT: 'OCT organic cation transporter class: moves organic cations. Includes OCT1 and OCT2.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
-  MATE: 'MATE transporter class, e.g., MATE1 and MATE2-K: exchanges H+ and organic cations.',
-  PepT: 'PepT peptide transporter class, e.g., PepT1 and PepT2: moves H+ and small peptides together.',
+  MATE: 'MATE transporter class: exchanges H+ and organic cations. Includes MATE1 and MATE2-K.',
+  PepT: 'PepT peptide transporter class: moves H+ and small peptides together. Includes PepT1 and PepT2.',
   Pendrin: 'Pendrin: exchanges Cl- and HCO3- in opposite directions.',
-  ROMK: 'Potassium channel: passive K+ flux follows the K+ gradient.',
-  SGLT: 'SGLT cotransporter class, e.g., SGLT1 and SGLT2: moves Na+ and glucose together.'
+  ROMK: 'Kir potassium channel class: passive K+ flux follows the K+ gradient. Includes ROMK.',
+  SGLT: 'SGLT cotransporter class: moves Na+ and glucose together. Includes SGLT1 and SGLT2.'
 };
 
 const INITIAL_CONCENTRATIONS = {
@@ -1058,6 +1059,8 @@ export default function App() {
   const [paraCationPerm, setParaCationPerm] = useState(1.0); // default value
   const [paraAnionPerm, setParaAnionPerm] = useState(1.0);   // default value
   const [showParaInfo, setShowParaInfo] = useState(false);
+  const [activeTransporterTooltip, setActiveTransporterTooltip] = useState(null);
+  const tooltipHideTimerRef = useRef(null);
 
   // --- Automatically run simulation on page load ---
   useEffect(() => {
@@ -1079,6 +1082,17 @@ export default function App() {
         ? ts.map(t => t.uid ? t : { ...t, uid: t.id + '-' + t.placement + '-' + Math.random().toString(36).slice(2) })
         : ts
     );
+  }, []);
+
+  useEffect(() => {
+    const handleTooltipEscape = event => {
+      if (event.key === 'Escape') setActiveTransporterTooltip(null);
+    };
+    document.addEventListener('keydown', handleTooltipEscape);
+    return () => {
+      document.removeEventListener('keydown', handleTooltipEscape);
+      if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
+    };
   }, []);
 
   const updateTransporter = (uid, field, value) => {
@@ -1658,6 +1672,28 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const visibleTransporterIds = new Set(
     tissueOption.transporterIds.filter(id => !challengeMode || challengeAllowedIds.has(id))
   );
+  const showTransporterTooltip = (event, tooltipId, description) => {
+    if (!description) return;
+    if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
+    const margin = 8;
+    const width = Math.min(256, viewportWidth - margin * 2);
+    const estimatedHeight = 96;
+    const left = Math.min(Math.max(rect.left, margin), viewportWidth - width - margin);
+    const top = rect.bottom + estimatedHeight + margin > viewportHeight
+      ? Math.max(margin, rect.top - estimatedHeight - 6)
+      : rect.bottom + 6;
+    setActiveTransporterTooltip({ id: tooltipId, description, left, top, width });
+  };
+  const keepTransporterTooltipOpen = () => {
+    if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
+  };
+  const hideTransporterTooltip = () => {
+    if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
+    tooltipHideTimerRef.current = setTimeout(() => setActiveTransporterTooltip(null), 120);
+  };
 
   const renderTransporterChooser = placement => (
     <div className="space-y-3">
@@ -1672,21 +1708,30 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               const template = transporterTemplateById(id);
               const alreadyAdded = transporterIsOnMembrane(id, placement);
               const description = TRANSPORTER_DESCRIPTIONS[id] || '';
+              const tooltipId = 'transporter-tooltip-' + placement + '-' + id;
+              const descriptionId = 'transporter-description-' + placement + '-' + id;
               return (
-                <span key={id} className="relative group inline-block">
+                <span
+                  key={id}
+                  className="relative inline-block"
+                  onMouseEnter={event => showTransporterTooltip(event, tooltipId, description)}
+                  onMouseLeave={hideTransporterTooltip}
+                  onFocus={event => showTransporterTooltip(event, tooltipId, description)}
+                  onBlur={hideTransporterTooltip}
+                >
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={alreadyAdded}
-                    title={description}
-                    aria-label={description ? 'Add ' + (template?.name || id) + '. ' + description : 'Add ' + (template?.name || id)}
+                    aria-label={'Add ' + (template?.name || id)}
+                    aria-describedby={description ? descriptionId : undefined}
                     className={alreadyAdded ? 'text-gray-400 border-gray-200 bg-gray-50' : ''}
                     onClick={() => addTransporterToMembrane(id, placement)}
                   >
                     {template?.name || id}
                   </Button>
                   {description && (
-                    <span className="hidden group-hover:block group-focus-within:block absolute left-0 top-full mt-1 w-64 z-20 rounded border bg-white p-2 text-xs text-gray-700 shadow-lg">
+                    <span id={descriptionId} className="sr-only">
                       {description}
                     </span>
                   )}
@@ -1710,7 +1755,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         {rows.map(t => (
           <div key={t.uid} className="border rounded p-2 bg-white">
             <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="font-semibold text-sm" title={TRANSPORTER_DESCRIPTIONS[t.id] || ''}>{t.name}</div>
+              <div className="font-semibold text-sm">{t.name}</div>
               <Button
                 size="sm"
                 variant="outline"
@@ -1944,7 +1989,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         ion: 'none',
         chemical: 'none',
         electrical: 'none',
-        interpretation: 'Add ENaC, ROMK, ClC-Kb, CFTR, TRPV5/6, or a paracellular pore to show context'
+        interpretation: 'Add ENaC, Kir, ClC-Kb, CFTR, TRPV5/6, or a paracellular pore to show context'
       }];
 
   const AccessibleTable = ({ caption, columns, rows }) => (
@@ -1975,6 +2020,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   return (
 <>
+  {activeTransporterTooltip && (
+    <div
+      id={activeTransporterTooltip.id}
+      role="tooltip"
+      className="fixed z-50 rounded border bg-white p-2 text-xs text-gray-700 shadow-lg"
+      style={{
+        left: activeTransporterTooltip.left,
+        top: activeTransporterTooltip.top,
+        width: activeTransporterTooltip.width
+      }}
+      onMouseEnter={keepTransporterTooltipOpen}
+      onMouseLeave={hideTransporterTooltip}
+    >
+      {activeTransporterTooltip.description}
+    </div>
+  )}
   {/* About Modal */}
   {showAbout && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowAbout(false)}>
@@ -2009,12 +2070,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
-        <li><b>Passive pathways:</b> ENaC, ROMK, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses.</li>
+        <li><b>Passive pathways:</b> ENaC, Kir, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The status light flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
         <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled.</li>
-        <li><b>NKCC and K⁺ recycling:</b> ROMK can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts, but the generalized NKCC class is not hard-gated by ROMK.</li>
+        <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
@@ -2039,7 +2100,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can complete Cl⁻ secretion when paired with NKCC or another Cl⁻ entry pathway on the opposite membrane. Can contribute to HCO₃⁻ secretion when paired with a compatible HCO₃⁻ entry pathway. Dynamic gating and detailed bicarbonate selectivity are not modeled.
         </li>
         <li>
-          <b>ClC-Kb:</b> basolateral chloride channel<br/>
+          <b>ClC-Kb:</b> chloride channel<br/>
           <i>Action:</i> Chloride channel; passive Cl⁻ flux follows the Cl⁻ gradient.<br/>
           <i>Rule:</i> Can provide a Cl⁻ exit or entry pathway, helping complete NaCl transport driven by NCC or NKCC.
         </li>
@@ -2062,6 +2123,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
           <i>Action:</i> Proton-potassium pump; exchanges one H⁺ out and K⁺ in using ATP.<br/>
           <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBCe1 on the opposite membrane.
+        </li>
+        <li>
+          <b>Kir:</b> inward-rectifier potassium channel class<br/>
+          <i>Action:</i> Potassium channel; passive K⁺ flux follows the K⁺ gradient. ROMK is a member of the Kir ion channel class.<br/>
+          <i>Rule:</i> Can provide K⁺ exit on either membrane. With Na⁺/K⁺-ATPase present, completed apical K⁺ secretion is limited by available pump K⁺ loading support and Kir exit capacity.
         </li>
         <li>
           <b>MATE:</b> multidrug and toxin extrusion transporter class; representative members include MATE1 and MATE2-K<br/>
@@ -2101,7 +2167,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>NKCC:</b> sodium-potassium-chloride cotransporter class; representative members include NKCC1 and NKCC2<br/>
           <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase support. Basolateral NKCC plus apical CFTR can produce Cl⁻ secretion; apical NKCC plus basolateral Cl⁻ exit can produce absorptive patterns. ROMK can support K⁺ recycling in TAL-like layouts but is not a hard gate for this generalized class.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase support. Basolateral NKCC plus apical CFTR can produce Cl⁻ secretion; apical NKCC plus basolateral Cl⁻ exit can produce absorptive patterns. Kir channels, including ROMK in TAL-like layouts, can support K⁺ recycling but are not a hard gate for this generalized class.
         </li>
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
@@ -2132,11 +2198,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <b>Pendrin:</b> Cl⁻/HCO₃⁻ exchanger<br/>
           <i>Action:</i> Cl⁻/HCO₃⁻ exchanger; moves Cl⁻ and HCO₃⁻ in opposite directions.<br/>
           <i>Rule:</i> Can pair with an opposite-membrane proton extruder for acid/base flux, and can contribute to Cl⁻/HCO₃⁻ imbalance when placed without a matching pathway.
-        </li>
-        <li>
-          <b>ROMK:</b> renal outer medullary potassium channel<br/>
-          <i>Action:</i> Potassium channel; passive K⁺ flux follows the K⁺ gradient.<br/>
-          <i>Rule:</i> Can provide apical K⁺ exit. With Na⁺/K⁺-ATPase present, completed K⁺ secretion is limited by available pump K⁺ loading support and ROMK exit capacity.
         </li>
         <li>
           <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
@@ -2176,7 +2237,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. ROMK can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical ROMK secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC-Kb, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> Apical NaPi plus Na⁺/K⁺-ATPase support produces phosphate absorption using an implicit basolateral phosphate exit teaching rule.</li>
@@ -2336,8 +2397,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </div>
 {showParaInfo && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
+    <div className="bg-white rounded-lg p-6 max-w-lg w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
       <h2 className="text-xl font-bold mb-2">Paracellular Pathway Settings</h2>
+      <div className="mb-4 text-sm text-gray-700 space-y-2">
+        <p>
+          <b>Paracellular pathway:</b> Movement of ions and water between cells, bypassing the cell membrane.
+        </p>
+        <p>
+          <i>Rule:</i> Select <b>Tight Junction</b> for no passive leak. Select <b>Cation + Water Pore</b> to enable Na⁺ and K⁺ flux down their transepithelial concentration gradients and paracellular H₂O movement down the transepithelial osmotic gradient. Select <b>Anion Pore</b> for Cl⁻ and HCO₃⁻ flux (e.g., claudin-10a or claudin-17 type). The magnitude depends on the permeability setting and the size of the gradient. Paracellular ion flux is displayed separately from membrane steps and is included in the net epithelial flux.
+        </p>
+      </div>
       {paracellularType === 'cation' && (
         <>
           <div className="mb-2">
@@ -2371,7 +2440,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </>
       )}
       {paracellularType === 'none' && (
-        <div className="mb-2 text-gray-500">No paracellular pathway enabled (tight junction).</div>
+        <div className="mb-2 text-gray-600"><b>Tight Junction</b>: No passive paracellular leak is enabled.</div>
       )}
       <Button className="mt-2" onClick={() => setShowParaInfo(false)}>Close</Button>
     </div>
@@ -2515,7 +2584,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'Pendrin':
           return <><b>Pendrin</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions.<br/></>;
         case 'ROMK':
-          return <><b>Renal outer medullary potassium channel</b>: passive K⁺ flux follows the K⁺ gradient.<br/></>;
+          return <><b>Kir potassium channel class</b>: passive K⁺ flux follows the K⁺ gradient. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
           return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves Na⁺ and glucose together.<br/></>;
         default:
@@ -2551,7 +2620,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     className={'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold ' + transportBalanceStatusClass}
                     role="status"
                     aria-label={transportBalanceReport.ariaLabel}
-                    title={transportBalanceReport.ariaLabel}
                   >
                     <span className={'inline-block h-2 w-2 rounded-full ' + transportBalanceDotClass} aria-hidden="true" />
                     {transportBalanceReport.label}
