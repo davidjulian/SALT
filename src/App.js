@@ -1819,65 +1819,134 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     if (Math.abs(numeric) < 0.001) return 'none';
     return numeric > 0 ? 'absorption' : 'secretion';
   };
-  const membraneListText = placement => {
-    const rows = membraneTransporters(placement);
-    if (rows.length === 0) return 'none';
-    return rows.map(t => {
-      const option = DENSITY_OPTIONS.find(o => o.value === t.density);
-      return t.name + ' (' + (option?.label || 'custom') + ' density)';
-    }).join(', ');
-  };
-  const keyTransepithelialRows = soluteTransepiFluxData.filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001);
-  const simulationSummary = result ? [
-    'Apical membrane: ' + membraneListText('apical') + '.',
-    'Basolateral membrane: ' + membraneListText('basolateral') + '.',
-    gradientSupportReport
-      ? 'Na⁺/K⁺-ATPase support: ' + gradientSupportReport.label + '; when present it establishes steady-state Na⁺ and K⁺ gradients, while pump density limits supported Na⁺ extrusion or K⁺ loading paired with apical pathways.'
-      : '',
-    keyTransepithelialRows.length
-      ? 'Net transepithelial movement: ' + keyTransepithelialRows.map(row => row.ion + ' ' + fluxDirection(row.transepithelial)).join('; ') + '.'
-      : 'No substantial net transepithelial solute or water movement is currently predicted.',
-    cellImbalanceReport.length
-      ? 'Intracellular imbalance: ' + cellImbalanceReport.map(row => row.label + ' ' + row.direction).join('; ') + '.'
-      : '',
-    waterReport ? 'Net epithelial water tendency: ' + waterReport.netTransepithelial.direction + ' (' + waterReport.netTransepithelial.strength + ').' : '',
-    chargeReport ? 'Transepithelial charge tendency: ' + chargeReport.transepithelial.direction + ' (' + chargeReport.transepithelial.strength + ').' : ''
-  ].filter(Boolean) : [];
   const hasIntracellularImbalance = cellImbalanceReport.length > 0;
   const hasCoupledMismatch = coupledMismatchReport?.state === 'mismatch';
-  const transportBalanceState = hasIntracellularImbalance || hasCoupledMismatch
-    ? 'warning'
-    : coupledMismatchReport?.state === 'matched'
-      ? 'matched'
-      : 'neutral';
-  const transportBalanceReport = result ? {
-    state: transportBalanceState,
-    label: transportBalanceState === 'warning'
-      ? 'Transport balance: review tendencies'
-      : transportBalanceState === 'matched'
-        ? 'Transport balance: matched'
-        : 'Transport balance: no warning',
-    ariaLabel: [
-      hasIntracellularImbalance ? 'Intracellular imbalance detected; review the Intracellular Imbalance Tendencies table.' : '',
-      hasCoupledMismatch ? coupledMismatchReport.ariaLabel : '',
-      !hasIntracellularImbalance && !hasCoupledMismatch ? 'No intracellular imbalance or coupled transport mismatch detected.' : ''
-    ].filter(Boolean).join(' ')
-  } : null;
-  const transportBalanceStatusClass = transportBalanceReport?.state === 'warning'
-    ? 'border-amber-400 bg-amber-50 text-amber-800'
-    : transportBalanceReport?.state === 'matched'
-      ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
-      : 'border-gray-300 bg-gray-50 text-gray-600';
-  const transportBalanceDotClass = transportBalanceReport?.state === 'warning'
-    ? 'bg-amber-500'
-    : transportBalanceReport?.state === 'matched'
-      ? 'bg-emerald-500'
-      : 'bg-gray-400';
-
+  const compactImbalanceDirection = direction => direction.replace(' tendency', '');
+  const dominantFluxRow = soluteTransepiFluxData
+    .filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001)
+    .reduce((strongest, row) => {
+      if (!strongest) return row;
+      return Math.abs(Number(row.transepithelial || 0)) > Math.abs(Number(strongest.transepithelial || 0))
+        ? row
+        : strongest;
+    }, null);
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
-  const tePotentialNeedleAngle = clamp(-tePotentialValue * 45, -60, 60);
-  const acidBaseNeedleAngle = clamp((acidBaseReport?.transepithelial?.value ?? 0) * 25, -60, 60);
-  const waterNeedleAngle = clamp((waterReport?.netTransepithelial?.value ?? 0) * 45, -60, 60);
+  const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
+  const acidBaseFluxValue = acidBaseReport?.transepithelial?.value ?? 0;
+  const tePotentialStatus = Math.abs(tePotentialValue) < CHARGE_EPSILON
+    ? 'Minimal'
+    : tePotentialValue > 0
+      ? 'Lumen-negative'
+      : 'Lumen-positive';
+  const waterFluxStatus = Math.abs(waterFluxValue) < WATER_EPSILON
+    ? 'Neutral/weak'
+    : waterFluxValue > 0
+      ? 'Absorption'
+      : 'Secretion';
+  const acidBaseFluxStatus = Math.abs(acidBaseFluxValue) < 0.001
+    ? 'Neutral/weak'
+    : acidBaseFluxValue > 0
+      ? 'Acid secretion'
+      : 'Base secretion';
+  const cellBalanceStatus = hasIntracellularImbalance
+    ? cellImbalanceReport.length === 1
+      ? cellImbalanceReport[0].label + ' ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
+      : cellImbalanceReport.length + ' tendencies'
+    : hasCoupledMismatch
+      ? 'Coupled mismatch'
+      : 'Balanced';
+  const cellBalanceDetail = hasIntracellularImbalance
+    ? cellImbalanceReport.length === 1
+      ? 'Intracellular ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
+      : 'Review imbalance table below'
+    : hasCoupledMismatch
+      ? 'Review pathway completion'
+      : 'No intracellular imbalance tendency';
+  const naKGradientStatus = gradientSupportReport?.present ? 'Pump-supported' : 'No pump gradient';
+  const naKGradientDetail = gradientSupportReport?.present
+    ? 'Na⁺/K⁺ gradient support: ' + gradientSupportReport.label
+    : 'Steady-state Na⁺/K⁺ gradient not established';
+  const dominantFluxStatus = dominantFluxRow
+    ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + fluxDirection(dominantFluxRow.transepithelial)
+    : 'No strong net flux';
+  const dominantFluxDetail = dominantFluxRow
+    ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
+    : 'Net epithelial movement is weak';
+  const snapshotIndicatorPercent = (value, maxAbs) => 50 + clamp(Number(value || 0) / maxAbs, -1, 1) * 45;
+  const resultsSnapshotTiles = result ? [
+    {
+      key: 'gradient',
+      title: 'Na/K Gradient',
+      status: naKGradientStatus,
+      detail: naKGradientDetail,
+      state: gradientSupportReport?.present ? 'good' : 'neutral'
+    },
+    {
+      key: 'balance',
+      title: 'Cell Balance',
+      status: cellBalanceStatus,
+      detail: cellBalanceDetail,
+      state: hasIntracellularImbalance || hasCoupledMismatch ? 'warning' : 'good'
+    },
+    {
+      key: 'dominant-flux',
+      title: 'Dominant Flux',
+      status: dominantFluxStatus,
+      detail: dominantFluxDetail,
+      state: dominantFluxRow ? 'accent' : 'neutral'
+    },
+    {
+      key: 'tep',
+      title: 'Transepithelial Potential',
+      status: tePotentialStatus,
+      detail: chargeReport
+        ? chargeReport.transepithelial.strength + '; ' + formatChargeValue(tePotentialValue) + ' charge units'
+        : 'No charge tendency calculated',
+      state: Math.abs(tePotentialValue) < CHARGE_EPSILON ? 'neutral' : 'accent',
+      indicator: {
+        value: -tePotentialValue,
+        maxAbs: 1.5,
+        leftLabel: 'Lumen-negative',
+        rightLabel: 'Lumen-positive',
+        markerClass: 'bg-slate-700',
+        ariaLabel: 'Transepithelial potential indicator: ' + tePotentialStatus + ', ' + formatChargeValue(tePotentialValue) + ' charge units. Left indicates lumen-negative; right indicates lumen-positive.'
+      }
+    },
+    {
+      key: 'water',
+      title: 'Net Water Flux',
+      status: waterFluxStatus,
+      detail: waterReport
+        ? waterReport.netTransepithelial.direction + '; ' + waterReport.netTransepithelial.strength
+        : 'No water tendency calculated',
+      state: Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
+      indicator: {
+        value: waterFluxValue,
+        maxAbs: 3,
+        leftLabel: 'Secretion',
+        rightLabel: 'Absorption',
+        markerClass: 'bg-blue-600',
+        ariaLabel: 'Net water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates secretion; right indicates absorption.'
+      }
+    },
+    {
+      key: 'acid-base',
+      title: 'Net Acid/Base Flux',
+      status: acidBaseFluxStatus,
+      detail: acidBaseReport
+        ? acidBaseReport.transepithelial.direction + '; ' + acidBaseReport.transepithelial.strength
+        : 'No acid/base tendency calculated',
+      state: Math.abs(acidBaseFluxValue) < 0.001 ? 'neutral' : 'accent',
+      indicator: {
+        value: acidBaseFluxValue,
+        maxAbs: 2.5,
+        leftLabel: 'Base secretion',
+        rightLabel: 'Acid secretion',
+        markerClass: 'bg-teal-700',
+        ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base secretion; right indicates acid secretion.'
+      }
+    }
+  ] : [];
   const membraneDirectionText = (placement, sign) => {
     if (sign === 0) return 'no strong tendency';
     if (placement === 'apical') return sign > 0 ? 'lumen to cell' : 'cell to lumen';
@@ -1987,6 +2056,50 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         interpretation: 'Add ENaC, Kir, ClC-Kb, CFTR, TRPV5/6, or a paracellular pore to show context'
       }];
 
+  const snapshotTileClass = state => {
+    const stateClass = {
+      good: 'border-emerald-200 bg-emerald-50',
+      warning: 'border-amber-300 bg-amber-50',
+      accent: 'border-sky-200 bg-sky-50',
+      neutral: 'border-gray-200 bg-gray-50'
+    }[state] || 'border-gray-200 bg-gray-50';
+    return 'rounded border p-2 min-h-[88px] ' + stateClass;
+  };
+  const snapshotStatusClass = state => ({
+    good: 'text-emerald-800',
+    warning: 'text-amber-800',
+    accent: 'text-sky-900',
+    neutral: 'text-gray-800'
+  }[state] || 'text-gray-800');
+  const SnapshotIndicator = ({ indicator }) => {
+    if (!indicator) return null;
+    const markerLeft = snapshotIndicatorPercent(indicator.value, indicator.maxAbs);
+    return (
+      <div className="mt-2" role="img" aria-label={indicator.ariaLabel}>
+        <div className="relative h-2 rounded-full bg-gray-200" aria-hidden="true">
+          <div className="absolute left-1/2 top-0 h-full w-px bg-gray-400" />
+          <div
+            className={'absolute top-1/2 h-3 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded ' + indicator.markerClass}
+            style={{ left: markerLeft + '%' }}
+          />
+        </div>
+        <div className="mt-1 flex justify-between gap-2 text-xs text-gray-500">
+          <span>{indicator.leftLabel}</span>
+          <span>Neutral</span>
+          <span>{indicator.rightLabel}</span>
+        </div>
+      </div>
+    );
+  };
+  const SnapshotTile = ({ tile }) => (
+    <li className={snapshotTileClass(tile.state)}>
+      <h3 className="text-xs font-semibold uppercase text-gray-600">{tile.title}</h3>
+      <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
+      <div className="mt-1 text-xs leading-snug text-gray-600">{tile.detail}</div>
+      <SnapshotIndicator indicator={tile.indicator} />
+    </li>
+  );
+
   const AccessibleTable = ({ caption, columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
       <caption className="text-left font-semibold mb-2">{caption}</caption>
@@ -2068,7 +2181,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses. Electrical context for these membrane pathways remains display-only.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
-        <li><b>Transport balance:</b> The status light flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
+        <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
         <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
@@ -2258,10 +2371,34 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 <div className="w-1/3 p-4 border-r overflow-auto">
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
-  </div><div className="flex space-x-2 mb-4">
+  </div><div className="flex flex-wrap items-center gap-2 mb-4">
   <Button onClick={() => setShowAbout(true)}>About</Button>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
 <Button variant="outline" onClick={() => setTransporters([])}>Reset</Button>
+<fieldset className="inline-flex items-center gap-2 rounded border px-2 py-1 text-sm">
+  <legend className="sr-only">Results view</legend>
+  <span className="font-semibold" aria-hidden="true">Results</span>
+  <label className="inline-flex items-center gap-1">
+    <input
+      type="radio"
+      name="results-view"
+      value="graphs"
+      checked={resultsView === 'graphs'}
+      onChange={() => setResultsView('graphs')}
+    />
+    Graphs
+  </label>
+  <label className="inline-flex items-center gap-1">
+    <input
+      type="radio"
+      name="results-view"
+      value="tables"
+      checked={resultsView === 'tables'}
+      onChange={() => setResultsView('tables')}
+    />
+    Tables
+  </label>
+</fieldset>
 </div>
 
 <fieldset className="border rounded p-2 bg-white mb-4">
@@ -2611,23 +2748,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
        
  {result && (
           <div className="mt-3 space-y-4 overflow-auto">
-            <section className="border rounded p-2 bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                <h2 className="font-semibold">Simulation Summary</h2>
-                {transportBalanceReport && (
-                  <div
-                    className={'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold ' + transportBalanceStatusClass}
-                    role="status"
-                    aria-label={transportBalanceReport.ariaLabel}
-                  >
-                    <span className={'inline-block h-2 w-2 rounded-full ' + transportBalanceDotClass} aria-hidden="true" />
-                    {transportBalanceReport.label}
-                  </div>
-                )}
+            <section className="border rounded p-3 bg-white" aria-labelledby="results-snapshot-title">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
+                <div className="text-xs text-gray-600">Interpreted model outputs</div>
               </div>
-              <ul className="list-disc ml-5 text-sm leading-snug">
-                {simulationSummary.map(line => <li key={line}>{line}</li>)}
+              <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2" aria-label="Results Snapshot output tiles">
+                {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
               </ul>
+              <div className="mt-2 text-xs text-gray-600">
+                Detailed flux, concentration, and balance views appear below.
+              </div>
             </section>
 
             {challengeMode && challengeReport && (
@@ -2651,30 +2782,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 </div>
               </section>
             )}
-
-            <fieldset className="flex items-center gap-3 text-sm">
-              <legend className="font-semibold mr-1">Results view</legend>
-              <label className="inline-flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="results-view"
-                  value="graphs"
-                  checked={resultsView === 'graphs'}
-                  onChange={() => setResultsView('graphs')}
-                />
-                Graphs
-              </label>
-              <label className="inline-flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="results-view"
-                  value="tables"
-                  checked={resultsView === 'tables'}
-                  onChange={() => setResultsView('tables')}
-                />
-                Tables
-              </label>
-            </fieldset>
 
             {resultsView === 'graphs' ? (
               <div className="space-y-4">
@@ -2835,74 +2942,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
             {chargeReport && (
               <div>
-                {resultsView === 'graphs' && (
-                  <>
-                    <h3 className="font-semibold mb-2">Epithelial Outcome Tendencies</h3>
-                    <div className={'grid grid-cols-1 gap-3 mb-3 ' + (waterReport ? 'xl:grid-cols-3' : 'xl:grid-cols-2')}>
-                      <div
-                        className="border rounded p-3 bg-white"
-                        role="img"
-                        aria-label={'Transepithelial potential: ' + chargeReport.transepithelial.direction + ', ' + chargeReport.transepithelial.strength + ', ' + formatChargeValue(chargeReport.transepithelial.value) + ' charge units.'}
-                      >
-                        <div className="font-semibold text-sm mb-1">Transepithelial Potential</div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-xs text-gray-600 text-right w-20">Lumen negative</div>
-                          <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
-                            <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
-                            <line x1="80" y1="70" x2="80" y2="25" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + tePotentialNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
-                            <circle cx="80" cy="70" r="6" fill="#111827" />
-                          </svg>
-                          <div className="text-xs text-gray-600 w-20">Lumen positive</div>
-                        </div>
-                        <div className="text-sm text-gray-700">
-                          {chargeReport.transepithelial.direction} ({chargeReport.transepithelial.strength}); {formatChargeValue(chargeReport.transepithelial.value)} charge units
-                        </div>
-                      </div>
-                      {acidBaseReport && (
-                        <div
-                          className="border rounded p-3 bg-white"
-                          role="img"
-                          aria-label={'Net acid base flux: ' + acidBaseReport.transepithelial.direction + ', ' + acidBaseReport.transepithelial.strength + ', ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid base units.'}
-                        >
-                          <div className="font-semibold text-sm mb-1">Net Acid/Base Flux</div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-xs text-gray-600 text-right w-20">Base secretion</div>
-                            <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
-                              <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
-                              <line x1="80" y1="70" x2="80" y2="25" stroke="#0f766e" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + acidBaseNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
-                              <circle cx="80" cy="70" r="6" fill="#111827" />
-                            </svg>
-                            <div className="text-xs text-gray-600 w-20">Acid secretion</div>
-                          </div>
-                          <div className="text-sm text-gray-700">
-                            {acidBaseReport.transepithelial.direction} ({acidBaseReport.transepithelial.strength}); {formatChargeValue(acidBaseReport.transepithelial.value)} acid/base units
-                          </div>
-                        </div>
-                      )}
-                      {waterReport && (
-                        <div
-                          className="border rounded p-3 bg-white"
-                          role="img"
-                          aria-label={'Net water flux: ' + waterReport.netTransepithelial.direction + ', ' + waterReport.netTransepithelial.strength + ', ' + formatWaterValue(waterReport.netTransepithelial.value) + ' water tendency units.'}
-                        >
-                          <div className="font-semibold text-sm mb-1">Net Water Flux</div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-xs text-gray-600 text-right w-20">Secretion</div>
-                            <svg viewBox="0 0 160 90" className="w-48 h-24" aria-hidden="true">
-                              <path d="M25 70 A55 55 0 0 1 135 70" fill="none" stroke="#d1d5db" strokeWidth="8" strokeLinecap="round" />
-                              <line x1="80" y1="70" x2="80" y2="25" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" style={{ transform: 'rotate(' + waterNeedleAngle + 'deg)', transformOrigin: '80px 70px' }} />
-                              <circle cx="80" cy="70" r="6" fill="#111827" />
-                            </svg>
-                            <div className="text-xs text-gray-600 w-20">Absorption</div>
-                          </div>
-                          <div className="text-sm text-gray-700">
-                            {waterReport.netTransepithelial.direction} ({waterReport.netTransepithelial.strength}); {formatWaterValue(waterReport.netTransepithelial.value)} water tendency units
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
                 <div className="mb-3">
                   <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
                   <AccessibleTable
