@@ -478,18 +478,18 @@ const FLUX_GROUPS = [
   { key: 'organic', label: 'Organic Ion Fluxes', solutes: ['OA-', 'OC+'] }
 ];
 const FLUX_BAR_SERIES = [
-  { key: 'apicalStep', name: 'Apical step', color: '#2563eb' },
-  { key: 'basolateralStep', name: 'Basolateral step', color: '#059669' },
+  { key: 'apicalStep', name: 'Apical membrane', color: '#2563eb' },
+  { key: 'basolateralStep', name: 'Basolateral membrane', color: '#059669' },
   { key: 'paracellularStep', name: 'Paracellular', color: '#d97706' },
   { key: 'transepithelial', name: 'Net epithelial', color: '#fb7185' }
 ];
 const DIRECTIONAL_FLUX_GRAPH_EPSILON = 0.001;
 const CONCENTRATION_COMPARTMENTS = [
-  { key: 'apicalBulk', label: 'Apical bulk', name: 'Apical Bulk', color: '#2dd4bf' },
-  { key: 'apicalSurface', label: 'Apical surface', name: 'Apical Surface', color: '#0f766e' },
+  { key: 'apicalBulk', label: 'Apical Bulk ECF', name: 'Apical Bulk ECF', color: '#2dd4bf' },
+  { key: 'apicalSurface', label: 'Apical Surface ECF', name: 'Apical Surface ECF', color: '#0f766e' },
   { key: 'icf', label: 'Cell', name: 'ICF', color: '#8b5cf6', fillOpacity: 0.75 },
-  { key: 'basolateralSurface', label: 'Basolateral surface', name: 'Basolateral Surface', color: '#ea580c' },
-  { key: 'basolateralBulk', label: 'Basolateral bulk', name: 'Basolateral Bulk', color: '#fb923c' }
+  { key: 'basolateralSurface', label: 'Basolateral Surface ECF', name: 'Basolateral Surface ECF', color: '#ea580c' },
+  { key: 'basolateralBulk', label: 'Basolateral Bulk ECF', name: 'Basolateral Bulk ECF', color: '#fb923c' }
 ];
 const SETTINGS_CONCENTRATION_COMPARTMENTS = [
   { key: 'apicalECF', label: 'Apical bath', editable: true },
@@ -2691,7 +2691,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {resultsView === 'graphs' ? (
               <div className="space-y-4">
                 <section className="border rounded p-3 bg-white">
-                  <h3 className="font-semibold">Directional Fluxes</h3>
+                  <h3 className="font-semibold">Membrane and Epithelial Fluxes</h3>
                   <div className="text-xs text-gray-600 mb-2">Positive = toward blood; negative = toward lumen.</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3" aria-label="Shared flux graph legend">
                     {FLUX_BAR_SERIES.map(series => (
@@ -2745,7 +2745,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   </div>
                 </section>
                 <div>
-                  <h3 className="font-semibold">Concentrations</h3>
+                  <h3 className="font-semibold">Solute Concentrations</h3>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2" aria-label="Concentration graph legend">
                     {CONCENTRATION_COMPARTMENTS.map(compartment => (
                       <div key={compartment.key} className="inline-flex items-center gap-1">
@@ -2818,27 +2818,27 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             ) : (
               <div className="space-y-6 overflow-auto">
                 <AccessibleTable
-                  caption="Directional fluxes. Positive values point toward blood; negative values point toward lumen."
+                  caption="Membrane and Epithelial Fluxes. Positive values point toward blood; negative values point toward lumen."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
                     { key: 'groupLabel', label: 'Flux group' },
-                    { key: 'apicalStep', label: 'Apical step', format: formatTableValue },
-                    { key: 'basolateralStep', label: 'Basolateral step', format: formatTableValue },
-                    { key: 'paracellularStep', label: 'Paracellular pathway', format: formatTableValue },
-                    { key: 'transepithelial', label: 'Net epithelial flux', format: formatTableValue },
+                    { key: 'apicalStep', label: 'Apical membrane', format: formatTableValue },
+                    { key: 'basolateralStep', label: 'Basolateral membrane', format: formatTableValue },
+                    { key: 'paracellularStep', label: 'Paracellular', format: formatTableValue },
+                    { key: 'transepithelial', label: 'Net epithelial', format: formatTableValue },
                     { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
                   ]}
                   rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
                 />
                 <AccessibleTable
-                  caption="Concentrations. Bulk ECF reservoirs are fixed unless changed in Settings; ICF is model-derived. Surface values are local teaching estimates based on transport and partial mixing."
+                  caption="Solute Concentrations. Bulk ECF reservoirs are fixed unless changed in Settings; ICF is model-derived. Surface values are local teaching estimates based on transport and partial mixing."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
-                    { key: 'apicalBulk', label: 'Apical bulk', format: formatTableValue },
-                    { key: 'apicalSurface', label: 'Apical surface', format: formatTableValue },
-                    { key: 'icf', label: 'Cell', format: formatTableValue },
-                    { key: 'basolateralSurface', label: 'Basolateral surface', format: formatTableValue },
-                    { key: 'basolateralBulk', label: 'Basolateral bulk', format: formatTableValue }
+                    { key: 'apicalBulk', label: 'Apical Bulk ECF', format: formatTableValue },
+                    { key: 'apicalSurface', label: 'Apical Surface ECF', format: formatTableValue },
+                    { key: 'icf', label: 'ICF', format: formatTableValue },
+                    { key: 'basolateralSurface', label: 'Basolateral Surface ECF', format: formatTableValue },
+                    { key: 'basolateralBulk', label: 'Basolateral Bulk ECF', format: formatTableValue }
                   ]}
                   rows={concTableData}
                 />
