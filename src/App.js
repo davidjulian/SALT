@@ -27,16 +27,9 @@ const Button = ({ children, onClick, className = "", variant, size, ...props }) 
 
 const FLUX_ONLY_SOLUTES = ['AA', 'Peptide', 'OA-', 'OC+'];
 
-function osmolality(comp) {
-  // Teaching model: approximate osmotic strength from solutes only.
-  return Object.entries(comp)
-    .filter(([ion]) => ion !== 'H2O' && !FLUX_ONLY_SOLUTES.includes(ion))
-    .reduce((sum, [ion, conc]) => sum + Math.abs(conc), 0);
-}
-
 const WATER_EPSILON = 0.05;
-const NORMAL_OSMOLALITY = 284.2;
-const FIXED_INTRACELLULAR_OSMOLES = 111.2;
+const WATER_SOLUTE_FLUX_LIMIT = 5;
+const WATER_DRIVE_SCALE = 0.5;
 const CHARGE_EPSILON = 0.05;
 const PARACELLULAR_TEP_DRIVE_MAX = 2;
 const PARACELLULAR_TEP_SENSITIVITY = 1.5;
@@ -56,14 +49,6 @@ const ION_VALENCE = {
   H2O: 0
 };
 
-function osmCategory(value, reference = NORMAL_OSMOLALITY) {
-  const diff = value - reference;
-  const pct = reference ? diff / reference : 0;
-  if (pct > 0.08) return 'high';
-  if (pct < -0.08) return 'low';
-  return 'near normal';
-}
-
 function tendencyStrength(value) {
   const magnitude = Math.abs(value);
   if (magnitude < WATER_EPSILON) return 'none';
@@ -72,37 +57,35 @@ function tendencyStrength(value) {
   return 'strong';
 }
 
-function membraneWaterTendency(bathName, bathOsm, cellOsm, hasPathway) {
-  const delta = cellOsm - bathOsm;
-  if (!hasPathway) {
-    return {
-      label: `${bathName} membrane`,
-      direction: 'no pathway',
-      strength: 'none',
-      value: 0
-    };
-  }
-  if (Math.abs(delta) < WATER_EPSILON) {
-    return {
-      label: `${bathName} membrane`,
-      direction: 'no strong net tendency',
-      strength: 'none',
-      value: delta
-    };
-  }
-  return {
-    label: `${bathName} membrane`,
-    direction: delta > 0 ? 'into cell' : 'out of cell',
-    strength: tendencyStrength(delta),
-    value: delta
-  };
+function waterTendencyStrength(value) {
+  const magnitude = Math.abs(value);
+  if (magnitude < WATER_EPSILON) return 'none';
+  if (magnitude < 0.75) return 'weak';
+  if (magnitude < 1.75) return 'moderate';
+  return 'strong';
 }
 
-function transepithelialWaterTendency(value, hasPathway, pathwayLabel) {
+function epithelialWaterDirection(value) {
+  if (Math.abs(value) < WATER_EPSILON) return 'neutral/weak';
+  return value > 0 ? 'toward blood' : 'toward lumen';
+}
+
+function soluteLinkedWaterDrive(transepiFluxDataNoH2O) {
+  const sourceFlux = transepiFluxDataNoH2O.reduce(
+    (sum, row) => sum + Number(row.transepithelial || 0),
+    0
+  );
+  const value = Math.abs(sourceFlux) < WATER_EPSILON
+    ? 0
+    : WATER_DRIVE_SCALE * Math.sign(sourceFlux) * Math.min(Math.abs(sourceFlux), WATER_SOLUTE_FLUX_LIMIT);
+  return { sourceFlux, value };
+}
+
+function transepithelialWaterTendency(value, hasPathway, pathwayLabel, noPathwayDirection = 'no complete pathway') {
   if (!hasPathway) {
     return {
       label: pathwayLabel,
-      direction: 'no complete pathway',
+      direction: noPathwayDirection,
       strength: 'none',
       value: 0
     };
@@ -110,15 +93,15 @@ function transepithelialWaterTendency(value, hasPathway, pathwayLabel) {
   if (Math.abs(value) < WATER_EPSILON) {
     return {
       label: pathwayLabel,
-      direction: 'no strong net tendency',
+      direction: 'neutral/weak',
       strength: 'none',
       value
     };
   }
   return {
     label: pathwayLabel,
-    direction: value > 0 ? 'absorption' : 'secretion',
-    strength: tendencyStrength(value),
+    direction: epithelialWaterDirection(value),
+    strength: waterTendencyStrength(value),
     value
   };
 }
@@ -196,53 +179,52 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
   };
 }
 
-function buildWaterReport(apicalECF, icf, basolateralECF, tList, paracellularType, paraCationPerm, transepiFluxDataNoH2O) {
-  const apicalOsm = osmolality(apicalECF);
-  const mobileIcfOsm = osmolality(icf);
-  const icfOsm = mobileIcfOsm + FIXED_INTRACELLULAR_OSMOLES;
-  const basolateralOsm = osmolality(basolateralECF);
+function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O) {
   const apicalWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'apical');
   const basolateralWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'basolateral');
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
   const hasParacellularPath = paracellularType === 'cation';
-  const osmoticSoluteFlux = transepiFluxDataNoH2O.reduce((sum, row) => sum + row.transepithelial, 0);
-  const transcellularValue = hasTranscellularPath
-    ? 0.5 * Math.sign(osmoticSoluteFlux) * Math.min(Math.abs(osmoticSoluteFlux), 5)
-    : 0;
-  const paracellularValue = hasParacellularPath
-    ? paraCationPerm * (basolateralOsm - apicalOsm) / 25
-    : 0;
-  const apicalMembrane = membraneWaterTendency('Apical', apicalOsm, icfOsm, apicalWaterPath);
-  const basolateralMembrane = membraneWaterTendency('Basolateral', basolateralOsm, icfOsm, basolateralWaterPath);
-  const cellValue = apicalMembrane.value + basolateralMembrane.value;
+  const transcellularPathStatus = hasTranscellularPath
+    ? 'complete AQP path'
+    : apicalWaterPath || basolateralWaterPath
+      ? 'incomplete AQP path'
+      : 'none';
+  const paracellularPathStatus = hasParacellularPath ? 'present' : 'none';
+  const soluteDrive = soluteLinkedWaterDrive(transepiFluxDataNoH2O);
+  const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularPath ? 1 : 0);
+  const pathwayShare = expressedPathwayCount > 0 ? 1 / expressedPathwayCount : 0;
+  const transcellularValue = hasTranscellularPath ? soluteDrive.value * pathwayShare : 0;
+  const paracellularValue = hasParacellularPath ? soluteDrive.value * pathwayShare : 0;
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
   return {
-    osmolality: {
-      apical: apicalOsm,
-      icf: icfOsm,
-      mobileIcf: mobileIcfOsm,
-      fixedIcf: FIXED_INTRACELLULAR_OSMOLES,
-      basolateral: basolateralOsm,
-      apicalCategory: osmCategory(apicalOsm),
-      icfCategory: osmCategory(icfOsm),
-      basolateralCategory: osmCategory(basolateralOsm)
+    teachingNote: 'Water tendency follows net epithelial solute movement when a water pathway is present.',
+    solutePull: {
+      label: 'Solute osmotic pull',
+      direction: epithelialWaterDirection(soluteDrive.value),
+      strength: waterTendencyStrength(soluteDrive.value),
+      value: soluteDrive.value,
+      sourceFlux: soluteDrive.sourceFlux
     },
-    apicalMembrane,
-    basolateralMembrane,
-    cell: {
-      label: 'Cell water balance',
-      direction: Math.abs(cellValue) < WATER_EPSILON
-        ? 'no strong net tendency'
-        : cellValue > 0
-          ? 'swelling tendency'
-          : 'shrinking tendency',
-      strength: tendencyStrength(cellValue),
-      value: cellValue
+    transcellularPath: {
+      label: 'Transcellular water pathway',
+      status: transcellularPathStatus,
+      note: hasTranscellularPath
+        ? 'AQP is present on both apical and basolateral membranes'
+        : apicalWaterPath || basolateralWaterPath
+          ? 'AQP is present on only one membrane'
+          : 'No AQP water pathway is placed'
     },
-    transcellular: transepithelialWaterTendency(transcellularValue, hasTranscellularPath, 'Transcellular water'),
-    paracellular: transepithelialWaterTendency(paracellularValue, hasParacellularPath, 'Paracellular water'),
-    netTransepithelial: transepithelialWaterTendency(netTransepithelialValue, hasTranscellularPath || hasParacellularPath, 'Net epithelial water')
+    paracellularPath: {
+      label: 'Paracellular water pathway',
+      status: paracellularPathStatus,
+      note: hasParacellularPath
+        ? 'Cation + Water Pore provides a paracellular water pathway'
+        : 'Barrier and Anion Pore do not provide a water pathway'
+    },
+    transcellular: transepithelialWaterTendency(transcellularValue, hasTranscellularPath, 'Transcellular water contribution', transcellularPathStatus),
+    paracellular: transepithelialWaterTendency(paracellularValue, hasParacellularPath, 'Paracellular water contribution', 'no paracellular water pathway'),
+    netTransepithelial: transepithelialWaterTendency(netTransepithelialValue, hasTranscellularPath || hasParacellularPath, 'Net epithelial water flux', 'no water pathway')
   };
 }
 
@@ -412,7 +394,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1: exchanges Cl- and HCO3- in opposite directions.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
-  AQP: 'Aquaporin water channel class: enables osmotic H2O movement. Includes AQP2, AQP3, AQP4.',
+  AQP: 'Aquaporin water channel class: supports solute-linked H2O movement when apical and basolateral AQP form a complete pathway. Includes AQP2, AQP3, AQP4.',
   CFTR: 'Cystic fibrosis transmembrane conductance regulator: passive Cl- and HCO3- flux.',
   ClCKb: 'ClC chloride channel class: passive Cl- flux. Includes ClC-K.',
   ENaC: 'Epithelial Na+ channel: passive Na+ flux.',
@@ -1177,12 +1159,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const coupledMismatchReport = buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O);
 
   const waterReport = buildWaterReport(
-    apicalSurface,
-    newICF,
-    basolateralSurface,
     tList,
     paracellularType,
-    paraCationPerm,
     transepiFluxDataNoH2O
   );
 
@@ -1466,7 +1444,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const waterReport = result?.waterReport;
   const formatWaterValue = value => Number(value ?? 0).toFixed(1);
   const chargeReport = result?.chargeReport;
-  const gradientSupportReport = result?.gradientSupportReport;
   const coupledMismatchReport = result?.coupledMismatchReport;
   const cellImbalanceReport = result?.cellImbalanceReport || [];
   const cellImbalanceRows = cellImbalanceReport.length
@@ -1498,6 +1475,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         : strongest;
     }, null);
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
+  const solutePullValue = waterReport?.solutePull?.value ?? 0;
   const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
   const acidBaseFluxValue = acidBaseReport?.transepithelial?.value ?? 0;
   const tePotentialStatus = Math.abs(tePotentialValue) < CHARGE_EPSILON
@@ -1505,11 +1483,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     : tePotentialValue > 0
       ? 'Lumen-negative'
       : 'Lumen-positive';
-  const waterFluxStatus = Math.abs(waterFluxValue) < WATER_EPSILON
-    ? 'Neutral/weak'
-    : waterFluxValue > 0
-      ? 'Absorption'
-      : 'Secretion';
+  const solutePullStatus = epithelialWaterDirection(solutePullValue);
+  const waterFluxStatus = epithelialWaterDirection(waterFluxValue);
   const acidBaseFluxStatus = Math.abs(acidBaseFluxValue) < 0.001
     ? 'Neutral/weak'
     : acidBaseFluxValue > 0
@@ -1529,25 +1504,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     : hasCoupledMismatch
       ? 'Review pathway completion'
       : 'No intracellular imbalance tendency';
-  const naKGradientStatus = gradientSupportReport?.present ? 'Pump-supported' : 'No pump gradient';
-  const naKGradientDetail = gradientSupportReport?.present
-    ? 'Na⁺/K⁺ gradient support: ' + gradientSupportReport.label
-    : 'Steady-state Na⁺/K⁺ gradient not established';
   const dominantFluxStatus = dominantFluxRow
     ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + fluxDirection(dominantFluxRow.transepithelial)
     : 'No strong net flux';
   const dominantFluxDetail = dominantFluxRow
     ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
     : 'Net epithelial movement is weak';
+  const waterFluxDetail = waterReport
+    ? 'Solute pull + water pathway = water movement'
+    : 'No water tendency calculated';
   const snapshotIndicatorPercent = (value, maxAbs) => 50 + clamp(Number(value || 0) / maxAbs, -1, 1) * 45;
   const resultsSnapshotTiles = result ? [
-    {
-      key: 'gradient',
-      title: 'Na/K Gradient',
-      status: naKGradientStatus,
-      detail: naKGradientDetail,
-      state: gradientSupportReport?.present ? 'good' : 'neutral'
-    },
     {
       key: 'balance',
       title: 'Cell Balance',
@@ -1580,23 +1547,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       }
     },
     {
-      key: 'water',
-      title: 'Net Water Flux',
-      status: waterFluxStatus,
-      detail: waterReport
-        ? waterReport.netTransepithelial.direction + '; ' + waterReport.netTransepithelial.strength
-        : 'No water tendency calculated',
-      state: Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
-      indicator: {
-        value: waterFluxValue,
-        maxAbs: 3,
-        leftLabel: 'Secretion',
-        rightLabel: 'Absorption',
-        markerClass: 'bg-blue-600',
-        ariaLabel: 'Net water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates secretion; right indicates absorption.'
-      }
-    },
-    {
       key: 'acid-base',
       title: 'Net Acid/Base Flux',
       status: acidBaseFluxStatus,
@@ -1612,6 +1562,71 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         markerClass: 'bg-teal-700',
         ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base secretion; right indicates acid secretion.'
       }
+    },
+    {
+      key: 'water',
+      title: 'Water Flux',
+      status: waterFluxStatus,
+      detail: waterFluxDetail,
+      state: Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
+      indicators: [
+        {
+          label: 'Solute osmotic pull',
+          status: solutePullStatus,
+          value: solutePullValue,
+          maxAbs: 2.5,
+          leftLabel: 'secretion',
+          rightLabel: 'absorption',
+          markerClass: 'bg-indigo-700',
+          ariaLabel: 'Solute osmotic pull indicator: ' + solutePullStatus + ', ' + formatWaterValue(solutePullValue) + ' solute-linked water tendency units. Left indicates secretion; right indicates absorption.'
+        },
+        {
+          label: 'Water flux',
+          status: waterFluxStatus,
+          value: waterFluxValue,
+          maxAbs: 2.5,
+          leftLabel: 'secretion',
+          rightLabel: 'absorption',
+          markerClass: 'bg-blue-600',
+          ariaLabel: 'Water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates secretion; right indicates absorption.'
+        }
+      ]
+    }
+  ] : [];
+  const compactSnapshotTiles = resultsSnapshotTiles.filter(tile => tile.key !== 'water');
+  const waterSnapshotTile = resultsSnapshotTiles.find(tile => tile.key === 'water');
+  const waterDetailRows = waterReport ? [
+    {
+      label: 'Solute osmotic pull',
+      status: 'net epithelial solute flux',
+      direction: waterReport.solutePull.direction,
+      strength: waterReport.solutePull.strength,
+      value: waterReport.solutePull.value,
+      note: 'Based on net epithelial solute flux (' + formatTableValue(waterReport.solutePull.sourceFlux) + ' flux units), not ECF osmolality settings'
+    },
+    {
+      label: 'Transcellular water pathway and contribution',
+      status: waterReport.transcellularPath.status,
+      direction: waterReport.transcellular.direction,
+      strength: waterReport.transcellular.strength,
+      value: waterReport.transcellular.value,
+      note: waterReport.transcellularPath.note
+    },
+    {
+      label: 'Paracellular water pathway and contribution',
+      status: waterReport.paracellularPath.status,
+      direction: waterReport.paracellular.direction,
+      strength: waterReport.paracellular.strength,
+      value: waterReport.paracellular.value,
+      note: waterReport.paracellularPath.note
+    },
+    {
+      label: 'Net water flux',
+      status: waterReport.netTransepithelial.direction === 'no water pathway' ? 'no water pathway' : 'expressed water tendency',
+      direction: waterReport.netTransepithelial.direction,
+      strength: waterReport.netTransepithelial.strength,
+      value: waterReport.netTransepithelial.value,
+      note: waterReport.teachingNote
     }
   ] : [];
   const membraneDirectionText = (placement, sign) => {
@@ -1723,14 +1738,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         interpretation: 'Add ENaC, Kir, ClC, CFTR, TRPV5/6, or a paracellular pore to show context'
       }];
 
-  const snapshotTileClass = state => {
+  const snapshotTileClass = tile => {
     const stateClass = {
       good: 'border-emerald-200 bg-emerald-50',
       warning: 'border-amber-300 bg-amber-50',
       accent: 'border-sky-200 bg-sky-50',
       neutral: 'border-gray-200 bg-gray-50'
-    }[state] || 'border-gray-200 bg-gray-50';
-    return 'rounded border p-2 min-h-[88px] ' + stateClass;
+    }[tile.state] || 'border-gray-200 bg-gray-50';
+    const hasMeter = tile.indicator || tile.indicators?.length;
+    const sizeClass = hasMeter ? 'min-h-[104px]' : 'min-h-[68px]';
+    return 'rounded border p-2 ' + sizeClass + ' ' + stateClass;
   };
   const snapshotStatusClass = state => ({
     good: 'text-emerald-800',
@@ -1743,6 +1760,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     const markerLeft = snapshotIndicatorPercent(indicator.value, indicator.maxAbs);
     return (
       <div className="mt-2" role="img" aria-label={indicator.ariaLabel}>
+        {indicator.label && (
+          <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+            <span className="font-semibold text-gray-700">{indicator.label}</span>
+            <span className="text-gray-600">{indicator.status}</span>
+          </div>
+        )}
         <div className="relative h-2 rounded-full bg-gray-200" aria-hidden="true">
           <div className="absolute left-1/2 top-0 h-full w-px bg-gray-400" />
           <div
@@ -1759,12 +1782,46 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     );
   };
   const SnapshotTile = ({ tile }) => (
-    <li className={snapshotTileClass(tile.state)}>
+    <li className={snapshotTileClass(tile)}>
       <h3 className="text-xs font-semibold uppercase text-gray-600">{tile.title}</h3>
       <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
       <div className="mt-1 text-xs leading-snug text-gray-600">{tile.detail}</div>
       <SnapshotIndicator indicator={tile.indicator} />
+      {tile.indicators?.map(indicator => (
+        <SnapshotIndicator key={indicator.label} indicator={indicator} />
+      ))}
     </li>
+  );
+  const WaterDetailCards = ({ rows }) => (
+    <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm mb-3" aria-label="Water movement details">
+      {rows.map(row => (
+        <li key={row.label} className="border rounded p-3 bg-white">
+          <h4 className="font-semibold">{row.label}</h4>
+          <dl className="mt-1 space-y-1">
+            <div>
+              <dt className="sr-only">Direction</dt>
+              <dd>{row.direction}</dd>
+            </div>
+            <div className="text-gray-600">
+              <dt className="sr-only">Status</dt>
+              <dd>{row.status}</dd>
+            </div>
+            <div className="text-gray-600">
+              <dt className="sr-only">Strength</dt>
+              <dd>{row.strength}</dd>
+            </div>
+            <div className="text-gray-500">
+              <dt className="sr-only">Value</dt>
+              <dd>{formatWaterValue(row.value)} tendency units</dd>
+            </div>
+            <div className="text-gray-500 leading-snug">
+              <dt className="sr-only">Teaching note</dt>
+              <dd>{row.note}</dd>
+            </div>
+          </dl>
+        </li>
+      ))}
+    </ul>
   );
 
   const AccessibleTable = ({ caption, columns, rows }) => (
@@ -1834,9 +1891,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Electrochemical context:</b> Membrane transporter fluxes use SALT's simplified teaching rules; electrochemical context for membrane transporters remains display-only. Paracellular ion pathways are passive transepithelial leaks influenced by concentration gradients and transepithelial electrical tendency. No membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculation is performed.</li>
         <li><b>Charge and polarity:</b> Charge outputs are teaching tendencies computed from modeled ion fluxes. They are intended to flag likely electrical consequences, not to solve a steady-state electrical circuit.</li>
-        <li><b>Water:</b> H₂O is represented as osmolality and water movement tendency. The app does not calculate true cell volume.</li>
+        <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
-        <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, osmolality, and charge/polarity calculations.</li>
+        <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
         <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi pairs with Pi Facilitator on the opposite membrane for completed phosphate transport. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
@@ -1848,7 +1905,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
-        <li><b>Paracellular flux:</b> Paracellular ion and water movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency.</li>
+        <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
@@ -1866,7 +1923,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>AQP:</b> aquaporin class; representative members include AQP2, AQP3, and AQP4<br/>
           <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> AQP on one membrane permits water exchange at that membrane. Net transcellular H₂O flux requires water pathways on both apical and basolateral membranes.
+          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows net epithelial solute movement.
         </li>
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
@@ -1993,16 +2050,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of solutes and water between cells.</li>
         <li><b>Barrier:</b> modeled as no paracellular solute or water flux. This is a teaching simplification; real tight junctions vary in permeability and selectivity.</li>
-        <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and paracellular H₂O movement down the transepithelial osmotic gradient.</li>
+        <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and provides the paracellular water pathway for solute-linked H₂O movement.</li>
         <li><b>Anion Pore:</b> Enables Cl⁻ flux, with some HCO₃⁻ permeability, down the transepithelial electrochemical tendency.</li>
-        <li>The magnitude depends on the permeability setting, the concentration gradient, and for ions the transepithelial electrical tendency. Paracellular flux is displayed separately from membrane steps and is included in the net epithelial flux.</li>
+        <li>Paracellular ion flux magnitude depends on the permeability setting, the concentration gradient, and the transepithelial electrical tendency. Paracellular water movement follows net epithelial solute movement when the Cation + Water Pore is present.</li>
       </ul>
 
-      <h3 className="text-lg font-semibold mt-4 mb-1">Water &amp; Osmolality Rules</h3>
+      <h3 className="text-lg font-semibold mt-4 mb-1">Water Movement Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li>H₂O is not treated as a transported solute concentration. The app reports osmolality and water movement tendencies instead of calculating true cell volume.</li>
-        <li>Apical and basolateral membrane water tendencies are based on the osmotic difference between the cell and the adjacent local surface layer, and require a water pathway on that membrane.</li>
-        <li>Net transcellular epithelial water movement uses a teaching rule: when a complete apical-to-basolateral water pathway exists, water follows net transepithelial solute absorption or secretion. This represents local osmotic coupling that the app does not explicitly model as a standing bath-to-bath osmotic gradient.</li>
+        <li>H₂O is not treated as a transported solute concentration. The app reports qualitative water movement tendencies instead of calculating true cell volume or osmolality.</li>
+        <li>ECF concentration settings and apical/cell/basolateral osmolality differences do not directly drive water flux.</li>
+        <li>Water tendency follows net epithelial solute movement when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes; the Cation + Water Pore provides a paracellular water pathway.</li>
+        <li>Barrier and Anion Pore do not provide paracellular water flux in this teaching model.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Acid/Base &amp; pH Rules</h3>
@@ -2026,7 +2084,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
-        <li><b>H₂O:</b> Net transcellular water movement requires water pathways on both apical and basolateral membranes. When present, H₂O follows the direction of net transepithelial solute movement in arbitrary teaching units.</li>
+        <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the direction of net epithelial solute movement in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
@@ -2261,7 +2319,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PiFacilitator':
           return <><b>Pi Facilitator</b>: generic facilitated inorganic phosphate transporter. This mechanism is not well characterized but may be XPR1.<br/></>;
         case 'AQP':
-          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; enables rapid H₂O movement.<br/></>;
+          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway.<br/></>;
         case 'CFTR':
           return <><b>CFTR regulated anion channel</b>: provides Cl⁻ exit and a smaller HCO₃⁻ exit tendency in secretory layouts. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
@@ -2338,9 +2396,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
                 <div className="text-xs text-gray-600">Interpreted model outputs</div>
               </div>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2" aria-label="Results Snapshot output tiles">
-                {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
-              </ul>
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-2 items-start">
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start" aria-label="Core Results Snapshot output tiles">
+                  {compactSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
+                </ul>
+                {waterSnapshotTile && (
+                  <ul className="grid grid-cols-1 self-start" aria-label="Water Results Snapshot output tile">
+                    <SnapshotTile tile={waterSnapshotTile} />
+                  </ul>
+                )}
+              </div>
               <div className="mt-2 text-xs text-gray-600">
                 Detailed flux, concentration, and balance views appear below.
               </div>
@@ -2506,7 +2571,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {chargeReport && (
               <div>
                 <div className="mb-3">
-                  <h3 className="font-semibold mb-2">Intracellular Imbalance Tendencies</h3>
+                  <h3 className="font-semibold mb-2">Intracellular Imbalance</h3>
                   <AccessibleTable
                     caption="Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
                     columns={[
@@ -2535,7 +2600,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
                 <AccessibleTable
-                  caption="Electrochemical context. Membrane transporter context is display-only; paracellular ion leaks use the transepithelial electrical tendency qualitatively. No Nernst potential, membrane voltage, or Goldman-Hodgkin-Katz calculation is performed."
+                  caption="Electrochemical context is display-only for transmembrane effects; no Nernst potential, membrane voltage, or Goldman-Hodgkin-Katz calculations are performed. Paracellular ion leaks use the transepithelial electrical tendency qualitatively."
                   columns={[
                     { key: 'pathway', label: 'Pathway' },
                     { key: 'membrane', label: 'Membrane or path' },
@@ -2551,7 +2616,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
             {acidBaseReport && (
               <div>
-                <h3 className="font-semibold mb-2">Acid/Base &amp; pH Tendencies</h3>
+                <h3 className="font-semibold mb-2">Acid/Base &amp; pH</h3>
                 {resultsView === 'graphs' && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                     <div className="border rounded p-3">
@@ -2590,80 +2655,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
             {waterReport && (
               <div>
-                <h3 className="font-semibold mb-2">Water &amp; Osmolality</h3>
-                {resultsView === 'graphs' ? (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
-                      <div className="border rounded p-3">
-                        <div className="font-semibold">Apical surface</div>
-                        <div>{formatWaterValue(waterReport.osmolality.apical)} milliosmoles</div>
-                        <div className="text-gray-600">{waterReport.osmolality.apicalCategory}</div>
-                      </div>
-                      <div className="border rounded p-3">
-                        <div className="font-semibold">Cell</div>
-                        <div>{formatWaterValue(waterReport.osmolality.icf)} milliosmoles</div>
-                        <div className="text-gray-500">
-                          includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed milliosmoles
-                        </div>
-                        <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
-                      </div>
-                      <div className="border rounded p-3">
-                        <div className="font-semibold">Basolateral surface</div>
-                        <div>{formatWaterValue(waterReport.osmolality.basolateral)} milliosmoles</div>
-                        <div className="text-gray-600">{waterReport.osmolality.basolateralCategory}</div>
-                      </div>
-                    </div>
-                    <AccessibleTable
-                      caption="Water movement tendencies."
-                      columns={[
-                        { key: 'label', label: 'Pathway or region' },
-                        { key: 'direction', label: 'Direction' },
-                        { key: 'strength', label: 'Strength' }
-                      ]}
-                      rows={[
-                        waterReport.apicalMembrane,
-                        waterReport.basolateralMembrane,
-                        waterReport.cell,
-                        waterReport.transcellular,
-                        waterReport.paracellular,
-                        waterReport.netTransepithelial
-                      ]}
-                    />
-                  </>
-                ) : (
-                  <div className="space-y-6">
-                    <AccessibleTable
-                      caption="Osmolality. Values are displayed as milliosmoles."
-                      columns={[
-                        { key: 'region', label: 'Region' },
-                        { key: 'osmolality', label: 'Osmolality', format: value => formatWaterValue(value) + ' milliosmoles' },
-                        { key: 'category', label: 'Category' },
-                        { key: 'note', label: 'Note' }
-                      ]}
-                      rows={[
-                        { region: 'Apical surface', osmolality: waterReport.osmolality.apical, category: waterReport.osmolality.apicalCategory, note: 'Derived from fixed bath plus local transport/mixing' },
-                        { region: 'Cell', osmolality: waterReport.osmolality.icf, category: waterReport.osmolality.icfCategory, note: 'Includes ' + formatWaterValue(waterReport.osmolality.fixedIcf) + ' fixed milliosmoles' },
-                        { region: 'Basolateral surface', osmolality: waterReport.osmolality.basolateral, category: waterReport.osmolality.basolateralCategory, note: 'Derived from fixed bath plus local transport/mixing' }
-                      ]}
-                    />
-                    <AccessibleTable
-                      caption="Water movement tendencies."
-                      columns={[
-                        { key: 'label', label: 'Pathway or region' },
-                        { key: 'direction', label: 'Direction' },
-                        { key: 'strength', label: 'Strength' }
-                      ]}
-                      rows={[
-                        waterReport.apicalMembrane,
-                        waterReport.basolateralMembrane,
-                        waterReport.cell,
-                        waterReport.transcellular,
-                        waterReport.paracellular,
-                        waterReport.netTransepithelial
-                      ]}
-                    />
-                  </div>
-                )}
+                <h3 className="font-semibold mb-2">Water Movement</h3>
+                <p className="text-xs text-gray-600 mb-2">
+                  Water tendency follows net epithelial solute movement when a water pathway is present.
+                </p>
+                <WaterDetailCards rows={waterDetailRows} />
               </div>
             )}
 
