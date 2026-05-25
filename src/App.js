@@ -252,7 +252,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PiFacilitator', name: 'Pi Facilitator', type: 'carrier', stoich: { Phosphate: -1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'CFTR',     name: 'CFTR',       type: 'channel',    stoich: { 'Cl-': -1, 'HCO3-': -0.5 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ClCKb',    name: 'ClC-Kb',     type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'ClCKb',    name: 'ClC',        type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', density: 1 },
@@ -414,7 +414,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
   AQP: 'AQP water channel class: enables rapid H2O movement. Includes AQP2, AQP3, AQP4.',
   CFTR: 'CFTR regulated anion channel: provides Cl- exit and a smaller HCO3- exit tendency in secretory layouts.',
-  ClCKb: 'ClC-Kb chloride channel: passive Cl- flux follows the chloride gradient.',
+  ClCKb: 'ClC chloride channel family: passive Cl- flux follows the chloride gradient in this model.',
   ENaC: 'Epithelial sodium channel: passive Na+ flux follows the Na+ gradient.',
   GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
   TRPV56: 'TRPV5/6 epithelial Ca2+ channel class: passive Ca2+ flux follows the Ca2+ gradient. SALT does not model dynamic inhibition by intracellular Ca2+.',
@@ -1890,7 +1890,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     },
     {
       key: 'dominant-flux',
-      title: 'Dominant Flux',
+      title: 'Dominant Epithelial Flux',
       status: dominantFluxStatus,
       detail: dominantFluxDetail,
       state: dominantFluxRow ? 'accent' : 'neutral'
@@ -2053,7 +2053,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         ion: 'none',
         chemical: 'none',
         electrical: 'none',
-        interpretation: 'Add ENaC, Kir, ClC-Kb, CFTR, TRPV5/6, or a paracellular pore to show context'
+        interpretation: 'Add ENaC, Kir, ClC, CFTR, TRPV5/6, or a paracellular pore to show context'
       }];
 
   const snapshotTileClass = state => {
@@ -2178,7 +2178,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
-        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC-Kb, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses. Electrical context for these membrane pathways remains display-only.</li>
+        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses. Electrical context for these membrane pathways remains display-only.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
@@ -2208,9 +2208,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can complete Cl⁻ secretion when paired with NKCC or another Cl⁻ entry pathway on the opposite membrane. Can contribute to HCO₃⁻ secretion when paired with a compatible HCO₃⁻ entry pathway. Dynamic gating and detailed bicarbonate selectivity are not modeled.
         </li>
         <li>
-          <b>ClC-Kb:</b> chloride channel<br/>
-          <i>Action:</i> Chloride channel; passive Cl⁻ flux follows the Cl⁻ gradient.<br/>
-          <i>Rule:</i> Can provide a Cl⁻ exit or entry pathway, helping complete NaCl transport driven by NCC or NKCC.
+          <b>ClC:</b> CLC family voltage-gated chloride channel class; includes ClC-Kb<br/>
+          <i>Action:</i> Chloride channel; passive Cl⁻ flux follows the Cl⁻ gradient in this teaching model.<br/>
+          <i>Rule:</i> Can provide a Cl⁻ exit or entry pathway, helping complete NaCl transport driven by NCC or NKCC. Voltage dependence is not modeled.
         </li>
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
@@ -2353,7 +2353,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
-        <li><b>Cl⁻:</b> NKCC, NCC, ClC-Kb, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
+        <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
@@ -2680,7 +2680,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'CFTR':
           return <><b>CFTR regulated anion channel</b>: provides Cl⁻ exit and a smaller HCO₃⁻ exit tendency in secretory layouts. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
-          return <><b>ClC-Kb chloride channel</b>: passive Cl⁻ flux follows the Cl⁻ gradient.<br/></>;
+          return <><b>ClC chloride channel family</b>: passive Cl⁻ flux follows the Cl⁻ gradient in this model. Includes ClC-Kb; voltage dependence is not modeled.<br/></>;
         case 'ENaC':
           return <><b>Epithelial sodium channel</b>: passive Na⁺ flux follows the Na⁺ gradient.<br/></>;
         case 'GLUT2':
@@ -3033,20 +3033,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                       <div className="border rounded p-3">
                         <div className="font-semibold">Apical surface</div>
-                        <div>{formatWaterValue(waterReport.osmolality.apical)} arbitrary osmoles</div>
+                        <div>{formatWaterValue(waterReport.osmolality.apical)} milliosmoles</div>
                         <div className="text-gray-600">{waterReport.osmolality.apicalCategory}</div>
                       </div>
                       <div className="border rounded p-3">
                         <div className="font-semibold">Cell</div>
-                        <div>{formatWaterValue(waterReport.osmolality.icf)} arbitrary osmoles</div>
+                        <div>{formatWaterValue(waterReport.osmolality.icf)} milliosmoles</div>
                         <div className="text-gray-500">
-                          includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed osmoles
+                          includes {formatWaterValue(waterReport.osmolality.fixedIcf)} fixed milliosmoles
                         </div>
                         <div className="text-gray-600">{waterReport.osmolality.icfCategory}</div>
                       </div>
                       <div className="border rounded p-3">
                         <div className="font-semibold">Basolateral surface</div>
-                        <div>{formatWaterValue(waterReport.osmolality.basolateral)} arbitrary osmoles</div>
+                        <div>{formatWaterValue(waterReport.osmolality.basolateral)} milliosmoles</div>
                         <div className="text-gray-600">{waterReport.osmolality.basolateralCategory}</div>
                       </div>
                     </div>
@@ -3070,16 +3070,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 ) : (
                   <div className="space-y-6">
                     <AccessibleTable
-                      caption="Osmolality. Values are arbitrary teaching units."
+                      caption="Osmolality. Values are displayed as milliosmoles."
                       columns={[
                         { key: 'region', label: 'Region' },
-                        { key: 'osmolality', label: 'Osmolality', format: value => formatWaterValue(value) + ' arbitrary osmoles' },
+                        { key: 'osmolality', label: 'Osmolality', format: value => formatWaterValue(value) + ' milliosmoles' },
                         { key: 'category', label: 'Category' },
                         { key: 'note', label: 'Note' }
                       ]}
                       rows={[
                         { region: 'Apical surface', osmolality: waterReport.osmolality.apical, category: waterReport.osmolality.apicalCategory, note: 'Derived from fixed bath plus local transport/mixing' },
-                        { region: 'Cell', osmolality: waterReport.osmolality.icf, category: waterReport.osmolality.icfCategory, note: 'Includes ' + formatWaterValue(waterReport.osmolality.fixedIcf) + ' fixed osmoles' },
+                        { region: 'Cell', osmolality: waterReport.osmolality.icf, category: waterReport.osmolality.icfCategory, note: 'Includes ' + formatWaterValue(waterReport.osmolality.fixedIcf) + ' fixed milliosmoles' },
                         { region: 'Basolateral surface', osmolality: waterReport.osmolality.basolateral, category: waterReport.osmolality.basolateralCategory, note: 'Derived from fixed bath plus local transport/mixing' }
                       ]}
                     />
