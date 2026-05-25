@@ -179,7 +179,7 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
   };
 }
 
-function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O) {
+function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgroundOsmoticPull) {
   const apicalWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'apical');
   const basolateralWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'basolateral');
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
@@ -191,20 +191,34 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O) {
       : 'none';
   const paracellularPathStatus = hasParacellularPath ? 'present' : 'none';
   const soluteDrive = soluteLinkedWaterDrive(transepiFluxDataNoH2O);
+  const backgroundValue = Number(backgroundOsmoticPull?.value || 0);
+  const osmoticPullValue = soluteDrive.value + backgroundValue;
   const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularPath ? 1 : 0);
   const pathwayShare = expressedPathwayCount > 0 ? 1 / expressedPathwayCount : 0;
-  const transcellularValue = hasTranscellularPath ? soluteDrive.value * pathwayShare : 0;
-  const paracellularValue = hasParacellularPath ? soluteDrive.value * pathwayShare : 0;
+  const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare : 0;
+  const paracellularValue = hasParacellularPath ? osmoticPullValue * pathwayShare : 0;
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
   return {
-    teachingNote: 'Water tendency follows net epithelial solute movement when a water pathway is present.',
-    solutePull: {
-      label: 'Solute osmotic pull',
-      direction: epithelialWaterDirection(soluteDrive.value),
-      strength: waterTendencyStrength(soluteDrive.value),
-      value: soluteDrive.value,
+    teachingNote: 'Osmotic pull plus water pathway availability produces water movement.',
+    osmoticPull: {
+      label: 'Osmotic pull',
+      direction: epithelialWaterDirection(osmoticPullValue),
+      strength: waterTendencyStrength(osmoticPullValue),
+      value: osmoticPullValue,
+      soluteValue: soluteDrive.value,
+      backgroundValue,
       sourceFlux: soluteDrive.sourceFlux
+    },
+    backgroundPull: {
+      label: 'Background osmotic pull',
+      status: backgroundOsmoticPull?.status || 'None',
+      direction: epithelialWaterDirection(backgroundValue),
+      strength: waterTendencyStrength(backgroundValue),
+      value: backgroundValue,
+      setting: backgroundOsmoticPull?.setting || 'none',
+      effectiveLevel: backgroundOsmoticPull?.effectiveLevel || 'none',
+      effectiveLabel: backgroundOsmoticPull?.effectiveLabel || 'None'
     },
     transcellularPath: {
       label: 'Transcellular water pathway',
@@ -383,6 +397,60 @@ const TISSUE_OPTION_GROUPS = [
   'Exocrine, airway, and skin',
   'Central nervous system'
 ];
+
+const BACKGROUND_OSMOTIC_PULL_VALUES = {
+  none: 0,
+  low: 0.35,
+  normal: 0.9,
+  high: 1.8
+};
+
+const BACKGROUND_OSMOTIC_PULL_OPTIONS = [
+  { value: 'tissue', label: 'Use tissue default' },
+  { value: 'none', label: 'Equal / no background pull' },
+  { value: 'low', label: 'Weak toward blood' },
+  { value: 'normal', label: 'Moderate toward blood' },
+  { value: 'high', label: 'Strong toward blood' }
+];
+
+function backgroundOsmoticPullLevelLabel(level) {
+  const option = BACKGROUND_OSMOTIC_PULL_OPTIONS.find(candidate => candidate.value === level);
+  return option?.label || 'None';
+}
+
+function backgroundOsmoticPullPhrase(level) {
+  return backgroundOsmoticPullLevelLabel(level);
+}
+
+function tissueDefaultBackgroundOsmoticPullLevel(tissuePreset) {
+  const tissue = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
+  const tissueText = (tissue.value + ' ' + tissue.label).toLowerCase();
+  if (tissue.value === 'all') return 'none';
+  if (tissueText.includes('descending limb') || tissueText.includes('thin descending')) return 'high';
+  if (tissueText.includes('collecting duct principal')) return 'normal';
+  if (tissueText.includes('collecting duct') && !tissueText.includes('intercalated')) return 'normal';
+  if (tissueText.includes('thick ascending limb')) return 'normal';
+  return 'none';
+}
+
+function resolveBackgroundOsmoticPull(tissuePreset, setting) {
+  const requestedLevel = setting || 'tissue';
+  const tissueDefaultLevel = tissueDefaultBackgroundOsmoticPullLevel(tissuePreset);
+  const effectiveLevel = requestedLevel === 'tissue' ? tissueDefaultLevel : requestedLevel;
+  const value = BACKGROUND_OSMOTIC_PULL_VALUES[effectiveLevel] ?? 0;
+  const status = requestedLevel === 'tissue'
+    ? 'Tissue default, ' + backgroundOsmoticPullPhrase(effectiveLevel)
+    : backgroundOsmoticPullPhrase(effectiveLevel);
+  return {
+    setting: requestedLevel,
+    settingLabel: backgroundOsmoticPullLevelLabel(requestedLevel),
+    tissueDefaultLevel,
+    effectiveLevel,
+    effectiveLabel: backgroundOsmoticPullPhrase(effectiveLevel),
+    status,
+    value
+  };
+}
 
 const DENSITY_OPTIONS = [
   { label: 'Low', value: 0.5 },
@@ -753,10 +821,12 @@ export default function App() {
   const [transporters, setTransporters] = useState([]);
   const [result, setResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resultsView, setResultsView] = useState('graphs');
   const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
   const [tissuePreset, setTissuePreset] = useState('all');
+  const [backgroundOsmoticPullSetting, setBackgroundOsmoticPullSetting] = useState('tissue');
 
   const [electrochemicalFeedback] = useState(false);
 
@@ -778,7 +848,9 @@ export default function App() {
   paraCationPerm,
   paraAnionPerm,
   electrochemicalFeedback,
-  baseConcentrations
+  baseConcentrations,
+  tissuePreset,
+  backgroundOsmoticPullSetting
 ]);
 
 
@@ -846,6 +918,23 @@ export default function App() {
 
   const resetBaseConcentrations = () => {
     setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+  };
+
+  const resetAllSettings = () => {
+    setTransporters([]);
+    setParacellularType('none');
+    setParaCationPerm(1.0);
+    setParaAnionPerm(1.0);
+    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+    setTissuePreset('all');
+    setBackgroundOsmoticPullSetting('tissue');
+    setResultsView('graphs');
+    setZoomedConcentrationIon(null);
+    setShowInfoModal(false);
+    setModalTransporterId(null);
+    setShowParaInfo(false);
+    setActiveTransporterTooltip(null);
+    setShowResetConfirm(false);
   };
 
   // --- Simulation Logic ---
@@ -1157,11 +1246,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   };
 
   const coupledMismatchReport = buildCoupledMismatchReport(coupledEvents, transepiFluxDataNoH2O);
+  const effectiveBackgroundOsmoticPull = resolveBackgroundOsmoticPull(tissuePreset, backgroundOsmoticPullSetting);
 
   const waterReport = buildWaterReport(
     tList,
     paracellularType,
-    transepiFluxDataNoH2O
+    transepiFluxDataNoH2O,
+    effectiveBackgroundOsmoticPull
   );
 
   // Compose transepiFluxData for display
@@ -1306,6 +1397,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const membraneTransporters = placement => transporters.filter(t => t.placement === placement);
   const transporterIsOnMembrane = (id, placement) => transporters.some(t => t.id === id && t.placement === placement);
   const tissueOption = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
+  const effectiveBackgroundOsmoticPull = resolveBackgroundOsmoticPull(tissueOption.value, backgroundOsmoticPullSetting);
   const allTissueOption = TISSUE_OPTIONS[0];
   const groupedTissueOptions = TISSUE_OPTION_GROUPS.map(group => ({
     group,
@@ -1475,7 +1567,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         : strongest;
     }, null);
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
-  const solutePullValue = waterReport?.solutePull?.value ?? 0;
+  const osmoticPullValue = waterReport?.osmoticPull?.value ?? 0;
   const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
   const acidBaseFluxValue = acidBaseReport?.transepithelial?.value ?? 0;
   const tePotentialStatus = Math.abs(tePotentialValue) < CHARGE_EPSILON
@@ -1483,7 +1575,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     : tePotentialValue > 0
       ? 'Lumen-negative'
       : 'Lumen-positive';
-  const solutePullStatus = epithelialWaterDirection(solutePullValue);
+  const osmoticPullStatus = epithelialWaterDirection(osmoticPullValue);
   const waterFluxStatus = epithelialWaterDirection(waterFluxValue);
   const acidBaseFluxStatus = Math.abs(acidBaseFluxValue) < 0.001
     ? 'Neutral/weak'
@@ -1511,7 +1603,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
     : 'Net epithelial movement is weak';
   const waterFluxDetail = waterReport
-    ? 'Solute pull + water pathway = water movement'
+    ? 'Osmotic pull + water pathway = water movement'
     : 'No water tendency calculated';
   const snapshotIndicatorPercent = (value, maxAbs) => 50 + clamp(Number(value || 0) / maxAbs, -1, 1) * 45;
   const resultsSnapshotTiles = result ? [
@@ -1571,14 +1663,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       state: Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
       indicators: [
         {
-          label: 'Solute osmotic pull',
-          status: solutePullStatus,
-          value: solutePullValue,
+          label: 'Osmotic pull',
+          status: osmoticPullStatus,
+          value: osmoticPullValue,
           maxAbs: 2.5,
           leftLabel: 'secretion',
           rightLabel: 'absorption',
           markerClass: 'bg-indigo-700',
-          ariaLabel: 'Solute osmotic pull indicator: ' + solutePullStatus + ', ' + formatWaterValue(solutePullValue) + ' solute-linked water tendency units. Left indicates secretion; right indicates absorption.'
+          ariaLabel: 'Osmotic pull indicator: ' + osmoticPullStatus + ', ' + formatWaterValue(osmoticPullValue) + ' osmotic pull tendency units. Left indicates secretion; right indicates absorption.'
         },
         {
           label: 'Water flux',
@@ -1597,12 +1689,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const waterSnapshotTile = resultsSnapshotTiles.find(tile => tile.key === 'water');
   const waterDetailRows = waterReport ? [
     {
-      label: 'Solute osmotic pull',
-      status: 'net epithelial solute flux',
-      direction: waterReport.solutePull.direction,
-      strength: waterReport.solutePull.strength,
-      value: waterReport.solutePull.value,
-      note: 'Based on net epithelial solute flux (' + formatTableValue(waterReport.solutePull.sourceFlux) + ' flux units), not ECF osmolality settings'
+      label: 'Osmotic pull',
+      status: 'combined solute-linked and background pull',
+      direction: waterReport.osmoticPull.direction,
+      strength: waterReport.osmoticPull.strength,
+      value: waterReport.osmoticPull.value,
+      note: 'Combined from net epithelial solute flux (' + formatTableValue(waterReport.osmoticPull.sourceFlux) + ' flux units) and background pull; ECF concentration settings do not directly drive water flux'
+    },
+    {
+      label: 'Background osmotic pull',
+      status: waterReport.backgroundPull.status,
+      direction: waterReport.backgroundPull.direction,
+      strength: waterReport.backgroundPull.strength,
+      value: waterReport.backgroundPull.value,
+      note: 'Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.'
     },
     {
       label: 'Transcellular water pathway and contribution',
@@ -1923,7 +2023,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>AQP:</b> aquaporin class; representative members include AQP2, AQP3, and AQP4<br/>
           <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows net epithelial solute movement.
+          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows the combined osmotic pull.
         </li>
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
@@ -2050,16 +2150,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Paracellular pathway:</b> Movement of solutes and water between cells.</li>
         <li><b>Barrier:</b> modeled as no paracellular solute or water flux. This is a teaching simplification; real tight junctions vary in permeability and selectivity.</li>
-        <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and provides the paracellular water pathway for solute-linked H₂O movement.</li>
+        <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and provides the paracellular water pathway for osmotic-pull-linked H₂O movement.</li>
         <li><b>Anion Pore:</b> Enables Cl⁻ flux, with some HCO₃⁻ permeability, down the transepithelial electrochemical tendency.</li>
-        <li>Paracellular ion flux magnitude depends on the permeability setting, the concentration gradient, and the transepithelial electrical tendency. Paracellular water movement follows net epithelial solute movement when the Cation + Water Pore is present.</li>
+        <li>Paracellular ion flux magnitude depends on the permeability setting, the concentration gradient, and the transepithelial electrical tendency. Paracellular water movement follows the combined osmotic pull when the Cation + Water Pore is present.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Water Movement Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li>H₂O is not treated as a transported solute concentration. The app reports qualitative water movement tendencies instead of calculating true cell volume or osmolality.</li>
         <li>ECF concentration settings and apical/cell/basolateral osmolality differences do not directly drive water flux.</li>
-        <li>Water tendency follows net epithelial solute movement when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes; the Cation + Water Pore provides a paracellular water pathway.</li>
+        <li>Osmotic pull combines net epithelial solute movement with the optional background osmotic pull toward blood. The background setting affects water movement only and does not change solute concentrations.</li>
+        <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes; the Cation + Water Pore provides a paracellular water pathway.</li>
         <li>Barrier and Anion Pore do not provide paracellular water flux in this teaching model.</li>
       </ul>
 
@@ -2096,9 +2197,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
   </div><div className="flex flex-wrap items-center gap-2 mb-4">
-  <Button onClick={() => setShowAbout(true)}>About</Button>
+<Button onClick={() => setShowAbout(true)}>About</Button>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
-<Button variant="outline" onClick={() => setTransporters([])}>Reset</Button>
+<Button variant="outline" onClick={() => setShowResetConfirm(true)}>Reset</Button>
 <fieldset className="inline-flex items-center gap-2 rounded border px-2 py-1 text-sm">
   <legend className="sr-only">Results view</legend>
   <span className="font-semibold" aria-hidden="true">Results</span>
@@ -2223,10 +2324,61 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     </div>
   </div>
 )}
+{showResetConfirm && (
+  <div
+    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+    role="presentation"
+    onClick={() => setShowResetConfirm(false)}
+  >
+    <div
+      className="bg-white rounded-lg p-6 max-w-md w-[92vw] shadow-lg"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="reset-confirm-title"
+      aria-describedby="reset-confirm-description"
+      onClick={e => e.stopPropagation()}
+    >
+      <h2 id="reset-confirm-title" className="text-xl font-bold mb-2">Reset all settings?</h2>
+      <p id="reset-confirm-description" className="text-sm text-gray-700 mb-4">
+        This clears all transporters and restores tissue, paracellular pathway, water movement, baseline concentrations, and results view defaults.
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(false)}>Cancel</Button>
+        <Button size="sm" onClick={resetAllSettings}>Reset</Button>
+      </div>
+    </div>
+  </div>
+)}
 {showSettings && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
-      <h2 className="text-xl font-bold mb-4">Model Settings</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowSettings(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh] relative" onClick={e => e.stopPropagation()}>
+      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" onClick={() => setShowSettings(false)}>Close</Button>
+      <h2 className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
+      <div className="mb-4 text-sm text-gray-700">
+        <h3 className="block mb-2 font-semibold">Water Movement</h3>
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+          <div>
+            <label htmlFor="background-osmotic-pull" className="block mb-1">Background osmotic pull toward blood</label>
+            <select
+              id="background-osmotic-pull"
+              value={backgroundOsmoticPullSetting}
+              onChange={e => setBackgroundOsmoticPullSetting(e.target.value)}
+              className="border rounded p-1 w-full"
+              aria-describedby="background-osmotic-pull-help background-osmotic-pull-effective"
+            >
+              {BACKGROUND_OSMOTIC_PULL_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <div id="background-osmotic-pull-effective" className="text-gray-600">
+            Effective: {effectiveBackgroundOsmoticPull.status}
+          </div>
+        </div>
+        <p id="background-osmotic-pull-help" className="text-gray-500 mt-2">
+          Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.
+        </p>
+      </div>
       <div className="mb-4 text-sm text-gray-700">
         <label className="block mb-2 font-semibold">Membrane Electrochemical Feedback</label>
         <label className="block mb-2">
@@ -2297,7 +2449,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           </tbody>
         </table>
       </div>
-      <Button className="mt-4" onClick={() => setShowSettings(false)}>
+      <Button size="sm" variant="outline" className="mt-4" onClick={() => setShowSettings(false)}>
         Close
       </Button>
     </div>
@@ -2657,7 +2809,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               <div>
                 <h3 className="font-semibold mb-2">Water Movement</h3>
                 <p className="text-xs text-gray-600 mb-2">
-                  Water tendency follows net epithelial solute movement when a water pathway is present.
+                  Osmotic pull plus water pathway availability produces water movement.
                 </p>
                 <WaterDetailCards rows={waterDetailRows} />
               </div>
