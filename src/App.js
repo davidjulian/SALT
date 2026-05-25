@@ -179,13 +179,27 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
   };
 }
 
+function aqpDensityForPlacement(tList, placement) {
+  return tList
+    .filter(t => t.id === 'AQP' && t.placement === placement)
+    .reduce((sum, t) => sum + Math.max(Number(t.density) || 0, 0), 0);
+}
+
+function serialAqpDensityScale(apicalDensity, basolateralDensity) {
+  if (apicalDensity <= 0 || basolateralDensity <= 0) return 0;
+  return (2 * apicalDensity * basolateralDensity) / (apicalDensity + basolateralDensity);
+}
+
 function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgroundOsmoticPull) {
-  const apicalWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'apical');
-  const basolateralWaterPath = tList.some(t => t.id === 'AQP' && t.placement === 'basolateral');
+  const apicalAqpDensity = aqpDensityForPlacement(tList, 'apical');
+  const basolateralAqpDensity = aqpDensityForPlacement(tList, 'basolateral');
+  const aqpDensityScale = serialAqpDensityScale(apicalAqpDensity, basolateralAqpDensity);
+  const apicalWaterPath = apicalAqpDensity > 0;
+  const basolateralWaterPath = basolateralAqpDensity > 0;
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
   const hasParacellularPath = paracellularType === 'cation';
   const transcellularPathStatus = hasTranscellularPath
-    ? 'complete AQP path'
+    ? 'complete AQP path; AQP density scale ' + aqpDensityScale.toFixed(2)
     : apicalWaterPath || basolateralWaterPath
       ? 'incomplete AQP path'
       : 'none';
@@ -195,7 +209,7 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
   const osmoticPullValue = soluteDrive.value + backgroundValue;
   const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularPath ? 1 : 0);
   const pathwayShare = expressedPathwayCount > 0 ? 1 / expressedPathwayCount : 0;
-  const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare : 0;
+  const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare * aqpDensityScale : 0;
   const paracellularValue = hasParacellularPath ? osmoticPullValue * pathwayShare : 0;
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
@@ -223,8 +237,11 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
     transcellularPath: {
       label: 'Transcellular water pathway',
       status: transcellularPathStatus,
+      apicalDensity: apicalAqpDensity,
+      basolateralDensity: basolateralAqpDensity,
+      densityScale: aqpDensityScale,
       note: hasTranscellularPath
-        ? 'AQP is present on both apical and basolateral membranes'
+        ? 'AQP is present on both apical and basolateral membranes; apical density ' + apicalAqpDensity.toFixed(1) + ', basolateral density ' + basolateralAqpDensity.toFixed(1)
         : apicalWaterPath || basolateralWaterPath
           ? 'AQP is present on only one membrane'
           : 'No AQP water pathway is placed'
@@ -462,7 +479,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1: exchanges Cl- and HCO3- in opposite directions.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
-  AQP: 'Aquaporin water channel class: supports solute-linked H2O movement when apical and basolateral AQP form a complete pathway. Includes AQP2, AQP3, AQP4.',
+  AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Combined apical/basolateral AQP density scales transcellular water flux. Includes AQP2, AQP3, AQP4.',
   CFTR: 'Cystic fibrosis transmembrane conductance regulator: passive Cl- and HCO3- flux.',
   ClCKb: 'ClC chloride channel class: passive Cl- flux. Includes ClC-K.',
   ENaC: 'Epithelial Na+ channel: passive Na+ flux.',
@@ -537,6 +554,9 @@ const FLUX_BAR_SERIES = [
   { key: 'transepithelial', name: 'Net epithelial', color: '#fb7185' }
 ];
 const DIRECTIONAL_FLUX_GRAPH_EPSILON = 0.001;
+const SNAPSHOT_TEP_INDICATOR_MAX = 0.75;
+const SNAPSHOT_ACID_BASE_INDICATOR_MAX = 1;
+const SNAPSHOT_WATER_INDICATOR_MAX = 1.5;
 const CONCENTRATION_COMPARTMENTS = [
   { key: 'apicalBulk', label: 'Apical Bulk ECF', name: 'Apical Bulk ECF', color: '#2dd4bf' },
   { key: 'apicalSurface', label: 'Apical Surface ECF', name: 'Apical Surface ECF', color: '#0f766e' },
@@ -1631,7 +1651,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       state: Math.abs(tePotentialValue) < CHARGE_EPSILON ? 'neutral' : 'accent',
       indicator: {
         value: -tePotentialValue,
-        maxAbs: 1.5,
+        maxAbs: SNAPSHOT_TEP_INDICATOR_MAX,
         leftLabel: 'Lumen-negative',
         rightLabel: 'Lumen-positive',
         markerClass: 'bg-slate-700',
@@ -1648,7 +1668,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       state: Math.abs(acidBaseFluxValue) < 0.001 ? 'neutral' : 'accent',
       indicator: {
         value: acidBaseFluxValue,
-        maxAbs: 2.5,
+        maxAbs: SNAPSHOT_ACID_BASE_INDICATOR_MAX,
         leftLabel: 'Base secretion',
         rightLabel: 'Acid secretion',
         markerClass: 'bg-teal-700',
@@ -1666,7 +1686,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           label: 'Osmotic pull',
           status: osmoticPullStatus,
           value: osmoticPullValue,
-          maxAbs: 2.5,
+          maxAbs: SNAPSHOT_WATER_INDICATOR_MAX,
           leftLabel: 'secretion',
           rightLabel: 'absorption',
           markerClass: 'bg-indigo-700',
@@ -1676,7 +1696,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           label: 'Water flux',
           status: waterFluxStatus,
           value: waterFluxValue,
-          maxAbs: 2.5,
+          maxAbs: SNAPSHOT_WATER_INDICATOR_MAX,
           leftLabel: 'secretion',
           rightLabel: 'absorption',
           markerClass: 'bg-blue-600',
@@ -2023,7 +2043,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>AQP:</b> aquaporin class; representative members include AQP2, AQP3, and AQP4<br/>
           <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows the combined osmotic pull.
+          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows the combined osmotic pull and is scaled by the combined apical/basolateral AQP density.
         </li>
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
@@ -2160,7 +2180,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>H₂O is not treated as a transported solute concentration. The app reports qualitative water movement tendencies instead of calculating true cell volume or osmolality.</li>
         <li>ECF concentration settings and apical/cell/basolateral osmolality differences do not directly drive water flux.</li>
         <li>Osmotic pull combines net epithelial solute movement with the optional background osmotic pull toward blood. The background setting affects water movement only and does not change solute concentrations.</li>
-        <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes; the Cation + Water Pore provides a paracellular water pathway.</li>
+        <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes and is scaled by the combined apical/basolateral AQP density; the Cation + Water Pore provides a paracellular water pathway.</li>
         <li>Barrier and Anion Pore do not provide paracellular water flux in this teaching model.</li>
       </ul>
 
@@ -2185,7 +2205,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
-        <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the direction of net epithelial solute movement in arbitrary teaching units.</li>
+        <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
@@ -2471,7 +2491,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PiFacilitator':
           return <><b>Pi Facilitator</b>: generic facilitated inorganic phosphate transporter. This mechanism is not well characterized but may be XPR1.<br/></>;
         case 'AQP':
-          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway.<br/></>;
+          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway, scaled by their combined density.<br/></>;
         case 'CFTR':
           return <><b>CFTR regulated anion channel</b>: provides Cl⁻ exit and a smaller HCO₃⁻ exit tendency in secretory layouts. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
