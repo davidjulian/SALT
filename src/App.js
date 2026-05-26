@@ -533,11 +533,14 @@ const SURFACE_MIXING_FRACTION = 0.25;
 const SURFACE_MAX_MULTIPLIER = 2;
 const GENERAL_DISPLAY_EXCLUDED_IONS = ['H+'];
 const PASSIVE_SOLUTE_CHANNELS = {
-  ENaC: 'Na+',
-  ClCKb: 'Cl-',
-  GLUT2: 'Glucose',
-  TRPV56: 'Ca2+',
-  ROMK: 'K+'
+  GLUT2: 'Glucose'
+};
+const SELECTED_ELECTROCHEMICAL_CHANNELS = {
+  ENaC: ['Na+'],
+  ROMK: ['K+'],
+  CFTR: ['Cl-', 'HCO3-'],
+  ClCKb: ['Cl-'],
+  TRPV56: ['Ca2+']
 };
 const ACTIVE_CELL_CONCENTRATION_GAIN = {
   Glucose: 20
@@ -572,6 +575,26 @@ const SETTINGS_CONCENTRATION_COMPARTMENTS = [
 const PASSIVE_CONDUCTANCE_SCALE = {
   GLUT2: 4
 };
+const IMPLICIT_VM_DRIVE = {
+  'Na+': 0.35,
+  'K+': 0.35,
+  'Ca2+': 0.75,
+  'Cl-': -0.4,
+  'HCO3-': -0.35
+};
+const ANION_LOADING_DRIVE_SCALE = 0.75;
+const ANION_LOADING_SENSITIVITY = 0.25;
+const ECF_CONCENTRATION_LIMITS = {
+  'Na+': { min: 120, max: 160, warnLowMax: 130, warnHighMin: 150 },
+  'K+': { min: 2, max: 8, warnLowMax: 3, warnHighMin: 6 },
+  'Cl-': { min: 80, max: 130, warnLowMax: 95, warnHighMin: 115 },
+  'HCO3-': { min: 10, max: 40, warnLowMax: 18, warnHighMin: 32 },
+  'Ca2+': { min: 0.5, max: 2.5, warnLowMax: 0.8, warnHighMin: 1.8 },
+  Phosphate: { min: 0.3, max: 3.0, warnLowMax: 0.6, warnHighMin: 2.0 },
+  Glucose: { min: 0, max: 20, warnLowMax: 2, warnHighMin: 12 }
+};
+const ECF_HARD_BLOCK_MESSAGE = 'This value is outside SALT’s allowed range for introductory epithelial transport modeling.';
+const ECF_WARNING_MESSAGE = 'This concentration is outside the usual teaching range and may produce nonphysiological flux behavior.';
 const ELECTROCHEMICAL_MEMBRANE_PATHWAYS = {
   CFTR: ['Cl-', 'HCO3-'],
   ClCKb: ['Cl-'],
@@ -676,6 +699,35 @@ function surfaceClamp(value, bulkValue) {
   return Math.min(Math.max(value, 0), upper);
 }
 
+function clampToUnit(value) {
+  return Math.max(-1, Math.min(1, Number(value) || 0));
+}
+
+function normalizedConcentrationTendency(outsideConcentration, cellConcentration) {
+  const outside = Math.max(Number(outsideConcentration) || 0, 0);
+  const cell = Math.max(Number(cellConcentration) || 0, 0);
+  const denominator = outside + cell + 1;
+  return clampToUnit((outside - cell) / denominator);
+}
+
+function implicitVmDriveForIon(ion, hasNormalImplicitVm, chemicalSignal, activeLoadingFlux = 0) {
+  if (!hasNormalImplicitVm) return 0;
+  const baseDrive = IMPLICIT_VM_DRIVE[ion] || 0;
+  const valence = ION_VALENCE[ion] || 0;
+  if (valence >= 0) return baseDrive;
+  const loadingSignal = Math.tanh(Math.max(Number(activeLoadingFlux) || 0, 0) / ANION_LOADING_SENSITIVITY);
+  const availabilityFactor = chemicalSignal < 0
+    ? 1
+    : Math.min(1, 0.3 + loadingSignal * 0.7);
+  return baseDrive * availabilityFactor;
+}
+
+function anionLoadingDrive(ion, activeLoadingFlux = 0) {
+  if ((ION_VALENCE[ion] || 0) >= 0) return 0;
+  const loadingSignal = Math.tanh(Math.max(Number(activeLoadingFlux) || 0, 0) / ANION_LOADING_SENSITIVITY);
+  return -ANION_LOADING_DRIVE_SCALE * loadingSignal;
+}
+
 function surfacePHDirection(flux) {
   const surfaceHChange = -flux;
   if (Math.abs(surfaceHChange) < 0.001) return 'no strong local pH tendency';
@@ -731,6 +783,40 @@ function concentrationGradientFlux(transporter, outsideConcentration, cellConcen
   const denominator = Math.abs(outsideConcentration) + Math.abs(effectiveCellConcentration) + 1;
   const gradientSignal = (outsideConcentration - effectiveCellConcentration) / denominator;
   return maxFlux * gradientSignal;
+}
+
+function electrochemicalChannelFlux(transporter, ion, outsideConcentration, cellConcentration, hasNormalImplicitVm, activeLoadingFlux = 0) {
+  const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
+  const stoichScale = Math.abs(transporter.stoich[ion] ?? 1);
+  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale * stoichScale;
+  const chemicalSignal = normalizedConcentrationTendency(outsideConcentration, cellConcentration);
+  const electricalSignal = implicitVmDriveForIon(ion, hasNormalImplicitVm, chemicalSignal, activeLoadingFlux);
+  const loadingSignal = anionLoadingDrive(ion, activeLoadingFlux);
+  return maxFlux * clampToUnit(chemicalSignal + electricalSignal + loadingSignal);
+}
+
+function concentrationValidationMessage(ion, value) {
+  const limits = ECF_CONCENTRATION_LIMITS[ion];
+  if (!limits) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return { level: 'error', message: ECF_HARD_BLOCK_MESSAGE };
+  if (numeric < limits.min || numeric > limits.max) {
+    return { level: 'error', message: ECF_HARD_BLOCK_MESSAGE };
+  }
+  if (
+    (numeric >= limits.min && numeric <= limits.warnLowMax) ||
+    (numeric >= limits.warnHighMin && numeric <= limits.max)
+  ) {
+    return { level: 'warning', message: ECF_WARNING_MESSAGE };
+  }
+  return null;
+}
+
+function clampEditableConcentration(ion, value) {
+  const limits = ECF_CONCENTRATION_LIMITS[ion];
+  const numeric = Math.max(Number(value) || 0, 0);
+  if (!limits) return numeric;
+  return Math.min(Math.max(numeric, limits.min), limits.max);
 }
 
 function coupledSolutes(stoich) {
@@ -845,10 +931,9 @@ export default function App() {
   const [resultsView, setResultsView] = useState('graphs');
   const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
+  const [concentrationValidation, setConcentrationValidation] = useState({});
   const [tissuePreset, setTissuePreset] = useState('all');
   const [backgroundOsmoticPullSetting, setBackgroundOsmoticPullSetting] = useState('tissue');
-
-  const [electrochemicalFeedback] = useState(false);
 
   // Paracellular pathway state
   const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'anion'
@@ -867,7 +952,6 @@ export default function App() {
   paracellularType,
   paraCationPerm,
   paraAnionPerm,
-  electrochemicalFeedback,
   baseConcentrations,
   tissuePreset,
   backgroundOsmoticPullSetting
@@ -926,7 +1010,16 @@ export default function App() {
 
   const updateBaseConcentration = (compartment, ion, value) => {
     if (!CONCENTRATION_EDIT_COMPARTMENTS.includes(compartment)) return;
-    const numeric = Math.max(Number(value) || 0, 0);
+    const requestedNumeric = Math.max(Number(value) || 0, 0);
+    const numeric = clampEditableConcentration(ion, value);
+    const validation = concentrationValidationMessage(ion, requestedNumeric) || concentrationValidationMessage(ion, numeric);
+    const validationKey = compartment + '-' + ion;
+    setConcentrationValidation(current => {
+      const next = { ...current };
+      if (validation) next[validationKey] = validation;
+      else delete next[validationKey];
+      return next;
+    });
     setBaseConcentrations(current => ({
       ...current,
       [compartment]: {
@@ -938,6 +1031,7 @@ export default function App() {
 
   const resetBaseConcentrations = () => {
     setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+    setConcentrationValidation({});
   };
 
   const resetAllSettings = () => {
@@ -946,6 +1040,7 @@ export default function App() {
     setParaCationPerm(1.0);
     setParaAnionPerm(1.0);
     setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+    setConcentrationValidation({});
     setTissuePreset('all');
     setBackgroundOsmoticPullSetting('tissue');
     setResultsView('graphs');
@@ -1021,7 +1116,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     if (t.placement === 'none') return;
     const effectiveStoich = activeStoichForPlacement(t);
     if (Object.keys(effectiveStoich).includes('H2O')) return;
-    if (PASSIVE_SOLUTE_CHANNELS[t.id]) {
+    if (PASSIVE_SOLUTE_CHANNELS[t.id] || SELECTED_ELECTROCHEMICAL_CHANNELS[t.id]) {
       passiveChannels.push(t);
       return;
     }
@@ -1085,18 +1180,23 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const passiveNetFlux = {};
   Object.keys(apicalFlux).forEach(ion => { passiveNetFlux[ion] = 0; });
   passiveChannels.forEach(t => {
-    const ion = PASSIVE_SOLUTE_CHANNELS[t.id];
-    const outsideConcentration = t.placement === 'apical' ? apicalECF[ion] : basolateralECF[ion];
-    const delta = concentrationGradientFlux(t, outsideConcentration, prePassiveICF[ion]);
-    if (t.placement === 'apical') apicalFlux[ion] += delta;
-    else basolateralFlux[ion] += delta;
-    passiveNetFlux[ion] += delta;
+    const channelIons = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id] || [PASSIVE_SOLUTE_CHANNELS[t.id]];
+    const soluteEvents = channelIons.map(ion => {
+      const outsideConcentration = t.placement === 'apical' ? apicalECF[ion] : basolateralECF[ion];
+      const delta = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id]
+        ? electrochemicalChannelFlux(t, ion, outsideConcentration, prePassiveICF[ion], hasNaKATPase, activeMembraneFlux[ion] || 0)
+        : concentrationGradientFlux(t, outsideConcentration, prePassiveICF[ion]);
+      if (t.placement === 'apical') apicalFlux[ion] += delta;
+      else basolateralFlux[ion] += delta;
+      passiveNetFlux[ion] += delta;
+      return { ion, coeff: Math.sign(delta), flux: delta };
+    });
     fluxEvents.push({
       id: t.id,
       name: t.name,
       placement: t.placement,
       type: 'passive',
-      solutes: [{ ion, coeff: Math.sign(delta), flux: delta }]
+      solutes: soluteEvents
     });
   });
 
@@ -1570,6 +1670,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     if (numeric !== 0 && Math.abs(numeric) < 0.001) return numeric.toPrecision(2);
     return String(Number(numeric.toFixed(3)));
   };
+  const concentrationValidationFor = (compartment, ion) => concentrationValidation[compartment + '-' + ion];
   const fluxDirection = value => {
     const numeric = Number(value ?? 0);
     if (Math.abs(numeric) < 0.001) return 'none';
@@ -1778,11 +1879,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   };
   const membraneElectricalSign = (placement, ion) => {
     const valence = ION_VALENCE[ion] || 0;
-    const polarity = chargeReport?.[placement]?.value || 0;
-    if (valence === 0 || Math.abs(polarity) < CHARGE_EPSILON) return 0;
-    const cellTendsPositive = polarity > 0;
-    if (valence > 0) return cellTendsPositive ? -1 : 1;
-    return cellTendsPositive ? 1 : -1;
+    const hasImplicitVm = result?.gradientSupportReport?.present;
+    if (valence === 0 || !hasImplicitVm) return 0;
+    return valence > 0 ? 1 : -1;
   };
   const paracellularChemicalSign = ion => {
     if (!result) return 0;
@@ -2003,29 +2102,31 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Purpose:</b> SALT is a qualitative teaching model for exploring epithelial pathway logic: which membrane steps are present, which are missing, and what consequences follow.</li>
         <li><b>Units:</b> Fluxes, concentration shifts, water tendencies, and charge tendencies use arbitrary teaching units. The model is not intended to produce research-grade flux magnitudes.</li>
         <li><b>Core distinction:</b> The app separates one-membrane flux tendencies from completed transepithelial flux. A transporter can move solute into or out of the cell even when a full apical-to-basolateral pathway is incomplete.</li>
-        <li><b>Reservoirs and surfaces:</b> Bulk ECF bath concentrations are fixed by default and editable in Settings. ICF is model-derived from the steady-state cell condition. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
+        <li><b>Reservoirs and surfaces:</b> Bulk ECF bath concentrations are fixed by default and editable within physiological teaching ranges in Settings. ICF is model-derived from the steady-state cell condition. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
         <li><b>Direction convention:</b> Flux graphs use one shared convention: positive points toward the basolateral/blood side and negative points toward the apical/lumen side.</li>
         <li><b>Exploration:</b> Tissue choices filter which transporters are offered, but they do not remove transporters already placed. Unusual layouts are allowed so users can observe their consequences.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Teaching Abstractions &amp; Limits</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
-        <li><b>Electrochemical context:</b> Membrane transporter fluxes use SALT's simplified teaching rules; electrochemical context for membrane transporters remains display-only. Paracellular ion pathways are passive transepithelial leaks influenced by concentration gradients and transepithelial electrical tendency. No membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculation is performed.</li>
+        <li><b>Electrochemical context:</b> SALT includes simplified electrochemical direction rules for selected charged transmembrane channels. These rules are used only when the cell has a pump-supported Na⁺/K⁺ gradient state, represented by the presence of Na⁺/K⁺-ATPase. In that state, the cell interior is treated as electrically negative relative to adjacent extracellular fluid.</li>
+        <li><b>Membrane potential limits:</b> SALT does not dynamically calculate membrane potential from transporter activity. Transporter fluxes do not feed back to alter membrane potential. Transepithelial potential remains a separate epithelial-scale tendency and may influence charged paracellular flux, but it is not used to calculate apical or basolateral membrane potential.</li>
         <li><b>Charge and polarity:</b> Charge outputs are teaching tendencies computed from modeled ion fluxes. They are intended to flag likely electrical consequences, not to solve a steady-state electrical circuit.</li>
         <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi pairs with Pi Facilitator on the opposite membrane for completed phosphate transport. CFTR is represented as regulated Cl⁻ exit with a smaller HCO₃⁻ exit tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi pairs with Pi Facilitator on the opposite membrane for completed phosphate transport. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
-        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, GLUT2, and TRPV5/6 follow their local chemical gradients and can reverse if the gradient reverses. Electrical context for these membrane pathways remains display-only.</li>
-        <li><b>Regulated or supported pathways:</b> CFTR is treated as regulated anion exit. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
+        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, CFTR, and TRPV5/6 use simplified electrochemical direction rules when Na⁺/K⁺-ATPase is present and primarily follow chemical concentration tendency when it is absent. GLUT2 remains non-voltage-sensitive and follows the glucose gradient.</li>
+        <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. Na⁺-coupled cotransporters and exchangers require Na⁺/K⁺-ATPase support.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
         <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
+        <li><b>Editable concentrations:</b> Editable ECF concentrations are constrained to physiological teaching ranges so exploratory changes illustrate meaningful physiology without producing extreme nonphysiological flux behavior.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
@@ -2047,17 +2148,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
-          <i>Action:</i> Regulated epithelial anion channel; provides Cl⁻ exit and a smaller HCO₃⁻ exit tendency in this teaching model.<br/>
-          <i>Rule:</i> Can complete Cl⁻ secretion when paired with NKCC or another Cl⁻ entry pathway on the opposite membrane. Can contribute to HCO₃⁻ secretion when paired with a compatible HCO₃⁻ entry pathway. Dynamic gating and detailed bicarbonate selectivity are not modeled.
+          <i>Action:</i> Regulated epithelial anion channel; moves Cl⁻ and a smaller HCO₃⁻ component according to the simplified electrochemical tendency in this teaching model.<br/>
+          <i>Rule:</i> Can complete Cl⁻ secretion when paired with NKCC or another Cl⁻ loading pathway on the opposite membrane. CFTR alone is not treated as a complete secretion mechanism when intracellular anion loading is weak. Dynamic gating and detailed bicarbonate selectivity are not modeled.
         </li>
         <li>
           <b>ClC:</b> CLC family voltage-gated chloride channel class; includes ClC-Kb<br/>
-          <i>Action:</i> Chloride channel; passive Cl⁻ flux follows the Cl⁻ gradient in this teaching model.<br/>
-          <i>Rule:</i> Can provide a Cl⁻ exit or entry pathway, helping complete NaCl transport driven by NCC or NKCC. Voltage dependence is not modeled.
+          <i>Action:</i> Chloride channel; passive Cl⁻ flux follows the simplified electrochemical tendency in this teaching model.<br/>
+          <i>Rule:</i> Can provide a Cl⁻ exit or entry pathway, helping complete NaCl transport driven by NCC or NKCC when intracellular Cl⁻ loading supports exit. Voltage dependence is not modeled.
         </li>
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
-          <i>Action:</i> Sodium channel; passive Na⁺ flux follows the Na⁺ gradient.<br/>
+          <i>Action:</i> Sodium channel; passive Na⁺ flux follows chemical tendency and the fixed implicit membrane-potential tendency when pump support is present.<br/>
           <i>Rule:</i> Can provide apical Na⁺ entry. Completed transepithelial Na⁺ absorption is limited by available Na⁺/K⁺-ATPase extrusion support.
         </li>
         <li>
@@ -2077,8 +2178,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>Kir:</b> inward-rectifier potassium channel class<br/>
-          <i>Action:</i> Potassium channel; passive K⁺ flux follows the K⁺ gradient. ROMK is a member of the Kir ion channel class.<br/>
-          <i>Rule:</i> Can provide K⁺ exit on either membrane. With Na⁺/K⁺-ATPase present, completed apical K⁺ secretion is limited by available pump K⁺ loading support and Kir exit capacity.
+          <i>Action:</i> Potassium channel; passive K⁺ flux follows the simplified electrochemical tendency. ROMK is a member of the Kir ion channel class.<br/>
+          <i>Rule:</i> Can provide K⁺ exit or entry on either membrane depending on K⁺ electrochemical tendency. With Na⁺/K⁺-ATPase present, completed apical K⁺ secretion is limited by available pump K⁺ loading support and Kir exit capacity.
         </li>
         <li>
           <b>MATE:</b> multidrug and toxin extrusion transporter class; representative members include MATE1 and MATE2-K<br/>
@@ -2162,7 +2263,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>TRPV5/6:</b> epithelial calcium channel class; representative members include renal TRPV5 and intestinal TRPV6<br/>
-          <i>Action:</i> Passive Ca²⁺ channel; Ca²⁺ flux follows the local Ca²⁺ gradient.<br/>
+          <i>Action:</i> Passive Ca²⁺ channel; Ca²⁺ flux follows chemical tendency and the fixed implicit membrane-potential tendency when pump support is present.<br/>
           <i>Rule:</i> Completed epithelial Ca²⁺ movement requires TRPV5/6 on one membrane and PMCA or NCX1 on the opposite membrane; apical TRPV5/6 plus basolateral extrusion produces absorption. SALT does not model dynamic channel regulation by intracellular Ca²⁺, so unmatched entry is shown as an intracellular Ca²⁺ accumulation tendency.
         </li>
       </ul>
@@ -2400,19 +2501,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </p>
       </div>
       <div className="mb-4 text-sm text-gray-700">
-        <label className="block mb-2 font-semibold">Membrane Electrochemical Feedback</label>
-        <label className="block mb-2">
-          <input
-            type="checkbox"
-            checked={false}
-            disabled
-            aria-describedby="electrochemical-feedback-coming-soon"
-            onChange={() => {}}
-          />{' '}
-          Polarity affects transcellular membrane flux <span id="electrochemical-feedback-coming-soon" className="text-gray-500">(coming soon)</span>
-        </label>
+        <h3 className="block mb-2 font-semibold">Membrane Electrochemical Rules</h3>
         <div className="text-gray-500">
-          Electrochemical context remains display-only for membrane transporters and does not change their flux. Paracellular ion pathways use concentration gradients plus transepithelial electrical tendency.
+          Selected charged channels use a fixed implicit membrane-potential tendency only when Na⁺/K⁺-ATPase is present. Dynamic membrane-potential feedback is not modeled. TEP remains epithelial-scale and affects charged paracellular flux only.
         </div>
       </div>
       <div className="mb-4 text-sm text-gray-700">
@@ -2426,7 +2517,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           Apical and basolateral bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
         </p>
         <p className="text-gray-500 mb-2">
-          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Electrochemical context remains display-only for membrane transporters and does not alter their flux.
+          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Editable ECF concentrations are constrained to physiological teaching ranges.
         </p>
         <table className="min-w-full table-auto text-left border">
           <caption className="sr-only">Baseline concentration settings. Apical and basolateral ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
@@ -2445,15 +2536,39 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 {SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => (
                   <td key={compartment.key} className="px-2 py-1 border">
                     {compartment.editable ? (
-                      <input
-                        type="number"
-                        min="0"
-                        step={ion === 'Ca2+' ? '0.0001' : '0.1'}
-                        value={baseConcentrations[compartment.key][ion]}
-                        onChange={e => updateBaseConcentration(compartment.key, ion, e.target.value)}
-                        className="border rounded p-1 w-full"
-                        aria-label={(ION_LABEL[ion] || ion) + ' ' + compartment.label + ' reservoir concentration'}
-                      />
+                      <>
+                        <input
+                          type="number"
+                          min={ECF_CONCENTRATION_LIMITS[ion]?.min ?? 0}
+                          max={ECF_CONCENTRATION_LIMITS[ion]?.max}
+                          step={ion === 'Ca2+' ? '0.0001' : '0.1'}
+                          value={baseConcentrations[compartment.key][ion]}
+                          onChange={e => updateBaseConcentration(compartment.key, ion, e.target.value)}
+                          className={
+                            'border rounded p-1 w-full ' +
+                            (concentrationValidationFor(compartment.key, ion)?.level === 'error'
+                              ? 'border-red-500'
+                              : concentrationValidationFor(compartment.key, ion)?.level === 'warning'
+                                ? 'border-amber-500'
+                                : '')
+                          }
+                          aria-label={(ION_LABEL[ion] || ion) + ' ' + compartment.label + ' reservoir concentration'}
+                          aria-describedby={concentrationValidationFor(compartment.key, ion) ? 'concentration-validation-' + compartment.key + '-' + ion : undefined}
+                        />
+                        {concentrationValidationFor(compartment.key, ion) && (
+                          <div
+                            id={'concentration-validation-' + compartment.key + '-' + ion}
+                            className={
+                              'mt-1 text-xs ' +
+                              (concentrationValidationFor(compartment.key, ion).level === 'error'
+                                ? 'text-red-700'
+                                : 'text-amber-700')
+                            }
+                          >
+                            {concentrationValidationFor(compartment.key, ion).message}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <span
                         className="block font-mono text-gray-700"
@@ -2493,15 +2608,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'AQP':
           return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway, scaled by their combined density.<br/></>;
         case 'CFTR':
-          return <><b>CFTR regulated anion channel</b>: provides Cl⁻ exit and a smaller HCO₃⁻ exit tendency in secretory layouts. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
+          return <><b>CFTR regulated anion channel</b>: passive Cl⁻ and smaller HCO₃⁻ movement follow the simplified electrochemical tendency. CFTR can support secretion when intracellular anion loading is present, but it is not treated as an ATP-driven Cl⁻ pump. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
-          return <><b>ClC chloride channel family</b>: passive Cl⁻ flux follows the Cl⁻ gradient in this model. Includes ClC-Kb; voltage dependence is not modeled.<br/></>;
+          return <><b>ClC chloride channel family</b>: passive Cl⁻ movement follows the simplified electrochemical tendency in this teaching model. Includes ClC-Kb; voltage dependence is not modeled.<br/></>;
         case 'ENaC':
-          return <><b>Epithelial sodium channel</b>: passive Na⁺ flux follows the Na⁺ gradient.<br/></>;
+          return <><b>Epithelial sodium channel</b>: passive Na⁺ movement follows chemical tendency plus the fixed implicit membrane-potential tendency when pump support is present.<br/></>;
         case 'GLUT2':
           return <><b>Glucose transporter 2</b>: passive glucose flux follows the glucose gradient.<br/></>;
         case 'TRPV56':
-          return <><b>TRPV5/6 epithelial calcium channel class</b>: passive Ca²⁺ flux follows the Ca²⁺ gradient. SALT does not model dynamic inhibition by intracellular Ca²⁺; unmatched entry is shown as intracellular Ca²⁺ accumulation tendency.<br/></>;
+          return <><b>TRPV5/6 epithelial calcium channel class</b>: passive Ca²⁺ entry follows chemical tendency plus the fixed implicit membrane-potential tendency when pump support is present. SALT does not model dynamic inhibition by intracellular Ca²⁺; unmatched entry is shown as intracellular Ca²⁺ accumulation tendency.<br/></>;
         case 'HATPase':
           return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
         case 'HKATPase':
@@ -2535,7 +2650,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'Pendrin':
           return <><b>Pendrin</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions.<br/></>;
         case 'ROMK':
-          return <><b>Kir potassium channel class</b>: passive K⁺ flux follows the K⁺ gradient. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
+          return <><b>Kir potassium channel class</b>: passive K⁺ movement follows the simplified electrochemical tendency. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
           return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves Na⁺ and glucose together.<br/></>;
         default:
@@ -2772,7 +2887,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
                 <AccessibleTable
-                  caption="Electrochemical context is display-only for transmembrane effects; no Nernst potential, membrane voltage, or Goldman-Hodgkin-Katz calculations are performed. Paracellular ion leaks use the transepithelial electrical tendency qualitatively."
+                  caption="Selected charged channels use a fixed implicit membrane-potential tendency only when Na+/K+-ATPase is present; no dynamic membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculations are performed. Paracellular ion leaks use the transepithelial electrical tendency qualitatively."
                   columns={[
                     { key: 'pathway', label: 'Pathway' },
                     { key: 'membrane', label: 'Membrane or path' },
