@@ -405,6 +405,13 @@ const TISSUE_OPTIONS = [
     label: 'Choroid plexus epithelium',
     group: 'Central nervous system',
     transporterIds: ['AQP', 'CFTR', 'NKCC', 'NBCe1', 'ClCKb', 'NHE3', 'NaKATPase']
+  },
+  {
+    value: 'placenta-syncytiotrophoblast',
+    label: 'Placenta / syncytiotrophoblast exchange',
+    group: 'Reproductive system',
+    orientation: 'placenta',
+    transporterIds: ['AQP', 'GLUT2', 'NaKATPase', 'NaAA', 'AAFacilitator', 'TRPV56', 'PMCA', 'NCX1', 'CFTR', 'OAT', 'OCT', 'MATE']
   }
 ];
 
@@ -412,8 +419,44 @@ const TISSUE_OPTION_GROUPS = [
   'Kidney and urinary tract',
   'Gastrointestinal and hepatobiliary',
   'Exocrine, airway, and skin',
-  'Central nervous system'
+  'Central nervous system',
+  'Reproductive system'
 ];
+
+const DISPLAY_ORIENTATIONS = {
+  epithelial: {
+    apicalLabel: 'Apical / lumen side',
+    basolateralLabel: 'Basolateral / blood side',
+    positiveFluxLabel: 'toward blood',
+    negativeFluxLabel: 'toward lumen',
+    positiveProcessLabel: 'absorption',
+    negativeProcessLabel: 'secretion',
+    apicalMembraneLabel: 'Apical membrane',
+    basolateralMembraneLabel: 'Basolateral membrane',
+    apicalShortLabel: 'Apical',
+    basolateralShortLabel: 'Basolateral',
+    apicalPolarityLabel: 'Lumen',
+    basolateralPolarityLabel: 'Blood'
+  },
+  placenta: {
+    apicalLabel: 'Maternal side',
+    basolateralLabel: 'Fetal side',
+    positiveFluxLabel: 'toward fetus',
+    negativeFluxLabel: 'toward mother',
+    positiveProcessLabel: 'maternal-to-fetal transfer',
+    negativeProcessLabel: 'fetal-to-maternal transfer',
+    apicalMembraneLabel: 'Maternal-side membrane',
+    basolateralMembraneLabel: 'Fetal-side membrane',
+    apicalShortLabel: 'Maternal',
+    basolateralShortLabel: 'Fetal',
+    apicalPolarityLabel: 'Maternal',
+    basolateralPolarityLabel: 'Fetal'
+  }
+};
+
+function displayOrientationForTissue(tissueOption) {
+  return DISPLAY_ORIENTATIONS[tissueOption?.orientation] || DISPLAY_ORIENTATIONS.epithelial;
+}
 
 const BACKGROUND_OSMOTIC_PULL_VALUES = {
   none: 0,
@@ -1465,6 +1508,77 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ...baseConcentrations,
     icf: deriveEffectiveStartingIcf(baseConcentrations, transporters)
   };
+  const tissueOption = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
+  const displayOrientation = displayOrientationForTissue(tissueOption);
+  const allTissueOption = TISSUE_OPTIONS[0];
+  const groupedTissueOptions = TISSUE_OPTION_GROUPS.map(group => ({
+    group,
+    options: TISSUE_OPTIONS.filter(option => option.group === group)
+  })).filter(group => group.options.length > 0);
+  const visibleTransporterIds = new Set(tissueOption.transporterIds);
+  const orientText = text => {
+    if (!text || displayOrientation === DISPLAY_ORIENTATIONS.epithelial) return text;
+    return String(text)
+      .replace(/toward blood/g, displayOrientation.positiveFluxLabel)
+      .replace(/toward lumen/g, displayOrientation.negativeFluxLabel)
+      .replace(/absorption/g, displayOrientation.positiveProcessLabel)
+      .replace(/secretion/g, displayOrientation.negativeProcessLabel)
+      .replace(/Lumen/g, displayOrientation.apicalPolarityLabel)
+      .replace(/lumen/g, displayOrientation.apicalShortLabel.toLowerCase())
+      .replace(/Blood/g, displayOrientation.basolateralPolarityLabel)
+      .replace(/blood/g, displayOrientation.basolateralShortLabel.toLowerCase());
+  };
+  const directionLabelForValue = value => {
+    const numeric = Number(value ?? 0);
+    if (Math.abs(numeric) < 0.001) return 'none';
+    return numeric > 0 ? displayOrientation.positiveProcessLabel : displayOrientation.negativeProcessLabel;
+  };
+  const towardLabelForValue = value => {
+    const numeric = Number(value ?? 0);
+    if (Math.abs(numeric) < 0.001) return 'neutral/weak';
+    return numeric > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
+  };
+  const sideFlowLabel = (placement, sign) => {
+    if (sign === 0) return 'no strong tendency';
+    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) {
+      if (placement === 'apical') return sign > 0 ? 'lumen to cell' : 'cell to lumen';
+      return sign > 0 ? 'blood to cell' : 'cell to blood';
+    }
+    const side = placement === 'apical'
+      ? displayOrientation.apicalShortLabel.toLowerCase()
+      : displayOrientation.basolateralShortLabel.toLowerCase();
+    return sign > 0 ? side + ' side to cell' : 'cell to ' + side + ' side';
+  };
+  const epithelialFlowLabel = sign => {
+    if (sign === 0) return 'no strong tendency';
+    return sign > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
+  };
+  const polarityStatus = value => {
+    if (Math.abs(value) < CHARGE_EPSILON) return 'Minimal';
+    return value > 0
+      ? displayOrientation.apicalPolarityLabel + '-negative'
+      : displayOrientation.apicalPolarityLabel + '-positive';
+  };
+  const fluxDirectionCaption = 'Positive = ' + displayOrientation.positiveFluxLabel + '; negative = ' + displayOrientation.negativeFluxLabel + '.';
+  const fluxBarSeries = FLUX_BAR_SERIES.map(series => {
+    if (series.key === 'apicalStep') return { ...series, name: displayOrientation.apicalMembraneLabel };
+    if (series.key === 'basolateralStep') return { ...series, name: displayOrientation.basolateralMembraneLabel };
+    return series;
+  });
+  const concentrationCompartments = CONCENTRATION_COMPARTMENTS.map(compartment => {
+    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) return compartment;
+    if (compartment.key === 'apicalBulk') return { ...compartment, label: displayOrientation.apicalShortLabel + ' Bulk ECF', name: displayOrientation.apicalShortLabel + ' Bulk ECF' };
+    if (compartment.key === 'apicalSurface') return { ...compartment, label: displayOrientation.apicalShortLabel + ' Surface ECF', name: displayOrientation.apicalShortLabel + ' Surface ECF' };
+    if (compartment.key === 'basolateralSurface') return { ...compartment, label: displayOrientation.basolateralShortLabel + ' Surface ECF', name: displayOrientation.basolateralShortLabel + ' Surface ECF' };
+    if (compartment.key === 'basolateralBulk') return { ...compartment, label: displayOrientation.basolateralShortLabel + ' Bulk ECF', name: displayOrientation.basolateralShortLabel + ' Bulk ECF' };
+    return compartment;
+  });
+  const settingsConcentrationCompartments = SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => {
+    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) return compartment;
+    if (compartment.key === 'apicalECF') return { ...compartment, label: displayOrientation.apicalShortLabel + ' bath' };
+    if (compartment.key === 'basolateralECF') return { ...compartment, label: displayOrientation.basolateralShortLabel + ' bath' };
+    return compartment;
+  });
 
   const concentrationIons = result
     ? Object.keys(result.concentrations.icf).filter(ion => ion !== 'H2O' && !GENERAL_DISPLAY_EXCLUDED_IONS.includes(ion))
@@ -1495,7 +1609,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ? concData.find(row => row.ionKey === zoomedConcentrationIon)
     : null;
   const zoomedConcentrationData = zoomedConcentrationRow
-    ? CONCENTRATION_COMPARTMENTS.map(compartment => ({
+    ? concentrationCompartments.map(compartment => ({
         compartment: compartment.label,
         concentration: Number(zoomedConcentrationRow[compartment.key] ?? 0)
       }))
@@ -1558,14 +1672,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
   const membraneTransporters = placement => transporters.filter(t => t.placement === placement);
   const transporterIsOnMembrane = (id, placement) => transporters.some(t => t.id === id && t.placement === placement);
-  const tissueOption = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
   const effectiveBackgroundOsmoticPull = resolveBackgroundOsmoticPull(tissueOption.value, backgroundOsmoticPullSetting);
-  const allTissueOption = TISSUE_OPTIONS[0];
-  const groupedTissueOptions = TISSUE_OPTION_GROUPS.map(group => ({
-    group,
-    options: TISSUE_OPTIONS.filter(option => option.group === group)
-  })).filter(group => group.options.length > 0);
-  const visibleTransporterIds = new Set(tissueOption.transporterIds);
   const showTransporterTooltip = (event, tooltipId, description) => {
     if (!description) return;
     if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
@@ -1640,6 +1747,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const renderTransporterRows = placement => {
     const rows = membraneTransporters(placement);
+    const placementMembraneLabel = placement === 'apical'
+      ? displayOrientation.apicalMembraneLabel
+      : displayOrientation.basolateralMembraneLabel;
     if (rows.length === 0) {
       return <div className="text-sm text-gray-500 border rounded p-2 bg-gray-50">No transporters added.</div>;
     }
@@ -1653,7 +1763,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               <Button
                 size="sm"
                 variant="outline"
-                aria-label={'Remove ' + t.name + ' from ' + placement + ' membrane'}
+                aria-label={'Remove ' + t.name + ' from ' + placementMembraneLabel}
                 onClick={() => removeTransporter(t.uid)}
               >
                 Remove
@@ -1714,9 +1824,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   };
   const concentrationValidationFor = (compartment, ion) => concentrationValidation[compartment + '-' + ion];
   const fluxDirection = value => {
+    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) return directionLabelForValue(value);
     const numeric = Number(value ?? 0);
     if (Math.abs(numeric) < 0.001) return 'none';
-    return numeric > 0 ? 'absorption' : 'secretion';
+    return numeric > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
   };
   const hasIntracellularImbalance = cellImbalanceReport.length > 0;
   const hasCoupledMismatch = coupledMismatchReport?.state === 'mismatch';
@@ -1733,18 +1844,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const osmoticPullValue = waterReport?.osmoticPull?.value ?? 0;
   const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
   const acidBaseFluxValue = acidBaseReport?.transepithelial?.value ?? 0;
-  const tePotentialStatus = Math.abs(tePotentialValue) < CHARGE_EPSILON
-    ? 'Minimal'
-    : tePotentialValue > 0
-      ? 'Lumen-negative'
-      : 'Lumen-positive';
-  const osmoticPullStatus = epithelialWaterDirection(osmoticPullValue);
-  const waterFluxStatus = epithelialWaterDirection(waterFluxValue);
+  const tePotentialStatus = polarityStatus(tePotentialValue);
+  const osmoticPullStatus = towardLabelForValue(osmoticPullValue);
+  const waterFluxStatus = towardLabelForValue(waterFluxValue);
   const acidBaseFluxStatus = Math.abs(acidBaseFluxValue) < 0.001
     ? 'Neutral/weak'
     : acidBaseFluxValue > 0
-      ? 'Acid secretion'
-      : 'Base secretion';
+      ? 'Acid ' + displayOrientation.negativeProcessLabel
+      : 'Base ' + displayOrientation.negativeProcessLabel;
   const cellBalanceStatus = hasIntracellularImbalance
     ? cellImbalanceReport.length === 1
       ? cellImbalanceReport[0].label + ' ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
@@ -1760,7 +1867,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       ? 'Review pathway completion'
       : 'No intracellular imbalance tendency';
   const dominantFluxStatus = dominantFluxRow
-    ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + fluxDirection(dominantFluxRow.transepithelial)
+    ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + directionLabelForValue(dominantFluxRow.transepithelial)
     : 'No strong net flux';
   const dominantFluxDetail = dominantFluxRow
     ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
@@ -1795,10 +1902,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       indicator: {
         value: -tePotentialValue,
         maxAbs: SNAPSHOT_TEP_INDICATOR_MAX,
-        leftLabel: 'Lumen-negative',
-        rightLabel: 'Lumen-positive',
+        leftLabel: displayOrientation.apicalPolarityLabel + '-negative',
+        rightLabel: displayOrientation.apicalPolarityLabel + '-positive',
         markerClass: 'bg-slate-700',
-        ariaLabel: 'Transepithelial potential indicator: ' + tePotentialStatus + ', ' + formatChargeValue(tePotentialValue) + ' charge units. Left indicates lumen-negative; right indicates lumen-positive.'
+        ariaLabel: 'Transepithelial potential indicator: ' + tePotentialStatus + ', ' + formatChargeValue(tePotentialValue) + ' charge units. Left indicates ' + displayOrientation.apicalPolarityLabel + '-negative; right indicates ' + displayOrientation.apicalPolarityLabel + '-positive.'
       }
     },
     {
@@ -1806,16 +1913,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       title: 'Net Acid/Base Flux',
       status: acidBaseFluxStatus,
       detail: acidBaseReport
-        ? acidBaseReport.transepithelial.direction + '; ' + acidBaseReport.transepithelial.strength
+        ? orientText(acidBaseReport.transepithelial.direction) + '; ' + acidBaseReport.transepithelial.strength
         : 'No acid/base tendency calculated',
       state: Math.abs(acidBaseFluxValue) < 0.001 ? 'neutral' : 'accent',
       indicator: {
         value: acidBaseFluxValue,
         maxAbs: SNAPSHOT_ACID_BASE_INDICATOR_MAX,
-        leftLabel: 'Base secretion',
-        rightLabel: 'Acid secretion',
+        leftLabel: 'Base ' + displayOrientation.negativeProcessLabel,
+        rightLabel: 'Acid ' + displayOrientation.negativeProcessLabel,
         markerClass: 'bg-teal-700',
-        ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base secretion; right indicates acid secretion.'
+        ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base ' + displayOrientation.negativeProcessLabel + '; right indicates acid ' + displayOrientation.negativeProcessLabel + '.'
       }
     },
     {
@@ -1830,20 +1937,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           status: osmoticPullStatus,
           value: osmoticPullValue,
           maxAbs: SNAPSHOT_WATER_INDICATOR_MAX,
-          leftLabel: 'secretion',
-          rightLabel: 'absorption',
+          leftLabel: displayOrientation.negativeFluxLabel,
+          rightLabel: displayOrientation.positiveFluxLabel,
           markerClass: 'bg-indigo-700',
-          ariaLabel: 'Osmotic pull indicator: ' + osmoticPullStatus + ', ' + formatWaterValue(osmoticPullValue) + ' osmotic pull tendency units. Left indicates secretion; right indicates absorption.'
+          ariaLabel: 'Osmotic pull indicator: ' + osmoticPullStatus + ', ' + formatWaterValue(osmoticPullValue) + ' osmotic pull tendency units. Left indicates ' + displayOrientation.negativeFluxLabel + '; right indicates ' + displayOrientation.positiveFluxLabel + '.'
         },
         {
           label: 'Water flux',
           status: waterFluxStatus,
           value: waterFluxValue,
           maxAbs: SNAPSHOT_WATER_INDICATOR_MAX,
-          leftLabel: 'secretion',
-          rightLabel: 'absorption',
+          leftLabel: displayOrientation.negativeFluxLabel,
+          rightLabel: displayOrientation.positiveFluxLabel,
           markerClass: 'bg-blue-600',
-          ariaLabel: 'Water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates secretion; right indicates absorption.'
+          ariaLabel: 'Water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates ' + displayOrientation.negativeFluxLabel + '; right indicates ' + displayOrientation.positiveFluxLabel + '.'
         }
       ]
     }
@@ -1854,23 +1961,23 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {
       label: 'Osmotic pull',
       status: 'combined solute-linked and background pull',
-      direction: waterReport.osmoticPull.direction,
+      direction: orientText(waterReport.osmoticPull.direction),
       strength: waterReport.osmoticPull.strength,
       value: waterReport.osmoticPull.value,
       note: 'Combined from net epithelial solute flux (' + formatTableValue(waterReport.osmoticPull.sourceFlux) + ' flux units) and background pull; ECF concentration settings do not directly drive water flux'
     },
     {
       label: 'Background osmotic pull',
-      status: waterReport.backgroundPull.status,
-      direction: waterReport.backgroundPull.direction,
+      status: orientText(waterReport.backgroundPull.status),
+      direction: orientText(waterReport.backgroundPull.direction),
       strength: waterReport.backgroundPull.strength,
       value: waterReport.backgroundPull.value,
-      note: 'Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.'
+      note: orientText('Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.')
     },
     {
       label: 'Transcellular water pathway and contribution',
       status: waterReport.transcellularPath.status,
-      direction: waterReport.transcellular.direction,
+      direction: orientText(waterReport.transcellular.direction),
       strength: waterReport.transcellular.strength,
       value: waterReport.transcellular.value,
       note: waterReport.transcellularPath.note
@@ -1878,7 +1985,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {
       label: 'Paracellular water pathway and contribution',
       status: waterReport.paracellularPath.status,
-      direction: waterReport.paracellular.direction,
+      direction: orientText(waterReport.paracellular.direction),
       strength: waterReport.paracellular.strength,
       value: waterReport.paracellular.value,
       note: waterReport.paracellularPath.note
@@ -1886,20 +1993,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {
       label: 'Net water flux',
       status: waterReport.netTransepithelial.direction === 'no water pathway' ? 'no water pathway' : 'expressed water tendency',
-      direction: waterReport.netTransepithelial.direction,
+      direction: orientText(waterReport.netTransepithelial.direction),
       strength: waterReport.netTransepithelial.strength,
       value: waterReport.netTransepithelial.value,
       note: waterReport.teachingNote
     }
   ] : [];
   const membraneDirectionText = (placement, sign) => {
-    if (sign === 0) return 'no strong tendency';
-    if (placement === 'apical') return sign > 0 ? 'lumen to cell' : 'cell to lumen';
-    return sign > 0 ? 'blood to cell' : 'cell to blood';
+    return sideFlowLabel(placement, sign);
   };
   const epithelialDirectionText = sign => {
-    if (sign === 0) return 'no strong tendency';
-    return sign > 0 ? 'toward blood' : 'toward lumen';
+    return epithelialFlowLabel(sign);
   };
   const combinedElectrochemicalText = (chemicalSign, electricalSign) => {
     if (chemicalSign === 0 && electricalSign === 0) return 'little chemical or electrical tendency detected';
@@ -1950,7 +2054,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             const electricalSign = membraneElectricalSign(t.placement, ion);
             return {
               pathway: t.name,
-              membrane: t.placement === 'apical' ? 'Apical membrane' : 'Basolateral membrane',
+              membrane: t.placement === 'apical' ? displayOrientation.apicalMembraneLabel : displayOrientation.basolateralMembraneLabel,
               ion: ION_LABEL[ion] || ion,
               chemical: membraneDirectionText(t.placement, chemicalSign),
               electrical: membraneDirectionText(t.placement, electricalSign),
@@ -2146,6 +2250,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Core distinction:</b> The app separates one-membrane flux tendencies from completed transepithelial flux. A transporter can move solute into or out of the cell even when a full apical-to-basolateral pathway is incomplete.</li>
         <li><b>Reservoirs and surfaces:</b> Bulk ECF bath concentrations are fixed by default and editable within physiological teaching ranges in Settings. ICF is model-derived from the steady-state cell condition. Local surface concentrations are calculated from transporter flux plus partial mixing, so local gradients can differ from the bulk reservoirs.</li>
         <li><b>Direction convention:</b> Flux graphs use one shared convention: positive points toward the basolateral/blood side and negative points toward the apical/lumen side.</li>
+        <li><b>Placenta context:</b> Placenta uses maternal/fetal side labels; positive flux is displayed as maternal-to-fetal transfer.</li>
         <li><b>Exploration:</b> Tissue choices filter which transporters are offered, but they do not remove transporters already placed. Unusual layouts are allowed so users can observe their consequences.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">Teaching Abstractions &amp; Limits</h3>
@@ -2438,8 +2543,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 </div>
 
         <div className="mt-4 space-y-4">
-          {renderMembraneBuilder('apical', 'Apical Membrane')}
-          {renderMembraneBuilder('basolateral', 'Basolateral Membrane')}
+          {renderMembraneBuilder('apical', displayOrientation.apicalLabel)}
+          {renderMembraneBuilder('basolateral', displayOrientation.basolateralLabel)}
         </div>
 {showParaInfo && (
   <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
@@ -2521,7 +2626,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <h3 className="block mb-2 font-semibold">Water Movement</h3>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
           <div>
-            <label htmlFor="background-osmotic-pull" className="block mb-1">Background osmotic pull toward blood</label>
+            <label htmlFor="background-osmotic-pull" className="block mb-1">{orientText('Background osmotic pull toward blood')}</label>
             <select
               id="background-osmotic-pull"
               value={backgroundOsmoticPullSetting}
@@ -2530,16 +2635,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               aria-describedby="background-osmotic-pull-help background-osmotic-pull-effective"
             >
               {BACKGROUND_OSMOTIC_PULL_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>{orientText(option.label)}</option>
               ))}
             </select>
           </div>
           <div id="background-osmotic-pull-effective" className="text-gray-600">
-            Effective: {effectiveBackgroundOsmoticPull.status}
+            Effective: {orientText(effectiveBackgroundOsmoticPull.status)}
           </div>
         </div>
         <p id="background-osmotic-pull-help" className="text-gray-500 mt-2">
-          Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.
+          {orientText('Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.')}
         </p>
       </div>
       <div className="mb-4 text-sm text-gray-700">
@@ -2556,17 +2661,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           </Button>
         </div>
         <p className="text-gray-500 mb-2">
-          Apical and basolateral bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
+          {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
         </p>
         <p className="text-gray-500 mb-2">
           Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Editable ECF concentrations are constrained to physiological teaching ranges.
         </p>
         <table className="min-w-full table-auto text-left border">
-          <caption className="sr-only">Baseline concentration settings. Apical and basolateral ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
+          <caption className="sr-only">Baseline concentration settings. {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
           <thead>
             <tr className="bg-gray-100">
               <th scope="col" className="px-2 py-1 border">Ion or solute</th>
-              {SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => (
+              {settingsConcentrationCompartments.map(compartment => (
                 <th key={compartment.key} scope="col" className="px-2 py-1 border">{compartment.label}</th>
               ))}
             </tr>
@@ -2575,7 +2680,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {CONCENTRATION_EDIT_IONS.map(ion => (
               <tr key={ion}>
                 <th scope="row" className="px-2 py-1 border font-semibold">{ION_LABEL[ion] || ion}</th>
-                {SETTINGS_CONCENTRATION_COMPARTMENTS.map(compartment => (
+                {settingsConcentrationCompartments.map(compartment => (
                   <td key={compartment.key} className="px-2 py-1 border">
                     {compartment.editable ? (
                       <>
@@ -2744,9 +2849,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               <div className="space-y-4">
                 <section className="border rounded p-3 bg-white">
                   <h3 className="font-semibold">Membrane and Epithelial Fluxes</h3>
-                  <div className="text-xs text-gray-600 mb-2">Positive = toward blood; negative = toward lumen.</div>
+                  <div className="text-xs text-gray-600 mb-2">{fluxDirectionCaption}</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3" aria-label="Shared flux graph legend">
-                    {FLUX_BAR_SERIES.map(series => (
+                    {fluxBarSeries.map(series => (
                       <div key={series.key} className="inline-flex items-center gap-1">
                         <span
                           className="inline-block h-3 w-3 rounded-sm"
@@ -2767,7 +2872,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                             <YAxis tick={{ fontSize: 12 }} />
                             <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                             <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                            {FLUX_BAR_SERIES.map(series => (
+                            {fluxBarSeries.map(series => (
                               <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
                             ))}
                           </BarChart>
@@ -2785,7 +2890,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                                 <YAxis tick={{ fontSize: 12 }} />
                                 <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
                                 <Tooltip formatter={value => (value?.toFixed ? Number(value).toFixed(2) : value)} />
-                                {FLUX_BAR_SERIES.map(series => (
+                                {fluxBarSeries.map(series => (
                                   <Bar key={series.key} dataKey={series.key} name={series.name} fill={series.color} />
                                 ))}
                               </BarChart>
@@ -2799,7 +2904,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <div>
                   <h3 className="font-semibold">Solute Concentrations</h3>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2" aria-label="Concentration graph legend">
-                    {CONCENTRATION_COMPARTMENTS.map(compartment => (
+                    {concentrationCompartments.map(compartment => (
                       <div key={compartment.key} className="inline-flex items-center gap-1">
                         <span
                           className="inline-block h-3 w-3 rounded-sm"
@@ -2819,7 +2924,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
                       <YAxis domain={[0,150]} tick={{ fontSize: 12 }} />
                       <Tooltip content={<ConcentrationTooltip />} wrapperStyle={{ pointerEvents: 'none' }} />
-                      {CONCENTRATION_COMPARTMENTS.map(compartment => (
+                      {concentrationCompartments.map(compartment => (
                         <Bar
                           key={compartment.key}
                           dataKey={compartment.key}
@@ -2870,12 +2975,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             ) : (
               <div className="space-y-6 overflow-auto">
                 <AccessibleTable
-                  caption="Membrane and Epithelial Fluxes. Positive values point toward blood; negative values point toward lumen."
+                  caption={'Membrane and Epithelial Fluxes. ' + fluxDirectionCaption}
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
                     { key: 'groupLabel', label: 'Flux group' },
-                    { key: 'apicalStep', label: 'Apical membrane', format: formatTableValue },
-                    { key: 'basolateralStep', label: 'Basolateral membrane', format: formatTableValue },
+                    { key: 'apicalStep', label: displayOrientation.apicalMembraneLabel, format: formatTableValue },
+                    { key: 'basolateralStep', label: displayOrientation.basolateralMembraneLabel, format: formatTableValue },
                     { key: 'paracellularStep', label: 'Paracellular', format: formatTableValue },
                     { key: 'transepithelial', label: 'Net epithelial', format: formatTableValue },
                     { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
@@ -2886,11 +2991,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   caption="Solute Concentrations. Bulk ECF reservoirs are fixed unless changed in Settings; ICF is model-derived. Surface values are local teaching estimates based on transport and partial mixing."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
-                    { key: 'apicalBulk', label: 'Apical Bulk ECF', format: formatTableValue },
-                    { key: 'apicalSurface', label: 'Apical Surface ECF', format: formatTableValue },
+                    { key: 'apicalBulk', label: concentrationCompartments.find(compartment => compartment.key === 'apicalBulk')?.label || 'Apical Bulk ECF', format: formatTableValue },
+                    { key: 'apicalSurface', label: concentrationCompartments.find(compartment => compartment.key === 'apicalSurface')?.label || 'Apical Surface ECF', format: formatTableValue },
                     { key: 'icf', label: 'ICF', format: formatTableValue },
-                    { key: 'basolateralSurface', label: 'Basolateral Surface ECF', format: formatTableValue },
-                    { key: 'basolateralBulk', label: 'Basolateral Bulk ECF', format: formatTableValue }
+                    { key: 'basolateralSurface', label: concentrationCompartments.find(compartment => compartment.key === 'basolateralSurface')?.label || 'Basolateral Surface ECF', format: formatTableValue },
+                    { key: 'basolateralBulk', label: concentrationCompartments.find(compartment => compartment.key === 'basolateralBulk')?.label || 'Basolateral Bulk ECF', format: formatTableValue }
                   ]}
                   rows={concTableData}
                 />
@@ -2921,10 +3026,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     { key: 'value', label: 'Value', format: value => formatChargeValue(value) + ' charge units' }
                   ]}
                   rows={[
-                    chargeReport.apical,
-                    chargeReport.basolateral,
+                    { ...chargeReport.apical, label: displayOrientation.apicalMembraneLabel },
+                    { ...chargeReport.basolateral, label: displayOrientation.basolateralMembraneLabel },
                     chargeReport.cell,
-                    chargeReport.transepithelial
+                    { ...chargeReport.transepithelial, direction: orientText(chargeReport.transepithelial.direction) }
                   ]}
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
@@ -2949,7 +3054,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 {resultsView === 'graphs' && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                     <div className="border rounded p-3">
-                      <div className="font-semibold">Apical surface</div>
+                      <div className="font-semibold">{displayOrientation.apicalShortLabel} surface</div>
                       <div>{acidBaseReport.apicalSurface}</div>
                     </div>
                     <div className="border rounded p-3">
@@ -2958,7 +3063,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       <div className="text-gray-500">starting pH {Number(acidBaseReport.startingCellPH).toFixed(2)}</div>
                     </div>
                     <div className="border rounded p-3">
-                      <div className="font-semibold">Basolateral surface</div>
+                      <div className="font-semibold">{displayOrientation.basolateralShortLabel} surface</div>
                       <div>{acidBaseReport.basolateralSurface}</div>
                     </div>
                   </div>
@@ -2972,10 +3077,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       { key: 'note', label: 'Note' }
                     ]}
                     rows={[
-                      { region: 'Net epithelium', tendency: acidBaseReport.transepithelial.direction, note: acidBaseReport.transepithelial.strength + '; ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid/base units' },
-                      { region: 'Apical surface', tendency: acidBaseReport.apicalSurface, note: 'Based on local H+ flux tendency' },
+                      { region: 'Net epithelium', tendency: orientText(acidBaseReport.transepithelial.direction), note: acidBaseReport.transepithelial.strength + '; ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid/base units' },
+                      { region: displayOrientation.apicalShortLabel + ' surface', tendency: acidBaseReport.apicalSurface, note: 'Based on local H+ flux tendency' },
                       { region: 'Cell', tendency: acidBaseReport.cell, note: 'Starting pH ' + Number(acidBaseReport.startingCellPH).toFixed(2) },
-                      { region: 'Basolateral surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
+                      { region: displayOrientation.basolateralShortLabel + ' surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
                     ]}
                   />
                 )}
