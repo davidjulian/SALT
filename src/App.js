@@ -171,7 +171,7 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
       value: cellCharge
     },
     transepithelial: {
-      label: 'Transepithelial polarity',
+      label: 'Transepithelial Potential',
       direction: epithelialPolarityDirection(transepithelialCharge),
       strength: chargeStrength(transepithelialCharge),
       value: transepithelialCharge
@@ -594,7 +594,7 @@ const ACTIVE_CELL_CONCENTRATION_GAIN = {
   Glucose: 20
 };
 const FLUX_GROUPS = [
-  { key: 'ions', label: 'Ion Fluxes', solutes: ['Na+', 'K+', 'Cl-', 'H+', 'HCO3-', 'Ca2+', 'Phosphate'] },
+  { key: 'ions', label: 'Inorganic Ion Fluxes', solutes: ['Na+', 'K+', 'Cl-', 'H+', 'HCO3-', 'Ca2+', 'Phosphate'] },
   { key: 'nutrients', label: 'Nutrient Fluxes', solutes: ['Glucose', 'AA', 'Peptide'] },
   { key: 'organic', label: 'Organic Ion Fluxes', solutes: ['OA-', 'OC+'] }
 ];
@@ -2189,9 +2189,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     </ul>
   );
 
-  const AccessibleTable = ({ caption, columns, rows }) => (
+  const AccessibleTable = ({ caption, captionClassName = 'text-left font-semibold mb-2', columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
-      <caption className="text-left font-semibold mb-2">{caption}</caption>
+      <caption className={captionClassName}>{caption}</caption>
       <thead>
         <tr className="bg-gray-100">
           {columns.map(column => (
@@ -3008,6 +3008,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   <h3 className="font-semibold mb-2">Intracellular Imbalance</h3>
                   <AccessibleTable
                     caption="Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
+                    captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
                     columns={[
                       { key: 'label', label: 'Ion or solute' },
                       { key: 'direction', label: 'Tendency' },
@@ -3019,6 +3020,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 <AccessibleTable
                   caption="Charge and polarity tendencies in arbitrary teaching units."
+                  captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
                   columns={[
                     { key: 'label', label: 'Region' },
                     { key: 'direction', label: 'Tendency' },
@@ -3034,7 +3036,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
                 <AccessibleTable
-                  caption="Selected charged channel rows use a fixed implicit membrane-potential tendency only when Na+/K+-ATPase is present. Selected coupled transporter rules remain pump-gradient based and qualitative; no dynamic membrane voltage, Nernst potential, or Goldman-Hodgkin-Katz calculations are performed. Paracellular ion leaks use the transepithelial electrical tendency qualitatively."
+                  caption="Selected membrane pathways use a fixed implicit membrane-potential tendency. Coupled transporter rules are gradient based and qualitative. Paracellular ion leaks use TEP qualitatively."
+                  captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
                   columns={[
                     { key: 'pathway', label: 'Pathway' },
                     { key: 'membrane', label: 'Membrane or path' },
