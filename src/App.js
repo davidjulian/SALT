@@ -983,6 +983,23 @@ function buildCellImbalanceReport(baselineIcf, modeledIcf) {
     .filter(row => Math.abs(row.change) >= CELL_IMBALANCE_EPSILON);
 }
 
+function buildMatchedDisplayFluxes(baseDisplayApicalFlux, baseDisplayBasolateralFlux, transepiFluxDataNoH2O, paraFlux = {}) {
+  const displayApicalFlux = { ...baseDisplayApicalFlux };
+  const displayBasolateralFlux = { ...baseDisplayBasolateralFlux };
+
+  transepiFluxDataNoH2O.forEach(row => {
+    const ion = row.ion;
+    if (ion === 'H2O') return;
+    const transcellularFlux = Number(row.transepithelial || 0) - Number(paraFlux[ion] || 0);
+    if (Math.abs(transcellularFlux) < DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
+
+    displayApicalFlux[ion] = transcellularFlux;
+    displayBasolateralFlux[ion] = -transcellularFlux;
+  });
+
+  return { displayApicalFlux, displayBasolateralFlux };
+}
+
 function niceConcentrationAxisMax(value) {
   const raw = Math.max(Number(value || 0) * 1.15, 0.01);
   const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -1000,6 +1017,29 @@ function formatConcentrationAxisTick(value) {
   if (magnitude >= 10) return String(Number(numeric.toFixed(1)));
   if (magnitude >= 1) return String(Number(numeric.toFixed(2)));
   return String(Number(numeric.toFixed(4)));
+}
+
+function concentrationZoomTickLines(value) {
+  const label = String(value || '');
+  const match = label.match(/^(Apical|Basolateral)\s+(.+)$/);
+  return match ? [match[1], match[2]] : [label];
+}
+
+function ConcentrationZoomAxisTick({ x = 0, y = 0, payload }) {
+  const lines = concentrationZoomTickLines(payload?.value);
+  const firstLineDy = lines.length > 1 ? 8 : 14;
+
+  return (
+    <g transform={'translate(' + x + ',' + y + ')'}>
+      <text textAnchor="middle" fill="#374151" fontSize={11}>
+        {lines.map((line, index) => (
+          <tspan key={line + index} x={0} dy={index === 0 ? firstLineDy : 13}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
 }
 
 export default function App() {
@@ -1435,6 +1475,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   }
 
+  const matchedDisplayFluxes = buildMatchedDisplayFluxes(
+    completionApicalFlux,
+    completionBasolateralFlux,
+    transepiFluxDataNoH2O,
+    paraFlux
+  );
+
   const acidBaseRows = Object.fromEntries(transepiFluxDataNoH2O.map(row => [row.ion, row.transepithelial || 0]));
   const acidBaseValue = -(acidBaseRows['H+'] || 0) + (acidBaseRows['HCO3-'] || 0);
   const acidBaseReport = {
@@ -1481,8 +1528,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     },
     surfaceReport,
     paraFlux,
-    displayApicalFlux: completionApicalFlux,
-    displayBasolateralFlux: completionBasolateralFlux,
+    displayApicalFlux: matchedDisplayFluxes.displayApicalFlux,
+    displayBasolateralFlux: matchedDisplayFluxes.displayBasolateralFlux,
     fluxEvents,
     transepiFluxData,
     waterReport,
@@ -2956,7 +3003,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                         >
                           <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={zoomedConcentrationData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                              <XAxis dataKey="compartment" interval={0} tick={{ fontSize: 11 }} height={42} />
+                              <XAxis dataKey="compartment" interval={0} tick={<ConcentrationZoomAxisTick />} height={52} />
                               <YAxis
                                 domain={[0, zoomedConcentrationDomainMax]}
                                 tick={{ fontSize: 11 }}
