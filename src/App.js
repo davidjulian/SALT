@@ -646,17 +646,11 @@ const ECF_CONCENTRATION_LIMITS = {
 };
 const ECF_HARD_BLOCK_MESSAGE = 'This value is outside SALT’s allowed range for introductory epithelial transport modeling.';
 const ECF_WARNING_MESSAGE = 'This concentration is outside the usual teaching range and may produce nonphysiological flux behavior.';
-const ELECTROCHEMICAL_MEMBRANE_PATHWAYS = {
-  CFTR: ['Cl-', 'HCO3-'],
-  ClCKb: ['Cl-'],
-  ENaC: ['Na+'],
-  ROMK: ['K+'],
-  TRPV56: ['Ca2+']
-};
 const SUPPORT_PUMP_ID = 'NaKATPase';
 const PUMP_K_LOADING_PER_NA_SUPPORT = 2 / 3;
 const PUMP_NA_EXTRUSION_PER_K_SUPPORT = 3 / 2;
 const CELL_IMBALANCE_EPSILON = 0.05;
+const ELECTROCHEMICAL_CONTEXT_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
 const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID, 'AE1', 'CFTR', 'Pendrin', 'MATE', 'PepT'];
@@ -871,14 +865,24 @@ function concentrationGradientFlux(transporter, outsideConcentration, cellConcen
   return maxFlux * gradientSignal;
 }
 
-function electrochemicalChannelFlux(transporter, ion, outsideConcentration, cellConcentration, hasNormalImplicitVm, activeLoadingFlux = 0) {
-  const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
-  const stoichScale = Math.abs(transporter.stoich[ion] ?? 1);
-  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale * stoichScale;
+function electrochemicalChannelSignals(ion, outsideConcentration, cellConcentration, hasNormalImplicitVm, activeLoadingFlux = 0) {
   const chemicalSignal = normalizedConcentrationTendency(outsideConcentration, cellConcentration);
+  const electricalApplied = Boolean(hasNormalImplicitVm && (ION_VALENCE[ion] || 0) !== 0);
   const electricalSignal = implicitVmDriveForIon(ion, hasNormalImplicitVm, chemicalSignal, activeLoadingFlux);
   const loadingSignal = anionLoadingDrive(ion, activeLoadingFlux);
-  return maxFlux * clampToUnit(chemicalSignal + electricalSignal + loadingSignal);
+  return {
+    chemicalSignal,
+    electricalSignal,
+    loadingSignal,
+    netSignal: clampToUnit(chemicalSignal + electricalSignal + loadingSignal),
+    electricalApplied
+  };
+}
+
+function electrochemicalChannelMaxFlux(transporter, ion) {
+  const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
+  const stoichScale = Math.abs(transporter.stoich[ion] ?? 1);
+  return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale * stoichScale;
 }
 
 function concentrationValidationMessage(ion, value) {
@@ -1267,6 +1271,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const hasNaKATPase = pumpSupportProfile.present;
   const passiveChannels = [];
   const coupledEvents = [];
+  const electrochemicalContextEvents = [];
   const fluxEvents = [];
 
   // Calculate active/coupled transport first, then passive channels respond to gradients.
@@ -1343,12 +1348,29 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     const channelIons = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id] || [PASSIVE_SOLUTE_CHANNELS[t.id]];
     const soluteEvents = channelIons.map(ion => {
       const outsideConcentration = t.placement === 'apical' ? apicalECF[ion] : basolateralECF[ion];
-      const delta = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id]
-        ? electrochemicalChannelFlux(t, ion, outsideConcentration, prePassiveICF[ion], hasNaKATPase, activeMembraneFlux[ion] || 0)
+      const signals = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id]
+        ? electrochemicalChannelSignals(ion, outsideConcentration, prePassiveICF[ion], hasNaKATPase, activeMembraneFlux[ion] || 0)
+        : null;
+      const delta = signals
+        ? electrochemicalChannelMaxFlux(t, ion) * signals.netSignal
         : concentrationGradientFlux(t, outsideConcentration, prePassiveICF[ion]);
       if (t.placement === 'apical') apicalFlux[ion] += delta;
       else basolateralFlux[ion] += delta;
       passiveNetFlux[ion] += delta;
+      if (signals) {
+        electrochemicalContextEvents.push({
+          id: t.id,
+          name: t.name,
+          placement: t.placement,
+          ion,
+          chemicalSignal: signals.chemicalSignal,
+          electricalSignal: signals.electricalSignal,
+          loadingSignal: signals.loadingSignal,
+          netSignal: signals.netSignal,
+          electricalApplied: signals.electricalApplied,
+          flux: delta
+        });
+      }
       return { ion, coeff: Math.sign(delta), flux: delta };
     });
     fluxEvents.push({
@@ -1566,6 +1588,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     paraFlux,
     displayApicalFlux: matchedDisplayFluxes.displayApicalFlux,
     displayBasolateralFlux: matchedDisplayFluxes.displayBasolateralFlux,
+    electrochemicalContextEvents,
     fluxEvents,
     transepiFluxData,
     waterReport,
@@ -1620,21 +1643,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     const numeric = Number(value ?? 0);
     if (Math.abs(numeric) < 0.001) return 'neutral/weak';
     return numeric > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
-  };
-  const sideFlowLabel = (placement, sign) => {
-    if (sign === 0) return 'no strong tendency';
-    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) {
-      if (placement === 'apical') return sign > 0 ? 'lumen to cell' : 'cell to lumen';
-      return sign > 0 ? 'blood to cell' : 'cell to blood';
-    }
-    const side = placement === 'apical'
-      ? displayOrientation.apicalShortLabel.toLowerCase()
-      : displayOrientation.basolateralShortLabel.toLowerCase();
-    return sign > 0 ? side + ' side to cell' : 'cell to ' + side + ' side';
-  };
-  const epithelialFlowLabel = sign => {
-    if (sign === 0) return 'no strong tendency';
-    return sign > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
   };
   const polarityStatus = value => {
     if (Math.abs(value) < CHARGE_EPSILON) return 'Minimal';
@@ -2082,108 +2090,71 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       note: waterReport.teachingNote
     }
   ] : [];
-  const membraneDirectionText = (placement, sign) => {
-    return sideFlowLabel(placement, sign);
+  const electrochemicalSideName = placement => {
+    if (displayOrientation === DISPLAY_ORIENTATIONS.epithelial) {
+      return placement === 'apical' ? 'lumen' : 'blood';
+    }
+    return placement === 'apical'
+      ? displayOrientation.apicalShortLabel.toLowerCase()
+      : displayOrientation.basolateralShortLabel.toLowerCase();
   };
-  const epithelialDirectionText = sign => {
-    return epithelialFlowLabel(sign);
+  const electrochemicalPathwayLabel = event => {
+    const side = event.placement === 'apical'
+      ? displayOrientation.apicalShortLabel
+      : displayOrientation.basolateralShortLabel;
+    return side + ' ' + event.name;
   };
-  const combinedElectrochemicalText = (chemicalSign, electricalSign) => {
-    if (chemicalSign === 0 && electricalSign === 0) return 'little chemical or electrical tendency detected';
-    if (electricalSign === 0) return 'chemical gradient shown; little electrical tendency detected';
-    if (chemicalSign === 0) return 'little chemical gradient; electrical tendency dominates';
-    return chemicalSign === electricalSign
-      ? 'chemical and electrical tendencies align'
-      : 'electrical tendency opposes chemical gradient';
+  const electrochemicalDirectionText = (placement, signal, nearLabel = 'near-balanced') => {
+    if (Math.abs(Number(signal) || 0) < ELECTROCHEMICAL_CONTEXT_EPSILON) return nearLabel;
+    const side = electrochemicalSideName(placement);
+    return signal > 0 ? side + ' → cell' : 'cell → ' + side;
   };
-  const membraneChemicalSign = (placement, ion) => {
-    if (!result) return 0;
-    const outside = placement === 'apical'
-      ? result.concentrations.apicalSurface?.[ion]
-      : result.concentrations.basolateralSurface?.[ion];
-    const inside = result.concentrations.icf?.[ion];
-    const delta = Number(outside ?? 0) - Number(inside ?? 0);
-    if (Math.abs(delta) < CELL_IMBALANCE_EPSILON) return 0;
-    return delta > 0 ? 1 : -1;
+  const electrochemicalInterpretation = event => {
+    const ion = event.ion;
+    const ionLabel = ION_LABEL[ion] || ion;
+    const netSignal = Number(event.netSignal || 0);
+    const netSign = Math.abs(netSignal) < ELECTROCHEMICAL_CONTEXT_EPSILON || Math.abs(Number(event.flux || 0)) < DIRECTIONAL_FLUX_GRAPH_EPSILON
+      ? 0
+      : Math.sign(netSignal);
+    const side = electrochemicalSideName(event.placement);
+    if (netSign === 0) return 'channel present, but no strong net driving force';
+    if (ion === 'Na+') return netSign > 0 ? 'supports Na⁺ entry' : 'supports Na⁺ exit';
+    if (ion === 'Ca2+') return netSign > 0 ? 'supports Ca²⁺ entry' : 'supports Ca²⁺ exit';
+    if (ion === 'K+') {
+      if (netSign < 0) return event.placement === 'basolateral' ? 'supports K⁺ recycling' : 'supports K⁺ secretion';
+      return 'supports K⁺ entry from ' + side;
+    }
+    if (ion === 'Cl-') {
+      if (netSign < 0) return event.placement === 'apical' ? 'supports Cl⁻ secretion' : 'supports basolateral Cl⁻ exit';
+      return event.placement === 'basolateral' ? 'supports Cl⁻ loading from ' + side : 'supports Cl⁻ entry from ' + side;
+    }
+    if (ion === 'HCO3-') {
+      if (netSign < 0) return event.placement === 'apical' ? 'supports HCO₃⁻ secretion' : 'supports basolateral HCO₃⁻ exit';
+      return event.placement === 'basolateral' ? 'supports HCO₃⁻ loading from ' + side : 'supports HCO₃⁻ entry from ' + side;
+    }
+    return netSign > 0 ? 'supports ' + ionLabel + ' entry' : 'supports ' + ionLabel + ' exit';
   };
-  const membraneElectricalSign = (placement, ion) => {
-    const valence = ION_VALENCE[ion] || 0;
-    const hasImplicitVm = result?.gradientSupportReport?.present;
-    if (valence === 0 || !hasImplicitVm) return 0;
-    return valence > 0 ? 1 : -1;
-  };
-  const paracellularChemicalSign = ion => {
-    if (!result) return 0;
-    const apical = Number(result.concentrations.apicalSurface?.[ion] ?? 0);
-    const basolateral = Number(result.concentrations.basolateralSurface?.[ion] ?? 0);
-    const delta = apical - basolateral;
-    if (Math.abs(delta) < CELL_IMBALANCE_EPSILON) return 0;
-    return delta > 0 ? 1 : -1;
-  };
-  const paracellularElectricalSign = ion => {
-    const valence = ION_VALENCE[ion] || 0;
-    const transepithelialPolarity = result?.paracellularElectricalTendency ?? chargeReport?.transepithelial?.value ?? 0;
-    if (valence === 0 || Math.abs(transepithelialPolarity) < CHARGE_EPSILON) return 0;
-    const lumenTendsNegative = transepithelialPolarity > 0;
-    if (valence > 0) return lumenTendsNegative ? -1 : 1;
-    return lumenTendsNegative ? 1 : -1;
-  };
-  const electrochemicalContextRows = result && chargeReport
-    ? [
-        ...transporters.flatMap(t => {
-          if (t.placement === 'none' || !ELECTROCHEMICAL_MEMBRANE_PATHWAYS[t.id]) return [];
-          return ELECTROCHEMICAL_MEMBRANE_PATHWAYS[t.id].map(ion => {
-            const chemicalSign = membraneChemicalSign(t.placement, ion);
-            const electricalSign = membraneElectricalSign(t.placement, ion);
-            return {
-              pathway: t.name,
-              membrane: t.placement === 'apical' ? displayOrientation.apicalMembraneLabel : displayOrientation.basolateralMembraneLabel,
-              ion: ION_LABEL[ion] || ion,
-              chemical: membraneDirectionText(t.placement, chemicalSign),
-              electrical: membraneDirectionText(t.placement, electricalSign),
-              interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
-            };
-          });
-        }),
-        ...(paracellularType === 'cation'
-          ? ['Na+', 'K+'].map(ion => {
-              const chemicalSign = paracellularChemicalSign(ion);
-              const electricalSign = paracellularElectricalSign(ion);
-              return {
-                pathway: 'Cation + Water Pore',
-                membrane: 'Paracellular pathway',
-                ion: ION_LABEL[ion] || ion,
-                chemical: epithelialDirectionText(chemicalSign),
-                electrical: epithelialDirectionText(electricalSign),
-                interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
-              };
-            })
-          : []),
-        ...(paracellularType === 'anion'
-          ? ['Cl-', 'HCO3-'].map(ion => {
-              const chemicalSign = paracellularChemicalSign(ion);
-              const electricalSign = paracellularElectricalSign(ion);
-              return {
-                pathway: 'Anion Pore',
-                membrane: 'Paracellular pathway',
-                ion: ION_LABEL[ion] || ion,
-                chemical: epithelialDirectionText(chemicalSign),
-                electrical: epithelialDirectionText(electricalSign),
-                interpretation: combinedElectrochemicalText(chemicalSign, electricalSign)
-              };
-            })
-          : [])
-      ]
+  const electrochemicalContextRows = result?.electrochemicalContextEvents?.length
+    ? result.electrochemicalContextEvents.map(event => ({
+        pathway: electrochemicalPathwayLabel(event),
+        ion: ION_LABEL[event.ion] || event.ion,
+        chemical: electrochemicalDirectionText(event.placement, event.chemicalSignal),
+        electrical: event.electricalApplied
+          ? electrochemicalDirectionText(event.placement, event.electricalSignal)
+          : 'not applied',
+        net: electrochemicalDirectionText(event.placement, event.netSignal, 'weak / near-balanced'),
+        interpretation: electrochemicalInterpretation(event)
+      }))
     : [];
   const electrochemicalTableRows = electrochemicalContextRows.length
     ? electrochemicalContextRows
     : [{
         pathway: 'None',
-        membrane: 'No charged passive or paracellular pathway placed',
         ion: 'none',
         chemical: 'none',
-        electrical: 'none',
-        interpretation: 'Add ENaC, Kir, ClC, CFTR, TRPV5/6, or a paracellular pore to show context'
+        electrical: 'not applied',
+        net: 'no strong net tendency',
+        interpretation: 'Add ENaC, Kir, ClC, CFTR, or TRPV5/6 to show channel electrochemical context'
       }];
 
   const snapshotTileClass = tile => {
@@ -3008,7 +2979,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       </div>
                     ))}
                   </div>
-                  <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view. ICF values are model-derived from the steady-state cell condition.</div>
+                  <div className="text-xs text-gray-600 mb-2">Click a solute group to open a zoomed concentration view. Concentrations are shown in mmol/L. Surface and ICF values are model-derived teaching estimates.</div>
                   <ResponsiveContainer width="100%" height={190}>
                     <BarChart data={concData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} onClick={openConcentrationZoomFromChart}>
                       <XAxis dataKey="ion" interval={0} tick={{ fontSize: 12 }} height={36} />
@@ -3078,7 +3049,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
                 />
                 <AccessibleTable
-                  caption="Solute Concentrations. Bulk ECF reservoirs are fixed unless changed in Settings; ICF is model-derived. Surface values are local teaching estimates based on transport and partial mixing."
+                  caption="Solute Concentrations. Concentrations are shown in mmol/L. Surface and ICF values are model-derived teaching estimates."
                   columns={[
                     { key: 'ion', label: 'Ion or solute' },
                     { key: 'apicalBulk', label: concentrationCompartments.find(compartment => compartment.key === 'apicalBulk')?.label || 'Apical Bulk ECF', format: formatTableValue },
@@ -3126,15 +3097,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 />
                 <h3 className="font-semibold mb-2 mt-4">Electrochemical Context</h3>
                 <AccessibleTable
-                  caption="Selected membrane pathways use a fixed implicit membrane-potential tendency. Coupled transporter rules are gradient based and qualitative. Paracellular ion leaks use TEP qualitatively."
+                  caption="Selected membrane channels use a fixed implicit membrane-potential tendency when pump support is present. TEP is not used for transmembrane tendency; paracellular ion leaks use TEP qualitatively."
                   captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
                   columns={[
                     { key: 'pathway', label: 'Pathway' },
-                    { key: 'membrane', label: 'Membrane or path' },
                     { key: 'ion', label: 'Ion' },
-                    { key: 'chemical', label: 'Chemical gradient favors' },
-                    { key: 'electrical', label: 'Electrical tendency favors' },
-                    { key: 'interpretation', label: 'Combined interpretation' }
+                    { key: 'chemical', label: 'Chemical tendency' },
+                    { key: 'electrical', label: 'Electrical tendency' },
+                    { key: 'net', label: 'Net electrochemical tendency', format: value => <span className="font-semibold">{value}</span> },
+                    { key: 'interpretation', label: 'Interpretation' }
                   ]}
                   rows={electrochemicalTableRows}
                 />
