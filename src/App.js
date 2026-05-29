@@ -271,7 +271,8 @@ const INITIAL_TRANSPORTERS = [
   { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', density: 1 },
   { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaPi',     name: 'NaPi',       type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaPi2',    name: 'NaPi 2:1',   type: 'symporter',  stoich: { 'Na+': 2, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'NaPi',     name: 'NaPi 3:1',   type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
   { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
@@ -291,7 +292,7 @@ const INITIAL_TRANSPORTERS = [
 
 const TRANSPORTER_GROUPS = [
   { label: 'Channels', ids: ['AQP', 'CFTR', 'ClCKb', 'ENaC', 'ROMK', 'TRPV56'] },
-  { label: 'Cotransporters', ids: ['NaAA', 'NaPi', 'NBCe1', 'NCC', 'NKCC', 'PepT', 'SGLT'] },
+  { label: 'Cotransporters', ids: ['NaAA', 'NaPi2', 'NaPi', 'NBCe1', 'NCC', 'NKCC', 'PepT', 'SGLT'] },
   { label: 'Exchangers', ids: ['AE1', 'MATE', 'NCX1', 'NHE3', 'Pendrin'] },
   { label: 'Facilitators', ids: ['AAFacilitator', 'GLUT2', 'PiFacilitator'] },
   { label: 'Organic Solute Transporters', ids: ['OAT', 'OCT'] },
@@ -308,7 +309,7 @@ const TISSUE_OPTIONS = [
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
     group: 'Kidney and urinary tract',
-    transporterIds: ['AQP', 'SGLT', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'OCT', 'MATE']
+    transporterIds: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'OCT', 'MATE']
   },
   {
     value: 'thick-ascending-limb',
@@ -530,7 +531,8 @@ const TRANSPORTER_DESCRIPTIONS = {
   TRPV56: 'TRPV5/6 Ca2+ channel class: passive Ca2+ flux. SALT does not model dynamic inhibition by intracellular Ca2+.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
-  NaPi: 'NaPi cotransporter class: moves Na+ and phosphate together. Includes NaPi-IIa and NaPi-IIc.',
+  NaPi2: 'NaPi 2:1: sodium-phosphate cotransporter; moves 2 Na+ with 1 Pi. Electroneutral; represents NaPi-IIc.',
+  NaPi: 'NaPi 3:1: sodium-phosphate cotransporter; moves 3 Na+ with 1 Pi. Electrogenic; represents NaPi-IIa/IIb.',
   NaAA: 'Na+-AA cotransporter: generic Na+-coupled neutral amino acid transporter.',
   NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- together.',
   NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
@@ -578,6 +580,7 @@ const GENERAL_DISPLAY_EXCLUDED_IONS = ['H+'];
 const PASSIVE_SOLUTE_CHANNELS = {
   GLUT2: 'Glucose'
 };
+const NAPI_TRANSPORTER_IDS = ['NaPi2', 'NaPi'];
 const SELECTED_ELECTROCHEMICAL_CHANNELS = {
   ENaC: ['Na+'],
   ROMK: ['K+'],
@@ -1203,6 +1206,38 @@ function transepithelialFlux(ion, entryIds, exitIds, requirePump, apicalFlux, ba
   return 0;
 }
 
+function limitFluxMagnitude(flux, maxMagnitude) {
+  const magnitude = Math.max(Number(maxMagnitude) || 0, 0);
+  if (magnitude <= 0) return 0;
+  return Math.sign(flux) * Math.min(Math.abs(flux), magnitude);
+}
+
+function naPiNaPerPhosphateForFlux(coupledEvents, phosphateFlux) {
+  const direction = Math.sign(phosphateFlux);
+  if (direction === 0) return 0;
+
+  const candidates = coupledEvents.filter(event =>
+    NAPI_TRANSPORTER_IDS.includes(event.id) &&
+    Math.sign(transepithelialDirectionForMembraneFlux(event.placement, event.stoich.Phosphate || 0)) === direction
+  );
+  const totalPhosphateCapacity = candidates.reduce(
+    (sum, event) => sum + Math.abs((event.rate || 0) * (event.stoich.Phosphate || 0)),
+    0
+  );
+  if (totalPhosphateCapacity < DIRECTIONAL_FLUX_GRAPH_EPSILON) return 0;
+
+  return candidates.reduce((sum, event) => {
+    const phosphateCapacity = Math.abs((event.rate || 0) * (event.stoich.Phosphate || 0));
+    return sum + phosphateCapacity * Math.abs(event.stoich['Na+'] || 0);
+  }, 0) / totalPhosphateCapacity;
+}
+
+function naPiPhosphateFluxWithNaSupport(rawPhosphateFlux, coupledEvents, supportedNaAbsorption) {
+  const naPerPhosphate = naPiNaPerPhosphateForFlux(coupledEvents, rawPhosphateFlux);
+  if (!naPerPhosphate) return rawPhosphateFlux;
+  return limitFluxMagnitude(rawPhosphateFlux, Math.abs(supportedNaAbsorption || 0) / naPerPhosphate);
+}
+
 function activeStoichForPlacement(transporter) {
   if (transporter.id === 'OAT') {
     return { 'OA-': transporter.placement === 'apical' ? -1 : 1 };
@@ -1379,10 +1414,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       }
     }
   }
+  const rawPhosphateTransEpiFlux = transepithelialFlux('Phosphate', NAPI_TRANSPORTER_IDS, ['PiFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const phosphateTransEpiFlux = naPiPhosphateFluxWithNaSupport(rawPhosphateTransEpiFlux, coupledEvents, supportedNaAbsorption);
   const naTransEpiFlux = supportedNaAbsorption;
   const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','Pendrin'], ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const phosphateTransEpiFlux = transepithelialFlux('Phosphate', ['NaPi'], ['PiFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
 
   // K+ logic (HKATPase or other)
   const hkAtpaseSides = placementsForTick('HKATPase', tList);
@@ -2308,8 +2344,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
-        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi pairs with Pi Facilitator on the opposite membrane for completed phosphate transport. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
@@ -2382,9 +2418,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can pair with OCT on the opposite membrane for organic cation transport.
         </li>
         <li>
-          <b>NaPi:</b> sodium-phosphate cotransporter class; representative members include NaPi-IIa and NaPi-IIc<br/>
-          <i>Action:</i> Na⁺-phosphate symporter; co-transports Na⁺ and phosphate together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with a Pi Facilitator on the opposite membrane for completed phosphate transport. Pump-supported Na⁺ gradient logic dominates; the implicit cell-negative context provides only small bounded support.
+          <b>NaPi 2:1:</b> sodium-phosphate cotransporter class; representative member NaPi-IIc<br/>
+          <i>Action:</i> Electroneutral Na⁺-phosphate symporter; co-transports 2 Na⁺ with 1 phosphate.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with a Pi Facilitator on the opposite membrane for completed phosphate transport. Completed epithelial flux preserves the 2:1 Na⁺:Pi stoichiometry while unmatched movement can still report intracellular imbalance.
+        </li>
+        <li>
+          <b>NaPi 3:1:</b> sodium-phosphate cotransporter class; representative members include NaPi-IIa and NaPi-IIb<br/>
+          <i>Action:</i> Electrogenic Na⁺-phosphate symporter; co-transports 3 Na⁺ with 1 phosphate.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with a Pi Facilitator on the opposite membrane for completed phosphate transport. Completed epithelial flux preserves the 3:1 Na⁺:Pi stoichiometry while unmatched movement can still report intracellular imbalance.
         </li>
         <li>
           <b>Na⁺-AA:</b> sodium-amino acid cotransporter class; representative examples include neutral amino acid transport systems such as B⁰AT/SLC6 family transporters<br/>
@@ -2444,7 +2485,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>Pi Facilitator:</b> facilitated inorganic phosphate transporter class; this mechanism is not well characterized but may be XPR1<br/>
           <i>Action:</i> Facilitated inorganic phosphate movement.<br/>
-          <i>Rule:</i> Can provide phosphate exit or entry in a completed phosphate pathway with NaPi cotransport on the opposite membrane.
+          <i>Rule:</i> Can provide phosphate exit or entry in a completed phosphate pathway with NaPi 2:1 or NaPi 3:1 cotransport on the opposite membrane.
         </li>
         <li>
           <b>PMCA:</b> plasma membrane calcium ATPase<br/>
@@ -2491,11 +2532,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
-        <li><b>Na⁺:</b> SGLT, NaPi, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
+        <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
-        <li><b>Phosphate:</b> NaPi on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport.</li>
+        <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
@@ -2817,8 +2858,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
         case 'MATE':
           return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges H⁺ and organic cations.<br/></>;
+        case 'NaPi2':
+          return <><b>NaPi 2:1 cotransporter class</b>: represents NaPi-IIc; moves 2 Na⁺ with 1 phosphate. This pathway is electroneutral in the teaching model.<br/></>;
         case 'NaPi':
-          return <><b>NaPi cotransporter class</b>: representative members include NaPi-IIa and NaPi-IIc; moves Na⁺ and phosphate together using pump-supported Na⁺ gradient logic with small bounded implicit electrical support.<br/></>;
+          return <><b>NaPi 3:1 cotransporter class</b>: represents NaPi-IIa/IIb; moves 3 Na⁺ with 1 phosphate. This pathway is electrogenic and receives small bounded implicit electrical support when pump support is present.<br/></>;
         case 'NaAA':
           return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter.<br/></>;
         case 'NBCe1':
