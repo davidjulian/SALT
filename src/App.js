@@ -125,6 +125,10 @@ function transepithelialChargeSum(transepiFluxData) {
     .reduce((sum, row) => sum + (ION_VALENCE[row.ion] ?? 0) * row.transepithelial, 0);
 }
 
+function transepithelialPotentialValue(transepiFluxData) {
+  return -transepithelialChargeSum(transepiFluxData);
+}
+
 function cellPolarityDirection(value) {
   if (Math.abs(value) < CHARGE_EPSILON) return 'no strong net tendency';
   return value > 0 ? 'cell tends positive' : 'cell tends negative';
@@ -132,7 +136,7 @@ function cellPolarityDirection(value) {
 
 function epithelialPolarityDirection(value) {
   if (Math.abs(value) < CHARGE_EPSILON) return 'no strong net tendency';
-  return value > 0 ? 'lumen tends negative relative to blood' : 'lumen tends positive relative to blood';
+  return value > 0 ? 'lumen tends positive relative to blood' : 'lumen tends negative relative to blood';
 }
 
 function paracellularElectrochemicalDrive(ion, apicalConcentration, basolateralConcentration, transepithelialElectricalTendency) {
@@ -141,7 +145,7 @@ function paracellularElectrochemicalDrive(ion, apicalConcentration, basolateralC
   const valence = ION_VALENCE[ion] || 0;
   if (valence === 0 || Math.abs(electricalTendency) < CHARGE_EPSILON) return chemicalDrive;
   const boundedTep = Math.tanh(electricalTendency / PARACELLULAR_TEP_SENSITIVITY);
-  const electricalDrive = -valence * boundedTep * PARACELLULAR_TEP_DRIVE_MAX;
+  const electricalDrive = valence * boundedTep * PARACELLULAR_TEP_DRIVE_MAX;
   return chemicalDrive + electricalDrive;
 }
 
@@ -149,7 +153,7 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
   const apicalCharge = chargeSum(apicalFlux);
   const basolateralCharge = chargeSum(basolateralFlux);
   const cellCharge = apicalCharge + basolateralCharge;
-  const transepithelialCharge = transepithelialChargeSum(transepiFluxData);
+  const transepithelialPotential = transepithelialPotentialValue(transepiFluxData);
 
   return {
     apical: {
@@ -172,9 +176,9 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
     },
     transepithelial: {
       label: 'Transepithelial Potential',
-      direction: epithelialPolarityDirection(transepithelialCharge),
-      strength: chargeStrength(transepithelialCharge),
-      value: transepithelialCharge
+      direction: epithelialPolarityDirection(transepithelialPotential),
+      strength: chargeStrength(transepithelialPotential),
+      value: transepithelialPotential
     }
   };
 }
@@ -1504,7 +1508,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     }
   });
 
-  const paracellularElectricalTendency = transepithelialChargeSum(transepiFluxDataNoH2O);
+  const paracellularElectricalTendency = transepithelialPotentialValue(transepiFluxDataNoH2O);
   if (paracellularType === 'cation') {
     ['Na+','K+'].forEach(ion => {
       const cap = apicalSurface[ion];
@@ -1647,8 +1651,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const polarityStatus = value => {
     if (Math.abs(value) < CHARGE_EPSILON) return 'Minimal';
     return value > 0
-      ? displayOrientation.apicalPolarityLabel + '-negative'
-      : displayOrientation.apicalPolarityLabel + '-positive';
+      ? displayOrientation.apicalPolarityLabel + '-positive'
+      : displayOrientation.apicalPolarityLabel + '-negative';
   };
   const fluxDirectionCaption = 'Positive = ' + displayOrientation.positiveFluxLabel + '; negative = ' + displayOrientation.negativeFluxLabel + '.';
   const fluxBarSeries = FLUX_BAR_SERIES.map(series => {
@@ -1991,7 +1995,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         : 'No charge tendency calculated',
       state: Math.abs(tePotentialValue) < CHARGE_EPSILON ? 'neutral' : 'accent',
       indicator: {
-        value: -tePotentialValue,
+        value: tePotentialValue,
         maxAbs: SNAPSHOT_TEP_INDICATOR_MAX,
         leftLabel: displayOrientation.apicalPolarityLabel + '-negative',
         rightLabel: displayOrientation.apicalPolarityLabel + '-positive',
@@ -2019,9 +2023,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {
       key: 'water',
       title: 'Water Flux',
-      status: waterFluxStatus,
+      status: null,
       detail: waterFluxDetail,
-      state: Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
+      state: Math.abs(osmoticPullValue) < WATER_EPSILON && Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
       indicators: [
         {
           label: 'Osmotic pull',
@@ -2182,7 +2186,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         {indicator.label && (
           <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
             <span className="font-semibold text-gray-700">{indicator.label}</span>
-            <span className="text-gray-600">{indicator.status}</span>
+            <span className="font-semibold text-gray-700">{indicator.status}</span>
           </div>
         )}
         <div className="relative h-2 rounded-full bg-gray-200" aria-hidden="true">
@@ -2203,8 +2207,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const SnapshotTile = ({ tile }) => (
     <li className={snapshotTileClass(tile)}>
       <h3 className="text-xs font-semibold uppercase text-gray-600">{tile.title}</h3>
-      <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
-      <div className="mt-1 text-xs leading-snug text-gray-600">{tile.detail}</div>
+      {tile.status && (
+        <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
+      )}
+      {tile.detail && (
+        <div className="mt-1 text-xs leading-snug text-gray-600">{tile.detail}</div>
+      )}
       <SnapshotIndicator indicator={tile.indicator} />
       {tile.indicators?.map(indicator => (
         <SnapshotIndicator key={indicator.label} indicator={indicator} />
