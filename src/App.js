@@ -265,7 +265,7 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
 
 const INITIAL_TRANSPORTERS = [
   { id: 'AQP',      name: 'AQP',        type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AE1',      name: 'AE1',        type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'AE1',      name: 'AE1/2',      type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PiFacilitator', name: 'Pi Facilitator', type: 'carrier', stoich: { Phosphate: -1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'CFTR',     name: 'CFTR',       type: 'channel',    stoich: { 'Cl-': -1, 'HCO3-': -0.5 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
@@ -524,7 +524,7 @@ const DENSITY_OPTIONS = [
 ];
 
 const TRANSPORTER_DESCRIPTIONS = {
-  AE1: 'Anion exchanger 1: exchanges Cl- and HCO3- in opposite directions.',
+  AE1: 'Anion exchanger 1/2 class: exchanges Cl- and HCO3- in opposite directions. Includes AE1 and AE2.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
   AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Combined apical/basolateral AQP density scales transcellular water flux. Includes AQP2, AQP3, AQP4.',
@@ -858,6 +858,13 @@ function buildSurfaceConcentrations(apicalBulk, basolateralBulk, apicalFlux, bas
 function activeCellConcentrationDelta(ion, flux) {
   const gain = flux > 0 ? (ACTIVE_CELL_CONCENTRATION_GAIN[ion] || 1) : 1;
   return flux * gain;
+}
+
+function restoreTowardBaseline(modeledIcf, baselineIcf, ion, supportCapacity) {
+  const depletion = Math.max(0, Number(baselineIcf[ion] || 0) - Number(modeledIcf[ion] || 0));
+  const correction = Math.min(depletion, Math.max(Number(supportCapacity) || 0, 0));
+  modeledIcf[ion] = Number(modeledIcf[ion] || 0) + correction;
+  return correction;
 }
 
 function concentrationGradientFlux(transporter, outsideConcentration, cellConcentration) {
@@ -1412,7 +1419,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   Object.entries(hiddenPumpCellFlux)
     .forEach(([ion, flux]) => { newICF[ion] += flux; });
   newICF['H+'] = Math.max(newICF['H+'], 1e-8);
-  const cellImbalanceReport = buildCellImbalanceReport(baseline.icf, newICF);
   const surfaceReport = buildSurfaceConcentrations(apicalECF, basolateralECF, apicalFlux, basolateralFlux);
   const apicalSurface = surfaceReport.apicalSurface;
   const basolateralSurface = surfaceReport.basolateralSurface;
@@ -1466,6 +1472,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const cftrHco3TransEpiFlux = transepithelialFlux('HCO3-', ['NBCe1','AE1','Pendrin'], ['CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let hTransEpiFlux = 0;
   let hco3TransEpiFlux = cftrHco3TransEpiFlux;
+  let acidBaseFluxPairs = [];
+  let acidBaseCellSupport = {
+    active: false,
+    message: null,
+    hSupport: 0,
+    hco3Support: 0
+  };
   if (hExtruders.length > 0 && hco3ExitTransporters.length > 0) {
     const fluxPairs = [];
     for (let t of hExtruders) {
@@ -1485,9 +1498,28 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         }
       }
     }
+    acidBaseFluxPairs = fluxPairs;
     hTransEpiFlux = fluxPairs.reduce((sum, p) => sum + p.h, 0);
     hco3TransEpiFlux += fluxPairs.reduce((sum, p) => sum + p.hco3, 0);
   }
+  const implicitAcidBaseSupportCapacity = acidBaseFluxPairs.reduce(
+    (sum, pair) => sum + Math.min(Math.abs(pair.h || 0), Math.abs(pair.hco3 || 0)),
+    0
+  );
+  if (implicitAcidBaseSupportCapacity > 0) {
+    const hSupport = restoreTowardBaseline(newICF, baseline.icf, 'H+', implicitAcidBaseSupportCapacity);
+    const hco3Support = restoreTowardBaseline(newICF, baseline.icf, 'HCO3-', implicitAcidBaseSupportCapacity);
+    newICF['H+'] = Math.max(newICF['H+'], 1e-8);
+    acidBaseCellSupport = {
+      active: hco3Support > CELL_IMBALANCE_EPSILON,
+      message: hco3Support > CELL_IMBALANCE_EPSILON
+        ? 'CO₂ + H₂O is treated as the source of paired H⁺ and HCO₃⁻.'
+        : null,
+      hSupport,
+      hco3Support
+    };
+  }
+  const cellImbalanceReport = buildCellImbalanceReport(baseline.icf, newICF);
 
   // Compose transepiFluxDataNoH2O
   const transepiFluxDataNoH2O = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
@@ -1549,6 +1581,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const acidBaseReport = {
     apicalSurface: surfacePHDirection(apicalFlux['H+'] || 0),
     cell: cellPHDirection(netFlux['H+'] || 0, netFlux['HCO3-'] || 0),
+    cellNote: acidBaseCellSupport.message,
+    cellSupport: acidBaseCellSupport,
     basolateralSurface: surfacePHDirection(basolateralFlux['H+'] || 0),
     startingCellPH: -Math.log10(Math.max(baseline.icf['H+'], 1e-8)),
     transepithelial: {
@@ -1974,7 +2008,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const resultsSnapshotTiles = result ? [
     {
       key: 'balance',
-      title: 'Cell Balance',
+      title: 'Intracellular Balance',
       status: cellBalanceStatus,
       detail: cellBalanceDetail,
       state: hasIntracellularImbalance || hasCoupledMismatch ? 'warning' : 'good'
@@ -2332,9 +2366,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
         <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, CFTR, and TRPV5/6 use simplified electrochemical direction rules when Na⁺/K⁺-ATPase is present and primarily follow chemical concentration tendency when it is absent. GLUT2 remains non-voltage-sensitive and follows the glucose gradient.</li>
         <li><b>Coupled transport and exchangers:</b> Na⁺-coupled cotransporters and exchangers remain governed primarily by pump-supported Na⁺ gradient logic, stoichiometric coupling, and pathway completion. Selected electrogenic coupled pathways receive only small bounded implicit-Vm support and are not allowed to reverse routine teaching layouts.</li>
-        <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBCe1, NCC, NKCC, NHE3, AE1, and pendrin remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
+        <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBCe1, NCC, NKCC, NHE3, AE1/2, and pendrin remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
-        <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Imbalance Tendencies table.</li>
+        <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Balance table.</li>
         <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
         <li><b>Editable concentrations:</b> Editable ECF concentrations are constrained to physiological teaching ranges so exploratory changes illustrate meaningful physiology without producing extreme nonphysiological flux behavior.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
@@ -2342,7 +2376,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
         <li>
-          <b>AE1:</b> anion exchanger 1<br/>
+          <b>AE1/2:</b> anion exchanger 1/2 class; includes AE1 and AE2<br/>
           <i>Action:</i> Cl⁻/HCO₃⁻ exchanger; moves Cl⁻ and HCO₃⁻ in opposite directions.<br/>
           <i>Rule:</i> Can pair with an opposite-membrane proton extruder to support acid secretion/base absorption or the reverse, depending on placement. Voltage-driven reversal is not added in this teaching phase.
         </li>
@@ -2503,6 +2537,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li>H⁺ is excluded from the standard concentration graph because its physiological concentration is too small to share a useful visual scale with Na⁺, K⁺, Cl⁻, glucose, and other bulk solutes.</li>
         <li>The app does not recalculate buffered H⁺ concentration or true pH after transport. Instead, it reports qualitative pH tendencies for the apical surface, cell, and basolateral surface.</li>
+        <li>Completed paired acid/base pathways can use an implicit CO₂ + H₂O source for intracellular H⁺ and HCO₃⁻. Carbonic anhydrase is treated as present and not limiting, and CO₂ diffusion is not separately modeled.</li>
         <li>Surface pH tendencies come from local H⁺ flux at that membrane: H⁺ added to a surface tends to lower local pH, while H⁺ removed from a surface tends to raise local pH.</li>
         <li>Cell pH tendency compares the modeled cellular H⁺ load with HCO₃⁻ movement. H⁺ loading tends to acidify the cell, while HCO₃⁻ loading tends to alkalinize it.</li>
         <li>The net acid/base dial is calculated from completed transepithelial H⁺ and HCO₃⁻ flux. H⁺ secretion and HCO₃⁻ absorption point toward acid secretion/base absorption; the opposite points toward base secretion/acid absorption.</li>
@@ -2513,13 +2548,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
-        <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
+        <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1/2, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
-        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
+        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1/2, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1/2, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
@@ -2814,7 +2849,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {(() => {
       switch (modalTransporter.id) {
         case 'AE1':
-          return <><b>Anion exchanger 1</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions; behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
+          return <><b>Anion exchanger 1/2 class</b>: includes AE1 and AE2; exchanges Cl⁻ and HCO₃⁻ in opposite directions. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'AAFacilitator':
           return <><b>AA facilitator</b>: generic facilitated neutral amino acid transporter; representative examples include LAT/SLC7 family transporters.<br/></>;
         case 'PiFacilitator':
@@ -3074,7 +3109,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {chargeReport && (
               <div>
                 <div className="mb-3">
-                  <h3 className="font-semibold mb-2">Intracellular Imbalance</h3>
+                <h3 className="font-semibold mb-2">Intracellular Balance</h3>
                   <AccessibleTable
                     caption="Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
                     captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
@@ -3132,6 +3167,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     <div className="border rounded p-3">
                       <div className="font-semibold">Cell</div>
                       <div>{acidBaseReport.cell}</div>
+                      {acidBaseReport.cellNote && (
+                        <div className="text-gray-500">{acidBaseReport.cellNote}</div>
+                      )}
                       <div className="text-gray-500">starting pH {Number(acidBaseReport.startingCellPH).toFixed(2)}</div>
                     </div>
                     <div className="border rounded p-3">
@@ -3151,7 +3189,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     rows={[
                       { region: 'Net epithelium', tendency: orientText(acidBaseReport.transepithelial.direction), note: acidBaseReport.transepithelial.strength + '; ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid/base units' },
                       { region: displayOrientation.apicalShortLabel + ' surface', tendency: acidBaseReport.apicalSurface, note: 'Based on local H+ flux tendency' },
-                      { region: 'Cell', tendency: acidBaseReport.cell, note: 'Starting pH ' + Number(acidBaseReport.startingCellPH).toFixed(2) },
+                      { region: 'Cell', tendency: acidBaseReport.cell, note: (acidBaseReport.cellNote ? acidBaseReport.cellNote + ' ' : '') + 'Starting pH ' + Number(acidBaseReport.startingCellPH).toFixed(2) },
                       { region: displayOrientation.basolateralShortLabel + ' surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
                     ]}
                   />
