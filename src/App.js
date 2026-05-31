@@ -218,7 +218,6 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
   return {
-    teachingNote: 'Osmotic pull plus water pathway availability produces water movement.',
     osmoticPull: {
       label: 'Osmotic pull',
       direction: epithelialWaterDirection(osmoticPullValue),
@@ -1584,7 +1583,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     cellNote: acidBaseCellSupport.message,
     cellSupport: acidBaseCellSupport,
     basolateralSurface: surfacePHDirection(basolateralFlux['H+'] || 0),
-    startingCellPH: -Math.log10(Math.max(baseline.icf['H+'], 1e-8)),
     transepithelial: {
       label: 'Net epithelial acid/base',
       direction: epithelialAcidBaseDirection(acidBaseValue),
@@ -1961,6 +1959,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const hasIntracellularImbalance = cellImbalanceReport.length > 0;
   const hasCoupledMismatch = coupledMismatchReport?.state === 'mismatch';
   const compactImbalanceDirection = direction => direction.replace(' tendency', '');
+  const acidBaseCellTendency = acidBaseReport?.cell || '';
+  const hasCellAcidBaseImbalance = acidBaseCellTendency === 'cell tends acidified' || acidBaseCellTendency === 'cell tends alkalinized';
+  const acidBaseCellWarning = hasCellAcidBaseImbalance
+    ? 'Acid/base imbalance: ' + acidBaseCellTendency
+    : null;
   const dominantFluxRow = soluteTransepiFluxData
     .filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001)
     .reduce((strongest, row) => {
@@ -1985,16 +1988,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ? cellImbalanceReport.length === 1
       ? cellImbalanceReport[0].label + ' ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
       : cellImbalanceReport.length + ' tendencies'
+    : hasCellAcidBaseImbalance
+      ? acidBaseCellWarning
     : hasCoupledMismatch
       ? 'Coupled mismatch'
       : 'Balanced';
   const cellBalanceDetail = hasIntracellularImbalance
-    ? cellImbalanceReport.length === 1
+    ? hasCellAcidBaseImbalance
+      ? acidBaseCellWarning
+      : cellImbalanceReport.length === 1
       ? 'Intracellular ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
       : 'Review imbalance table below'
+    : hasCellAcidBaseImbalance
+      ? 'Review Acid/Base & pH below'
     : hasCoupledMismatch
       ? 'Review pathway completion'
-      : 'No intracellular imbalance tendency';
+      : 'No major intracellular imbalance';
   const dominantFluxStatus = dominantFluxRow
     ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + directionLabelForValue(dominantFluxRow.transepithelial)
     : 'No strong net flux';
@@ -2008,10 +2017,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const resultsSnapshotTiles = result ? [
     {
       key: 'balance',
-      title: 'Intracellular Balance',
+      title: 'Cell Balance',
       status: cellBalanceStatus,
       detail: cellBalanceDetail,
-      state: hasIntracellularImbalance || hasCoupledMismatch ? 'warning' : 'good'
+      state: hasIntracellularImbalance || hasCellAcidBaseImbalance || hasCoupledMismatch ? 'warning' : 'good'
     },
     {
       key: 'dominant-flux',
@@ -2089,43 +2098,46 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const waterDetailRows = waterReport ? [
     {
       label: 'Osmotic pull',
-      status: 'combined solute-linked and background pull',
+      status: null,
       direction: orientText(waterReport.osmoticPull.direction),
       strength: waterReport.osmoticPull.strength,
       value: waterReport.osmoticPull.value,
-      note: 'Combined from net epithelial solute flux (' + formatTableValue(waterReport.osmoticPull.sourceFlux) + ' flux units) and background pull; ECF concentration settings do not directly drive water flux'
+      note: 'Net epithelial solute flux: ' + formatTableValue(waterReport.osmoticPull.sourceFlux) + ' flux units'
     },
     {
       label: 'Background osmotic pull',
+      statusLabel: 'Setting',
       status: orientText(waterReport.backgroundPull.status),
       direction: orientText(waterReport.backgroundPull.direction),
       strength: waterReport.backgroundPull.strength,
       value: waterReport.backgroundPull.value,
-      note: orientText('Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.')
+      note: null
     },
     {
       label: 'Transcellular water pathway and contribution',
+      statusLabel: 'Pathway',
       status: waterReport.transcellularPath.status,
       direction: orientText(waterReport.transcellular.direction),
       strength: waterReport.transcellular.strength,
       value: waterReport.transcellular.value,
-      note: waterReport.transcellularPath.note
+      note: null
     },
     {
       label: 'Paracellular water pathway and contribution',
+      statusLabel: 'Pathway',
       status: waterReport.paracellularPath.status,
       direction: orientText(waterReport.paracellular.direction),
       strength: waterReport.paracellular.strength,
       value: waterReport.paracellular.value,
-      note: waterReport.paracellularPath.note
+      note: null
     },
     {
       label: 'Net water flux',
-      status: waterReport.netTransepithelial.direction === 'no water pathway' ? 'no water pathway' : 'expressed water tendency',
+      status: null,
       direction: orientText(waterReport.netTransepithelial.direction),
       strength: waterReport.netTransepithelial.strength,
       value: waterReport.netTransepithelial.value,
-      note: waterReport.teachingNote
+      note: null
     }
   ] : [];
   const electrochemicalSideName = placement => {
@@ -2259,26 +2271,30 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li key={row.label} className="border rounded p-3 bg-white">
           <h4 className="font-semibold">{row.label}</h4>
           <dl className="mt-1 space-y-1">
-            <div>
-              <dt className="sr-only">Direction</dt>
+            <div className="grid grid-cols-[auto_1fr] gap-x-2">
+              <dt className="font-medium text-gray-600">Direction</dt>
               <dd>{row.direction}</dd>
             </div>
-            <div className="text-gray-600">
-              <dt className="sr-only">Status</dt>
-              <dd>{row.status}</dd>
-            </div>
-            <div className="text-gray-600">
-              <dt className="sr-only">Strength</dt>
+            {row.status && (
+              <div className="grid grid-cols-[auto_1fr] gap-x-2 text-gray-600">
+                <dt className="font-medium">{row.statusLabel || 'Status'}</dt>
+                <dd>{row.status}</dd>
+              </div>
+            )}
+            <div className="grid grid-cols-[auto_1fr] gap-x-2 text-gray-600">
+              <dt className="font-medium">Strength</dt>
               <dd>{row.strength}</dd>
             </div>
-            <div className="text-gray-500">
-              <dt className="sr-only">Value</dt>
+            <div className="grid grid-cols-[auto_1fr] gap-x-2 text-gray-500">
+              <dt className="font-medium">Value</dt>
               <dd>{formatWaterValue(row.value)} tendency units</dd>
             </div>
-            <div className="text-gray-500 leading-snug">
-              <dt className="sr-only">Teaching note</dt>
-              <dd>{row.note}</dd>
-            </div>
+            {row.note && (
+              <div className="grid grid-cols-[auto_1fr] gap-x-2 text-gray-500 leading-snug">
+                <dt className="font-medium">Note</dt>
+                <dd>{row.note}</dd>
+              </div>
+            )}
           </dl>
         </li>
       ))}
@@ -2369,7 +2385,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Coupled transport and exchangers:</b> Na⁺-coupled cotransporters and exchangers remain governed primarily by pump-supported Na⁺ gradient logic, stoichiometric coupling, and pathway completion. Selected electrogenic coupled pathways receive only small bounded implicit-Vm support and are not allowed to reverse routine teaching layouts.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBCe1, NCC, NKCC, NHE3, AE1/2, and pendrin remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
-        <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch or intracellular accumulation/depletion tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the Intracellular Balance table.</li>
+        <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch, intracellular accumulation/depletion tendencies, or qualitative acid/base cell tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the detailed results below.</li>
         <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
         <li><b>Editable concentrations:</b> Editable ECF concentrations are constrained to physiological teaching ranges so exploratory changes illustrate meaningful physiology without producing extreme nonphysiological flux behavior.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
@@ -3178,7 +3194,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       {acidBaseReport.cellNote && (
                         <div className="text-gray-500">{acidBaseReport.cellNote}</div>
                       )}
-                      <div className="text-gray-500">starting pH {Number(acidBaseReport.startingCellPH).toFixed(2)}</div>
                     </div>
                     <div className="border rounded p-3">
                       <div className="font-semibold">{displayOrientation.basolateralShortLabel} surface</div>
@@ -3197,7 +3212,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     rows={[
                       { region: 'Net epithelium', tendency: orientText(acidBaseReport.transepithelial.direction), note: acidBaseReport.transepithelial.strength + '; ' + formatChargeValue(acidBaseReport.transepithelial.value) + ' acid/base units' },
                       { region: displayOrientation.apicalShortLabel + ' surface', tendency: acidBaseReport.apicalSurface, note: 'Based on local H+ flux tendency' },
-                      { region: 'Cell', tendency: acidBaseReport.cell, note: (acidBaseReport.cellNote ? acidBaseReport.cellNote + ' ' : '') + 'Starting pH ' + Number(acidBaseReport.startingCellPH).toFixed(2) },
+                      { region: 'Cell', tendency: acidBaseReport.cell, note: acidBaseReport.cellNote || '' },
                       { region: displayOrientation.basolateralShortLabel + ' surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
                     ]}
                   />
@@ -3208,9 +3223,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {waterReport && (
               <div>
                 <h3 className="font-semibold mb-2">Water Movement</h3>
-                <p className="text-xs text-gray-600 mb-2">
-                  Osmotic pull plus water pathway availability produces water movement.
-                </p>
                 <WaterDetailCards rows={waterDetailRows} />
               </div>
             )}
