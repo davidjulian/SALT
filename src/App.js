@@ -654,6 +654,7 @@ const ECF_WARNING_MESSAGE = 'This concentration is outside the usual teaching ra
 const SUPPORT_PUMP_ID = 'NaKATPase';
 const PUMP_K_LOADING_PER_NA_SUPPORT = 2 / 3;
 const PUMP_NA_EXTRUSION_PER_K_SUPPORT = 3 / 2;
+const KIR_PUMP_RECYCLING_CAPACITY_SCALE = 1.5;
 const CELL_IMBALANCE_EPSILON = 0.05;
 const ELECTROCHEMICAL_CONTEXT_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
@@ -1282,6 +1283,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const coupledEvents = [];
   const electrochemicalContextEvents = [];
   const fluxEvents = [];
+  const kirPassiveEvents = [];
 
   // Calculate active/coupled transport first, then passive channels respond to gradients.
   tList.forEach(t => {
@@ -1361,12 +1363,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       const signals = SELECTED_ELECTROCHEMICAL_CHANNELS[t.id]
         ? electrochemicalChannelSignals(ion, outsideConcentration, prePassiveICF[ion], hasNaKATPase, activeMembraneFlux[ion] || 0)
         : null;
+      const maxChannelFlux = signals ? electrochemicalChannelMaxFlux(t, ion) : null;
       const delta = signals
-        ? electrochemicalChannelMaxFlux(t, ion) * signals.netSignal
+        ? maxChannelFlux * signals.netSignal
         : concentrationGradientFlux(t, outsideConcentration, prePassiveICF[ion]);
       if (t.placement === 'apical') apicalFlux[ion] += delta;
       else basolateralFlux[ion] += delta;
       passiveNetFlux[ion] += delta;
+      if (t.id === 'ROMK' && ion === 'K+') {
+        kirPassiveEvents.push({
+          placement: t.placement,
+          flux: delta,
+          capacity: maxChannelFlux || 0
+        });
+      }
       if (signals) {
         electrochemicalContextEvents.push({
           id: t.id,
@@ -1394,10 +1404,31 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   // Na+/K+-ATPase support is hidden from membrane bars; it only limits completed Na+/K+ flux and cell balance.
   const supportedNaAbsorption = pumpSupportedNaCompletion(apicalFlux, pumpSupportProfile);
+  const pumpKLoadingForNaAbsorption = pumpKLoadingForNaSupport(supportedNaAbsorption);
+  if (pumpKLoadingForNaAbsorption > 0) {
+    const basolateralKirExitEvents = kirPassiveEvents.filter(event =>
+      event.placement === 'basolateral' &&
+      event.flux < -DIRECTIONAL_FLUX_GRAPH_EPSILON
+    );
+    const basolateralKirExit = basolateralKirExitEvents.reduce(
+      (sum, event) => sum + Math.max(-event.flux, 0),
+      0
+    );
+    const basolateralKirCapacity = basolateralKirExitEvents.reduce(
+      (sum, event) => sum + Math.max(event.capacity, 0) * KIR_PUMP_RECYCLING_CAPACITY_SCALE,
+      0
+    );
+    const targetKirRecycling = Math.min(pumpKLoadingForNaAbsorption, basolateralKirCapacity);
+    const additionalKirRecycling = Math.max(0, targetKirRecycling - basolateralKirExit);
+    if (additionalKirRecycling > 0) {
+      basolateralFlux['K+'] = (basolateralFlux['K+'] || 0) - additionalKirRecycling;
+      passiveNetFlux['K+'] = (passiveNetFlux['K+'] || 0) - additionalKirRecycling;
+    }
+  }
   const supportedKSecretion = pumpSupportedKCompletion(apicalFlux, pumpSupportProfile);
   const hiddenPumpCellFlux = {
     'Na+': -Math.max(supportedNaAbsorption, pumpNaExtrusionForKSupport(supportedKSecretion)),
-    'K+': Math.max(pumpKLoadingForNaSupport(supportedNaAbsorption), supportedKSecretion)
+    'K+': Math.max(pumpKLoadingForNaAbsorption, supportedKSecretion)
   };
 
   const completionApicalFlux = { ...apicalFlux };
@@ -2569,7 +2600,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; with Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity. Fully balanced pump-supported K⁺ secretion also needs Na⁺ entry.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. With Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1/2, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
