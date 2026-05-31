@@ -288,6 +288,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'OCT',      name: 'OCT',        type: 'carrier',    stoich: { 'OC+': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
   { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'Pendrin',  name: 'Pendrin',    type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
@@ -297,9 +298,9 @@ const INITIAL_TRANSPORTERS = [
 const TRANSPORTER_GROUPS = [
   { label: 'Channels', ids: ['AQP', 'CFTR', 'ClCKb', 'ENaC', 'ROMK', 'TRPV56'] },
   { label: 'Cotransporters', ids: ['NaAA', 'NaPi2', 'NaPi', 'NBCe1', 'NCC', 'NKCC', 'PepT', 'SGLT'] },
-  { label: 'Exchangers', ids: ['AE1', 'MATE', 'NCX1', 'NHE3', 'Pendrin'] },
-  { label: 'Facilitators', ids: ['AAFacilitator', 'GLUT2', 'PiFacilitator'] },
-  { label: 'Organic Solute Transporters', ids: ['OAT', 'OCT'] },
+  { label: 'Exchangers', ids: ['AE1', 'NCX1', 'NHE3', 'Pendrin'] },
+  { label: 'Facilitators', ids: ['GLUT2', 'PiFacilitator'] },
+  { label: 'Organic Solute Carriers', ids: ['AAFacilitator', 'MATE', 'MRPBCRP', 'OAT', 'OCT'] },
   { label: 'Pumps', ids: ['HATPase', 'HKATPase', 'NaKATPase', 'PMCA'] }
 ];
 
@@ -313,7 +314,7 @@ const TISSUE_OPTIONS = [
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
     group: 'Kidney and urinary tract',
-    transporterIds: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'OCT', 'MATE']
+    transporterIds: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'MRPBCRP', 'OCT', 'MATE']
   },
   {
     value: 'thick-ascending-limb',
@@ -416,7 +417,7 @@ const TISSUE_OPTIONS = [
     label: 'Placenta / syncytiotrophoblast exchange',
     group: 'Reproductive system',
     orientation: 'placenta',
-    transporterIds: ['AQP', 'GLUT2', 'NaKATPase', 'NaAA', 'AAFacilitator', 'TRPV56', 'PMCA', 'NCX1', 'CFTR', 'OAT', 'OCT', 'MATE']
+    transporterIds: ['AQP', 'GLUT2', 'NaKATPase', 'NaAA', 'AAFacilitator', 'TRPV56', 'PMCA', 'NCX1', 'CFTR', 'OAT', 'MRPBCRP', 'OCT', 'MATE']
   }
 ];
 
@@ -544,10 +545,11 @@ const TRANSPORTER_DESCRIPTIONS = {
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
   NKCC: 'Na-K-Cl contransporter class: moves Na+, K+, and Cl- together. Includes NKCC1 and NKCC2.',
   NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients.',
-  OAT: 'Organic anion transporter class: simplified OA- flux for secretion pathways.',
-  OCT: 'Organic cation transporter class: facilitated OC+ flux.',
+  OAT: 'Organic anion transporter class: tertiary-active OA- uptake for secretion pathways. Requires Na+/K+-ATPase support; SALT does not model the exchanged dicarboxylate.',
+  OCT: 'Organic cation transporter class: facilitated OC+ movement.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
   MATE: 'Multidrug and toxin extrusion transporter class: H+/OC+ exchange.',
+  MRPBCRP: 'MRP/BCRP efflux transporter class: simplified OA- exit from cell to lumen. Includes transporters important in drug secretion and drug resistance.',
   PepT: 'PepT peptide transporter class: moves H+ and small peptides together. Includes PepT1 and PepT2.',
   Pendrin: 'Pendrin: exchanges Cl- and HCO3- in opposite directions.',
   ROMK: 'Kir potassium channel class: passive K+ flux. Includes ROMK.',
@@ -1254,9 +1256,6 @@ function naPiPhosphateFluxWithNaSupport(rawPhosphateFlux, coupledEvents, support
 }
 
 function activeStoichForPlacement(transporter) {
-  if (transporter.id === 'OAT') {
-    return { 'OA-': transporter.placement === 'apical' ? -1 : 1 };
-  }
   return transporter.stoich;
 }
 
@@ -1295,6 +1294,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       return;
     }
     if (t.id === SUPPORT_PUMP_ID) return;
+    if (t.id === 'OAT' && !hasNaKATPase) return;
     if (effectiveStoich['Na+'] && !hasNaKATPase) return;
 
     let rate = transporterFluxCapacity(t) *
@@ -1430,7 +1430,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   // --- Transepithelial Fluxes using ONLY current tick values ---
   const glucoseTransEpiFlux = transepithelialFlux('Glucose', ['SGLT'], ['GLUT2'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const aaTransEpiFlux = transepithelialFlux('AA', ['NaAA'], ['AAFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
-  const oaTransEpiFlux = transepithelialFlux('OA-', ['OAT'], ['OAT'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const oaTransEpiFlux = transepithelialFlux('OA-', ['OAT'], ['MRPBCRP'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const ocTransEpiFlux = transepithelialFlux('OC+', ['OCT'], ['MATE'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let peptideTransEpiFlux = 0;
   if (tList.some(t => t.id === 'PepT' && t.placement !== 'none') && tList.some(t => t.id === 'AAFacilitator' && t.placement !== 'none')) {
@@ -2357,7 +2357,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
-        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Organic ion transport:</b> Organic ion transport is simplified in SALT. OAT represents tertiary-active organic anion uptake used in secretion pathways. In real proximal tubule cells, OAT exchange is supported indirectly by the Na⁺ gradient and intracellular dicarboxylates, but SALT does not model those exchanged solutes. Therefore, OAT requires Na⁺/K⁺-ATPase support in the model. MRP/BCRP represents simplified organic anion efflux, while OCT and MATE provide a simplified organic cation secretion pathway.</li>
         <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
@@ -2431,6 +2432,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can pair with OCT on the opposite membrane for organic cation transport.
         </li>
         <li>
+          <b>MRP/BCRP:</b> multidrug resistance protein / breast cancer resistance protein efflux transporter class<br/>
+          <i>Action:</i> Simplified organic anion efflux from cell to the adjacent extracellular side.<br/>
+          <i>Rule:</i> Apical MRP/BCRP can pair with basolateral OAT uptake to support organic anion secretion into the lumen. Basolateral placement follows the same outward-efflux teaching rule without added advanced behavior.
+        </li>
+        <li>
           <b>NaPi 2:1:</b> sodium-phosphate cotransporter class; representative member NaPi-IIc<br/>
           <i>Action:</i> Electroneutral Na⁺-phosphate symporter; co-transports 2 Na⁺ with 1 phosphate.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with a Pi Facilitator on the opposite membrane for completed phosphate transport. Completed epithelial flux preserves the 2:1 Na⁺:Pi stoichiometry while unmatched movement can still report intracellular imbalance.
@@ -2477,8 +2483,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
-          <i>Action:</i> Organic anion movement.<br/>
-          <i>Rule:</i> Can provide organic anion movement in a completed organic anion pathway.
+          <i>Action:</i> Tertiary-active organic anion uptake for secretion pathways.<br/>
+          <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and can pair with MRP/BCRP on the opposite membrane for completed organic anion transport. SALT does not model the exchanged dicarboxylate.
         </li>
         <li>
           <b>OCT:</b> organic cation transporter class; representative members include OCT1 and OCT2<br/>
@@ -2553,7 +2559,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
-        <li><b>Organic anions and cations:</b> OAT can complete organic anion pathways when present on opposite membranes. OCT and MATE on opposite membranes complete organic cation pathways.</li>
+        <li><b>Organic anions and cations:</b> Pump-supported OAT and MRP/BCRP on opposite membranes complete organic anion pathways. OCT and MATE on opposite membranes complete organic cation pathways.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1/2, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1/2, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
@@ -2872,6 +2878,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
         case 'MATE':
           return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges H⁺ and organic cations.<br/></>;
+        case 'MRPBCRP':
+          return <><b>MRP/BCRP efflux transporter class</b>: moves organic anions out of the cell toward the adjacent extracellular side. Apical placement can support OA⁻ secretion after basolateral OAT uptake.<br/></>;
         case 'NaPi2':
           return <><b>NaPi 2:1 cotransporter class</b>: represents NaPi-IIc; moves 2 Na⁺ with 1 phosphate. This pathway is electroneutral in the teaching model.<br/></>;
         case 'NaPi':
@@ -2891,9 +2899,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NaKATPase':
           return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading; supported flux appears only with matching apical Na⁺ entry or K⁺ exit pathways, not as a standalone Na⁺ or K⁺ flux bar. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
-          return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; moves organic anions.<br/></>;
+          return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; tertiary-active OA⁻ uptake for secretion pathways. Requires Na⁺/K⁺-ATPase support; SALT does not model the exchanged dicarboxylate.<br/></>;
         case 'OCT':
-          return <><b>OCT transporter class</b>: representative members include OCT1 and OCT2; moves organic cations.<br/></>;
+          return <><b>OCT transporter class</b>: representative members include OCT1 and OCT2; facilitated OC⁺ movement.<br/></>;
         case 'PMCA':
           return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
         case 'PepT':
