@@ -2635,7 +2635,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   </div><div className="flex flex-wrap items-center gap-2 mb-4">
 <Button variant="outline" onClick={() => setShowAbout(true)}>About</Button>
 <a
-  href="/SALT_Lessons.html"
+  href="SALT_Lessons.html"
   target="_blank"
   rel="noopener noreferrer"
   className="rounded px-3 py-1 border border-gray-400 bg-white text-gray-900 no-underline"
