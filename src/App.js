@@ -2633,33 +2633,18 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
   </div><div className="flex flex-wrap items-center gap-2 mb-4">
-<Button onClick={() => setShowAbout(true)}>About</Button>
+<Button variant="outline" onClick={() => setShowAbout(true)}>About</Button>
+<a
+  href="/SALT_Lessons.html"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="rounded px-3 py-1 border border-gray-400 bg-white text-gray-900 no-underline"
+  aria-label="Open SALT lessons in a new window"
+>
+  Lessons
+</a>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
 <Button variant="outline" onClick={() => setShowResetConfirm(true)}>Reset</Button>
-<fieldset className="inline-flex items-center gap-2 rounded border px-2 py-1 text-sm">
-  <legend className="sr-only">Results view</legend>
-  <span className="font-semibold" aria-hidden="true">Results</span>
-  <label className="inline-flex items-center gap-1">
-    <input
-      type="radio"
-      name="results-view"
-      value="graphs"
-      checked={resultsView === 'graphs'}
-      onChange={() => setResultsView('graphs')}
-    />
-    Graphs
-  </label>
-  <label className="inline-flex items-center gap-1">
-    <input
-      type="radio"
-      name="results-view"
-      value="tables"
-      checked={resultsView === 'tables'}
-      onChange={() => setResultsView('tables')}
-    />
-    Tables
-  </label>
-</fieldset>
 </div>
 
         <div className="mt-4">
@@ -2991,6 +2976,37 @@ const calculateFluxesAndConcs = (tList = transporters) => {
        
  {result && (
           <div className="mt-3 space-y-4 overflow-auto">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold">Results</h2>
+              <fieldset className="inline-flex items-center rounded border border-gray-300 bg-white p-0.5 text-xs" aria-label="Results view">
+                <legend className="sr-only">Results view</legend>
+                {[
+                  { value: 'graphs', label: 'Graphs' },
+                  { value: 'tables', label: 'Tables' }
+                ].map(option => {
+                  const selected = resultsView === option.value;
+                  return (
+                    <label
+                      key={option.value}
+                      className={
+                        'cursor-pointer rounded px-2 py-1 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
+                        (selected ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100')
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="results-view"
+                        value={option.value}
+                        checked={selected}
+                        onChange={() => setResultsView(option.value)}
+                        className="sr-only"
+                      />
+                      {option.label}
+                    </label>
+                  );
+                })}
+              </fieldset>
+            </div>
             <section className="border rounded p-3 bg-white" aria-labelledby="results-snapshot-title">
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
                 <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
