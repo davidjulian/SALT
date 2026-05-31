@@ -290,7 +290,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'Pendrin',  name: 'Pendrin',    type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 0.5, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
 ];
 
@@ -527,7 +527,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1/2 class: exchanges Cl- and HCO3- in opposite directions. Includes AE1 and AE2.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
-  AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Combined apical/basolateral AQP density scales transcellular water flux. Includes AQP2, AQP3, AQP4.',
+  AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Includes AQP2, AQP3, AQP4.',
   CFTR: 'Cystic fibrosis transmembrane conductance regulator: passive Cl- and HCO3- flux.',
   ClCKb: 'ClC chloride channel class: passive Cl- flux. Includes ClC-K.',
   ENaC: 'Epithelial Na+ channel: passive Na+ flux.',
@@ -654,8 +654,8 @@ const ECF_WARNING_MESSAGE = 'This concentration is outside the usual teaching ra
 const SUPPORT_PUMP_ID = 'NaKATPase';
 const PUMP_K_LOADING_PER_NA_SUPPORT = 2 / 3;
 const PUMP_NA_EXTRUSION_PER_K_SUPPORT = 3 / 2;
-const KIR_PUMP_RECYCLING_CAPACITY_SCALE = 1.5;
-const CELL_IMBALANCE_EPSILON = 0.05;
+const KIR_PUMP_RECYCLING_CAPACITY_SCALE = 1;
+const CELL_IMBALANCE_EPSILON = 0.1;
 const ELECTROCHEMICAL_CONTEXT_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
@@ -2041,9 +2041,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const dominantFluxDetail = dominantFluxRow
     ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
     : 'Net epithelial movement is weak';
-  const waterFluxDetail = waterReport
-    ? 'Osmotic pull + water pathway = water movement'
-    : 'No water tendency calculated';
+  const hasBackgroundPull = waterReport && Math.abs(Number(waterReport.backgroundPull?.value || 0)) >= WATER_EPSILON;
+  const backgroundPullStatus = hasBackgroundPull
+    ? orientText(String(waterReport.backgroundPull.status || '').replace(/^Tissue default/, 'tissue default'))
+    : null;
+  const waterFluxDetail = hasBackgroundPull
+    ? 'Background pull: ' + backgroundPullStatus
+    : null;
   const snapshotIndicatorPercent = (value, maxAbs) => 50 + clamp(Number(value || 0) / maxAbs, -1, 1) * 45;
   const resultsSnapshotTiles = result ? [
     {
@@ -2099,6 +2103,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       title: 'Water Flux',
       status: null,
       detail: waterFluxDetail,
+      detailBadge: hasBackgroundPull,
+      detailAriaLabel: hasBackgroundPull ? 'Background osmotic pull is active: ' + backgroundPullStatus : undefined,
       state: Math.abs(osmoticPullValue) < WATER_EPSILON && Math.abs(waterFluxValue) < WATER_EPSILON ? 'neutral' : 'accent',
       indicators: [
         {
@@ -2288,7 +2294,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
       )}
       {tile.detail && (
-        <div className="mt-1 text-xs leading-snug text-gray-600">{tile.detail}</div>
+        <div
+          className={tile.detailBadge
+            ? 'mt-2 inline-flex rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium leading-snug text-indigo-800'
+            : 'mt-1 text-xs leading-snug text-gray-600'}
+          aria-label={tile.detailAriaLabel}
+        >
+          {tile.detail}
+        </div>
       )}
       <SnapshotIndicator indicator={tile.indicator} />
       {tile.indicators?.map(indicator => (
@@ -2778,10 +2791,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" onClick={() => setShowSettings(false)}>Close</Button>
       <h2 className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
-        <h3 className="block mb-2 font-semibold">Water Movement</h3>
+        <h3 className="block mb-2 font-semibold">Background Osmotic Pull</h3>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
           <div>
-            <label htmlFor="background-osmotic-pull" className="block mb-1">{orientText('Background osmotic pull toward blood')}</label>
+            <label htmlFor="background-osmotic-pull" className="sr-only">Background osmotic pull</label>
             <select
               id="background-osmotic-pull"
               value={backgroundOsmoticPullSetting}
@@ -2801,12 +2814,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <p id="background-osmotic-pull-help" className="text-gray-500 mt-2">
           {orientText('Adds a background pull toward blood for water movement when a water pathway is present. This does not change solute concentrations.')}
         </p>
-      </div>
-      <div className="mb-4 text-sm text-gray-700">
-        <h3 className="block mb-2 font-semibold">Membrane Electrochemical Rules</h3>
-        <div className="text-gray-500">
-          Selected charged channels and selected coupled transporters use simplified qualitative direction rules only when they support the teaching model. Na⁺/K⁺-ATPase establishes the pump-supported Na⁺/K⁺ gradient state and fixed implicit cell-negative context. Dynamic membrane-potential feedback is not modeled, and TEP remains epithelial-scale and affects charged paracellular flux only.
-        </div>
       </div>
       <div className="mb-4 text-sm text-gray-700">
         <div className="flex items-center justify-between gap-3 mb-2">
