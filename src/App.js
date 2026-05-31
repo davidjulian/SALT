@@ -428,6 +428,148 @@ const TISSUE_OPTION_GROUPS = [
   'Reproductive system'
 ];
 
+const APP_MODE_OPTIONS = [
+  { value: 'explore', label: 'Explore' },
+  { value: 'demo', label: 'Instructor Demo' }
+];
+
+// Set REACT_APP_ENABLE_INSTRUCTOR_DEMO_MODE=false for student-facing builds.
+const ENABLE_INSTRUCTOR_DEMO_MODE = process.env.REACT_APP_ENABLE_INSTRUCTOR_DEMO_MODE !== 'false';
+
+// Teaching-level presets constrained by SALT's simplified transporter and paracellular choices.
+const TISSUE_DEMO_PRESETS = {
+  all: {
+    paracellularType: 'none',
+    placements: {}
+  },
+  'proximal-tubule': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'NHE3', 'NaAA', 'PepT', 'MRPBCRP', 'MATE'],
+      basolateral: ['AQP', 'PiFacilitator', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'AAFacilitator', 'OAT', 'OCT']
+    }
+  },
+  'thick-ascending-limb': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['NKCC', 'ROMK'],
+      basolateral: ['ClCKb', 'NaKATPase']
+    }
+  },
+  'distal-convoluted-tubule': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['TRPV56', 'NCC'],
+      basolateral: ['ClCKb', 'NaKATPase', 'PMCA', 'NCX1']
+    }
+  },
+  'connecting-tubule': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['AQP', 'TRPV56', 'ENaC', 'ROMK'],
+      basolateral: ['AQP', 'NaKATPase', 'PMCA', 'NCX1']
+    }
+  },
+  'collecting-duct-principal': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['AQP', 'ENaC', 'ROMK'],
+      basolateral: ['AQP', 'NaKATPase']
+    }
+  },
+  'collecting-duct-alpha': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['HATPase', 'HKATPase'],
+      basolateral: ['AE1', 'ClCKb']
+    }
+  },
+  'collecting-duct-beta': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['Pendrin'],
+      basolateral: ['HATPase', 'ClCKb']
+    }
+  },
+  'gastric-parietal': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['HKATPase', 'ClCKb', 'ROMK'],
+      basolateral: ['AE1', 'NaKATPase']
+    }
+  },
+  'small-intestine': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'SGLT', 'TRPV56', 'NHE3', 'NaAA', 'PepT', 'MATE'],
+      basolateral: ['AQP', 'GLUT2', 'NaKATPase', 'ClCKb', 'AAFacilitator', 'OCT', 'PMCA', 'NCX1']
+    }
+  },
+  'small-intestine-crypt': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'CFTR', 'NHE3'],
+      basolateral: ['AQP', 'NKCC', 'ROMK', 'NaKATPase', 'ClCKb']
+    }
+  },
+  'colon-absorptive': {
+    paracellularType: 'anion',
+    placements: {
+      apical: ['AQP', 'ENaC', 'NHE3', 'Pendrin', 'HATPase'],
+      basolateral: ['AQP', 'NaKATPase', 'ClCKb']
+    }
+  },
+  gallbladder: {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'CFTR', 'NHE3', 'Pendrin'],
+      basolateral: ['AQP', 'ClCKb', 'NaKATPase']
+    }
+  },
+  'pancreatic-duct': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'CFTR', 'Pendrin', 'NHE3'],
+      basolateral: ['AQP', 'NBCe1', 'ClCKb', 'NaKATPase', 'HATPase']
+    }
+  },
+  'salivary-duct': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['AQP', 'ENaC', 'NHE3', 'Pendrin'],
+      basolateral: ['ClCKb', 'NaKATPase']
+    }
+  },
+  'airway-surface': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'CFTR', 'ENaC', 'Pendrin'],
+      basolateral: ['AQP', 'ClCKb', 'NaKATPase']
+    }
+  },
+  'sweat-duct': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['AQP', 'CFTR', 'ENaC'],
+      basolateral: ['ClCKb', 'NaKATPase']
+    }
+  },
+  'choroid-plexus': {
+    paracellularType: 'cation',
+    placements: {
+      apical: ['AQP', 'CFTR', 'NKCC', 'NaKATPase'],
+      basolateral: ['AQP', 'NBCe1', 'ClCKb', 'NHE3']
+    }
+  },
+  'placenta-syncytiotrophoblast': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['AQP', 'GLUT2', 'NaAA', 'TRPV56', 'CFTR', 'MRPBCRP', 'MATE'],
+      basolateral: ['AQP', 'GLUT2', 'NaKATPase', 'AAFacilitator', 'PMCA', 'NCX1', 'OAT', 'OCT']
+    }
+  }
+};
+
 const DISPLAY_ORIENTATIONS = {
   epithelial: {
     apicalLabel: 'Apical / lumen side',
@@ -522,6 +664,30 @@ const DENSITY_OPTIONS = [
   { label: 'Normal', value: 1 },
   { label: 'High', value: 2 }
 ];
+
+function createTransporterUid(id, placement) {
+  return id + '-' + placement + '-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+}
+
+function createTransporterInstance(id, placement, density = 1) {
+  const template = INITIAL_TRANSPORTERS.find(t => t.id === id);
+  if (!template) return null;
+  return {
+    ...template,
+    kinetics: { ...template.kinetics },
+    placement,
+    density,
+    uid: createTransporterUid(id, placement)
+  };
+}
+
+function demoTransportersForTissue(tissuePreset) {
+  const preset = TISSUE_DEMO_PRESETS[tissuePreset] || TISSUE_DEMO_PRESETS.all;
+  return Object.entries(preset.placements || {})
+    .flatMap(([placement, ids]) =>
+      ids.map(id => createTransporterInstance(id, placement)).filter(Boolean)
+    );
+}
 
 const TRANSPORTER_DESCRIPTIONS = {
   AE1: 'Anion exchanger 1/2 class: exchanges Cl- and HCO3- in opposite directions. Includes AE1 and AE2.',
@@ -1071,6 +1237,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [appMode, setAppMode] = useState('explore');
   const [resultsView, setResultsView] = useState('graphs');
   const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
@@ -1085,6 +1252,7 @@ export default function App() {
   const [showParaInfo, setShowParaInfo] = useState(false);
   const [activeTransporterTooltip, setActiveTransporterTooltip] = useState(null);
   const tooltipHideTimerRef = useRef(null);
+  const instructorDemoMode = ENABLE_INSTRUCTOR_DEMO_MODE && appMode === 'demo';
 
   // --- Automatically run simulation on page load ---
   useEffect(() => {
@@ -1133,18 +1301,9 @@ export default function App() {
   };
 
   const addTransporterToMembrane = (id, placement) => {
-    const template = INITIAL_TRANSPORTERS.find(t => t.id === id);
-    if (!template) return;
-    setTransporters(ts => [
-      ...ts,
-      {
-        ...template,
-        kinetics: { ...template.kinetics },
-        placement,
-        density: 1,
-        uid: id + '-' + placement + '-' + Date.now() + '-' + Math.random().toString(36).slice(2)
-      }
-    ]);
+    const transporter = createTransporterInstance(id, placement);
+    if (!transporter) return;
+    setTransporters(ts => [...ts, transporter]);
   };
 
   const removeTransporter = uid => {
@@ -1177,6 +1336,31 @@ export default function App() {
     setConcentrationValidation({});
   };
 
+  const applyTissueDemoPreset = tissueValue => {
+    const preset = TISSUE_DEMO_PRESETS[tissueValue] || TISSUE_DEMO_PRESETS.all;
+    setTransporters(demoTransportersForTissue(tissueValue));
+    setParacellularType(preset.paracellularType || 'none');
+    setParaCationPerm(1.0);
+    setParaAnionPerm(1.0);
+    setBackgroundOsmoticPullSetting('tissue');
+  };
+
+  const handleAppModeChange = event => {
+    const nextMode = event.target.value;
+    setAppMode(nextMode);
+    if (nextMode === 'demo') {
+      applyTissueDemoPreset(tissuePreset);
+    }
+  };
+
+  const handleTissuePresetChange = event => {
+    const nextTissuePreset = event.target.value;
+    setTissuePreset(nextTissuePreset);
+    if (instructorDemoMode) {
+      applyTissueDemoPreset(nextTissuePreset);
+    }
+  };
+
   const resetAllSettings = () => {
     setTransporters([]);
     setParacellularType('none');
@@ -1193,6 +1377,7 @@ export default function App() {
     setShowParaInfo(false);
     setActiveTransporterTooltip(null);
     setShowResetConfirm(false);
+    setAppMode('explore');
   };
 
   // --- Simulation Logic ---
@@ -2651,7 +2836,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   <h2 className="text-base font-semibold mb-2">Tissue</h2>
   <select
     value={tissueOption.value}
-    onChange={e => setTissuePreset(e.target.value)}
+    onChange={handleTissuePresetChange}
     className="w-full border rounded p-1"
     aria-label="Tissue transporter set"
   >
@@ -2665,7 +2850,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ))}
   </select>
   <div className="text-xs text-gray-500 mt-1">
-    Filters the add-transporter list; already-added transporters remain active.
+    {instructorDemoMode
+      ? 'Places the instructor demo layout for the selected tissue.'
+      : 'Filters the add-transporter list; already-added transporters remain active.'}
   </div>
 </div>
 
@@ -2761,7 +2948,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     >
       <h2 id="reset-confirm-title" className="text-xl font-bold mb-2">Reset all settings?</h2>
       <p id="reset-confirm-description" className="text-sm text-gray-700 mb-4">
-        This clears all transporters and restores tissue, paracellular pathway, water movement, baseline concentrations, and results view defaults.
+        This clears all transporters and restores mode, tissue, paracellular pathway, water movement, baseline concentrations, and results view defaults.
       </p>
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(false)}>Cancel</Button>
@@ -2775,6 +2962,38 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh] relative" onClick={e => e.stopPropagation()}>
       <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" onClick={() => setShowSettings(false)}>Close</Button>
       <h2 className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
+      {ENABLE_INSTRUCTOR_DEMO_MODE && (
+        <fieldset className="mb-4 text-sm text-gray-700">
+          <legend className="block mb-2 font-semibold">Mode</legend>
+          <div className="inline-flex rounded border border-gray-300 bg-white p-0.5" aria-label="SALT mode">
+            {APP_MODE_OPTIONS.map(option => {
+              const selected = appMode === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={
+                    'cursor-pointer rounded px-3 py-1 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
+                    (selected ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100')
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="salt-mode"
+                    value={option.value}
+                    checked={selected}
+                    onChange={handleAppModeChange}
+                    className="sr-only"
+                  />
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-gray-500 mt-2">
+            Explore keeps the standard student-facing behavior. Instructor Demo replaces the current layout with the selected tissue's preset transporter placements, paracellular pathway, and tissue-default osmotic pull.
+          </p>
+        </fieldset>
+      )}
       <div className="mb-4 text-sm text-gray-700">
         <h3 className="block mb-2 font-semibold">Background Osmotic Pull</h3>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
