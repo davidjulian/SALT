@@ -399,6 +399,12 @@ const TISSUE_OPTIONS = [
     transporterIds: INITIAL_TRANSPORTERS.map(t => t.id)
   },
   {
+    value: 'simple-na-absorption',
+    label: 'Teaching example: simple Na+ absorption',
+    group: 'Teaching examples',
+    transporterIds: ['ENaC', 'NaKATPase', 'ROMK']
+  },
+  {
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
     group: 'Kidney and urinary tract',
@@ -480,7 +486,7 @@ const TISSUE_OPTIONS = [
     value: 'salivary-duct',
     label: 'Salivary duct',
     group: 'Exocrine, airway, and skin',
-    transporterIds: ['AQP', 'ENaC', 'ClCKb', 'NHE3', 'Pendrin', 'NaKATPase']
+    transporterIds: ['AQP', 'ENaC', 'ROMK', 'ClCKb', 'Pendrin', 'NBCe1', 'NaKATPase']
   },
   {
     value: 'airway-surface',
@@ -510,12 +516,32 @@ const TISSUE_OPTIONS = [
 ];
 
 const TISSUE_OPTION_GROUPS = [
+  'Teaching examples',
   'Kidney and urinary tract',
   'Gastrointestinal and hepatobiliary',
   'Exocrine, airway, and skin',
   'Central nervous system',
   'Reproductive system'
 ];
+const HIDDEN_TISSUE_OPTION_VALUES = new Set([
+  'airway-surface',
+  'choroid-plexus',
+  'placenta-syncytiotrophoblast'
+]);
+const isSelectableTissueOption = option => option.value === 'all' || !HIDDEN_TISSUE_OPTION_VALUES.has(option.value);
+const TISSUE_LIMITATION_NOTES = {
+  'thick-ascending-limb': 'Water impermeability and NaCl absorption fit, but the modeled TEP tends lumen-negative; a classic TAL is often lumen-positive from K+ recycling and paracellular cation handling.',
+  'distal-convoluted-tubule': 'NaCl and Ca2+ absorption with low water permeability fit, but the modeled early-DCT TEP is more lumen-negative than expected.',
+  'small-intestine-crypt': 'Cl- and water secretion fit, but the model still reports some Na+ absorption instead of fully coupled secretory NaCl/fluid movement.',
+  'colon-absorptive': 'NaCl and water absorption fit, but modeled HCO3- absorption may conflict with distal colonic bicarbonate secretion.',
+  'pancreatic-duct': 'HCO3- and water secretion are captured, but some accompanying Na+, Cl-, and H+ signs remain simplified relative to classic pancreatic duct secretion.'
+};
+const TISSUE_LIMITATION_SYMBOL = '⚠';
+const hasTissueLimitation = optionOrValue => {
+  const value = typeof optionOrValue === 'string' ? optionOrValue : optionOrValue?.value;
+  return Boolean(TISSUE_LIMITATION_NOTES[value]);
+};
+const tissueOptionDisplayLabel = option => option.label + (hasTissueLimitation(option) ? ' ' + TISSUE_LIMITATION_SYMBOL : '');
 
 const APP_MODE_OPTIONS = [
   { value: 'explore', label: 'Explore' },
@@ -530,6 +556,13 @@ const TISSUE_DEMO_PRESETS = {
   all: {
     paracellularType: 'none',
     placements: {}
+  },
+  'simple-na-absorption': {
+    paracellularType: 'none',
+    placements: {
+      apical: ['ENaC'],
+      basolateral: ['NaKATPase', 'ROMK']
+    }
   },
   'proximal-tubule': {
     paracellularType: 'cation',
@@ -625,8 +658,8 @@ const TISSUE_DEMO_PRESETS = {
   'salivary-duct': {
     paracellularType: 'none',
     placements: {
-      apical: ['AQP', 'ENaC', 'NHE3', 'Pendrin'],
-      basolateral: ['ClCKb', 'NaKATPase']
+      apical: ['AQP', 'ENaC', 'ROMK', 'Pendrin'],
+      basolateral: ['ClCKb', 'NaKATPase', 'NBCe1']
     }
   },
   'airway-surface': {
@@ -933,9 +966,16 @@ function naKATPaseSupportProfile(tList) {
   const template = INITIAL_TRANSPORTERS.find(t => t.id === SUPPORT_PUMP_ID);
   const normalCapacity = template ? transporterFluxCapacity(template) : 1;
   const supportCapacity = pumps.reduce((sum, pump) => sum + transporterFluxCapacity(pump), 0);
+  const placements = Array.from(new Set(pumps.map(pump => pump.placement)));
+  const pumpDetails = pumps.map(pump => ({
+    placement: pump.placement,
+    capacity: transporterFluxCapacity(pump)
+  }));
 
   return {
     present: pumps.length > 0,
+    pumps: pumpDetails,
+    placements,
     gradientStrength: pumps.length > 0 ? 1 : 0,
     naExtrusionCapacity: supportCapacity,
     kLoadingCapacity: supportCapacity,
@@ -998,6 +1038,109 @@ function pumpKLoadingForNaSupport(supportedNaAbsorption) {
 
 function pumpNaExtrusionForKSupport(supportedKSecretion) {
   return supportedKSecretion * PUMP_NA_EXTRUSION_PER_K_SUPPORT;
+}
+
+function emptyPumpFluxByMembrane() {
+  return {
+    apical: { 'Na+': 0, 'K+': 0 },
+    basolateral: { 'Na+': 0, 'K+': 0 }
+  };
+}
+
+function addDistributedPumpFlux(target, pumpDetails, ion, flux) {
+  const totalCapacity = pumpDetails.reduce((sum, pump) => sum + Math.max(Number(pump.capacity) || 0, 0), 0);
+  if (Math.abs(flux) < DIRECTIONAL_FLUX_GRAPH_EPSILON || totalCapacity < DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
+  pumpDetails.forEach(pump => {
+    if (!target[pump.placement]) return;
+    const share = Math.max(Number(pump.capacity) || 0, 0) / totalCapacity;
+    target[pump.placement][ion] = (target[pump.placement][ion] || 0) + flux * share;
+  });
+}
+
+function buildPumpSupportReport(
+  supportProfile,
+  supportedNaCompletion,
+  pumpNaExtrusionForKCompletion,
+  pumpKLoadingForNaCompletion,
+  supportedKCompletion,
+  mechanismNaExtrusion = null,
+  mechanismKLoading = null
+) {
+  const naExtrusion = Math.max(supportedNaCompletion, pumpNaExtrusionForKCompletion);
+  const kLoading = Math.max(pumpKLoadingForNaCompletion, supportedKCompletion);
+  const tracedNaExtrusion = mechanismNaExtrusion == null ? naExtrusion : Math.max(Number(mechanismNaExtrusion) || 0, 0);
+  const tracedKLoading = mechanismKLoading == null ? kLoading : Math.max(Number(mechanismKLoading) || 0, 0);
+  const pumpDetails = supportProfile.pumps || [];
+  const includedDisplayFlux = emptyPumpFluxByMembrane();
+  const hiddenCellFlux = emptyPumpFluxByMembrane();
+  const graphFlux = emptyPumpFluxByMembrane();
+  const rows = [];
+  addDistributedPumpFlux(includedDisplayFlux, pumpDetails, 'Na+', -supportedNaCompletion);
+  addDistributedPumpFlux(includedDisplayFlux, pumpDetails, 'K+', supportedKCompletion);
+  addDistributedPumpFlux(hiddenCellFlux, pumpDetails, 'Na+', -Math.max(0, naExtrusion - supportedNaCompletion));
+  addDistributedPumpFlux(hiddenCellFlux, pumpDetails, 'K+', Math.max(0, kLoading - supportedKCompletion));
+  addDistributedPumpFlux(graphFlux, pumpDetails, 'Na+', -tracedNaExtrusion);
+  addDistributedPumpFlux(graphFlux, pumpDetails, 'K+', tracedKLoading);
+
+  if (naExtrusion >= DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+    const roleParts = [];
+    if (supportedNaCompletion >= DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+      roleParts.push('balances Na⁺ entry and completes Na⁺ absorption');
+    }
+    if (pumpNaExtrusionForKCompletion > supportedNaCompletion + DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+      roleParts.push('maintains pump cycling for K⁺ loading');
+    }
+    rows.push({
+      process: 'Na⁺ extrusion',
+      ion: 'Na+',
+      direction: 'out of cell',
+      pumpActivity: naExtrusion,
+      epithelialContribution: supportedNaCompletion,
+      cellOnlyContribution: Math.max(0, naExtrusion - supportedNaCompletion),
+      cellEffect: -naExtrusion,
+      magnitude: naExtrusion,
+      role: roleParts.join('; ') || 'maintains low intracellular Na⁺'
+    });
+  }
+
+  if (kLoading >= DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+    const roleParts = [];
+    if (pumpKLoadingForNaCompletion >= DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+      roleParts.push('stoichiometric K⁺ loading linked to Na⁺ extrusion');
+    }
+    if (supportedKCompletion >= DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+      roleParts.push('supports K⁺ exit or secretion');
+    }
+    rows.push({
+      process: 'K⁺ loading',
+      ion: 'K+',
+      direction: 'into cell',
+      pumpActivity: kLoading,
+      epithelialContribution: supportedKCompletion,
+      cellOnlyContribution: Math.max(0, kLoading - supportedKCompletion),
+      cellEffect: kLoading,
+      magnitude: kLoading,
+      role: roleParts.join('; ') || 'maintains high intracellular K⁺'
+    });
+  }
+
+  return {
+    present: supportProfile.present,
+    active: rows.length > 0,
+    placements: supportProfile.placements || [],
+    includedDisplayFlux,
+    hiddenCellFlux,
+    graphFlux,
+    supportedNaCompletion,
+    supportedKCompletion,
+    pumpNaExtrusionForKCompletion,
+    pumpKLoadingForNaCompletion,
+    naExtrusion,
+    kLoading,
+    tracedNaExtrusion,
+    tracedKLoading,
+    rows
+  };
 }
 
 function surfaceClamp(value, bulkValue) {
@@ -1438,12 +1581,15 @@ export default function App() {
     const nextMode = event.target.value;
     setAppMode(nextMode);
     if (nextMode === 'demo') {
-      applyTissueDemoPreset(tissuePreset);
+      const demoTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(tissuePreset) ? 'all' : tissuePreset;
+      if (demoTissuePreset !== tissuePreset) setTissuePreset(demoTissuePreset);
+      applyTissueDemoPreset(demoTissuePreset);
     }
   };
 
   const handleTissuePresetChange = event => {
-    const nextTissuePreset = event.target.value;
+    const requestedTissuePreset = event.target.value;
+    const nextTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(requestedTissuePreset) ? 'all' : requestedTissuePreset;
     setTissuePreset(nextTissuePreset);
     if (instructorDemoMode) {
       applyTissueDemoPreset(nextTissuePreset);
@@ -1662,6 +1808,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           loadingSignal: signals.loadingSignal,
           netSignal: signals.netSignal,
           electricalApplied: signals.electricalApplied,
+          capacity: maxChannelFlux || 0,
           flux: delta
         });
       }
@@ -1676,7 +1823,46 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
   });
 
-  // Na+/K+-ATPase support is hidden from membrane bars; it only limits completed Na+/K+ flux and cell balance.
+  const apicalCftrClEntry = electrochemicalContextEvents
+    .filter(event => event.id === 'CFTR' && event.placement === 'apical' && event.ion === 'Cl-' && event.flux > DIRECTIONAL_FLUX_GRAPH_EPSILON)
+    .reduce((sum, event) => sum + event.flux, 0);
+  const basolateralClcClEvents = electrochemicalContextEvents
+    .filter(event => event.id === 'ClCKb' && event.placement === 'basolateral' && event.ion === 'Cl-');
+  const basolateralClcCapacity = basolateralClcClEvents
+    .reduce((sum, event) => sum + Math.max(Number(event.capacity) || 0, 0), 0);
+  const basolateralClcInwardFlux = basolateralClcClEvents
+    .reduce((sum, event) => sum + Math.max(Number(event.flux) || 0, 0), 0);
+  const apicalEnacPlaced = placementsForTick('ENaC', tList).includes('apical');
+  const electrogenicNaAbsorptionPreview = pumpSupportedNaCompletion(apicalFlux, pumpSupportProfile);
+  const clAbsorptionCompletion = apicalEnacPlaced && electrogenicNaAbsorptionPreview > DIRECTIONAL_FLUX_GRAPH_EPSILON
+    ? Math.min(apicalCftrClEntry, basolateralClcCapacity, electrogenicNaAbsorptionPreview)
+    : 0;
+  if (clAbsorptionCompletion > DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+    const basolateralAdjustment = basolateralClcInwardFlux + clAbsorptionCompletion;
+    basolateralFlux['Cl-'] = (basolateralFlux['Cl-'] || 0) - basolateralAdjustment;
+    passiveNetFlux['Cl-'] = (passiveNetFlux['Cl-'] || 0) - basolateralAdjustment;
+    const totalAdjustableCapacity = basolateralClcClEvents
+      .reduce((sum, event) => sum + Math.max(Number(event.capacity) || 0, 0), 0);
+    fluxEvents
+      .filter(event => event.id === 'ClCKb' && event.placement === 'basolateral')
+      .forEach(event => {
+        const clSolute = event.solutes.find(solute => solute.ion === 'Cl-');
+        if (!clSolute) return;
+        const contextEvent = basolateralClcClEvents.find(item => item.name === event.name && item.placement === event.placement);
+        const share = totalAdjustableCapacity > DIRECTIONAL_FLUX_GRAPH_EPSILON
+          ? Math.max(Number(contextEvent?.capacity) || 0, 0) / totalAdjustableCapacity
+          : 1;
+        clSolute.flux -= basolateralAdjustment * share;
+      });
+    basolateralClcClEvents.forEach(event => {
+      const share = basolateralClcCapacity > DIRECTIONAL_FLUX_GRAPH_EPSILON
+        ? Math.max(Number(event.capacity) || 0, 0) / basolateralClcCapacity
+        : 1;
+      event.flux -= basolateralAdjustment * share;
+    });
+  }
+
+  // Na+/K+-ATPase support is traced so students can see which displayed fluxes depend on pump activity.
   const supportedNaAbsorption = pumpSupportedNaCompletion(apicalFlux, pumpSupportProfile);
   const pumpKLoadingForNaAbsorption = pumpKLoadingForNaSupport(supportedNaAbsorption);
   if (pumpKLoadingForNaAbsorption > 0) {
@@ -1700,9 +1886,35 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     }
   }
   const supportedKSecretion = pumpSupportedKCompletion(apicalFlux, pumpSupportProfile);
+  const pathwayNaEntryForPumpTrace =
+    Math.max(Number(apicalFlux['Na+'] || 0), 0) +
+    Math.max(Number(basolateralFlux['Na+'] || 0), 0);
+  const pathwayKExitForPumpTrace =
+    Math.max(-Number(apicalFlux['K+'] || 0), 0) +
+    Math.max(-Number(basolateralFlux['K+'] || 0), 0);
+  const tracedNaEntrySupport = pumpSupportProfile.present
+    ? Math.min(pathwayNaEntryForPumpTrace, pumpSupportProfile.naExtrusionCapacity)
+    : 0;
+  const tracedKExitSupport = pumpSupportProfile.present
+    ? Math.min(pathwayKExitForPumpTrace, pumpSupportProfile.kLoadingCapacity)
+    : 0;
+  const tracedPumpNaExtrusion = Math.max(tracedNaEntrySupport, pumpNaExtrusionForKSupport(tracedKExitSupport));
+  const tracedPumpKLoading = Math.max(pumpKLoadingForNaSupport(tracedNaEntrySupport), tracedKExitSupport);
+  const pumpNaExtrusionForKSecretion = pumpNaExtrusionForKSupport(supportedKSecretion);
+  const pumpNaExtrusion = Math.max(supportedNaAbsorption, pumpNaExtrusionForKSecretion);
+  const pumpKLoading = Math.max(pumpKLoadingForNaAbsorption, supportedKSecretion);
+  const pumpSupportReport = buildPumpSupportReport(
+    pumpSupportProfile,
+    supportedNaAbsorption,
+    pumpNaExtrusionForKSecretion,
+    pumpKLoadingForNaAbsorption,
+    supportedKSecretion,
+    tracedPumpNaExtrusion,
+    tracedPumpKLoading
+  );
   const hiddenPumpCellFlux = {
-    'Na+': -Math.max(supportedNaAbsorption, pumpNaExtrusionForKSupport(supportedKSecretion)),
-    'K+': Math.max(pumpKLoadingForNaAbsorption, supportedKSecretion)
+    'Na+': -pumpNaExtrusion,
+    'K+': pumpKLoading
   };
 
   const completionApicalFlux = { ...apicalFlux };
@@ -1753,7 +1965,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const rawPhosphateTransEpiFlux = transepithelialFlux('Phosphate', NAPI_TRANSPORTER_IDS, ['PiFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const phosphateTransEpiFlux = naPiPhosphateFluxWithNaSupport(rawPhosphateTransEpiFlux, coupledEvents, supportedNaAbsorption);
   const naTransEpiFlux = supportedNaAbsorption;
-  const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','Pendrin'], ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
 
   // K+ logic (HKATPase or other)
@@ -1773,9 +1985,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const hExtruders = tList.filter(t => ['NHE3','HATPase','HKATPase'].includes(t.id) && t.placement !== 'none');
   const hco3ExitTransporters = tList.filter(t => ['NBCe1','AE1','Pendrin'].includes(t.id) && t.placement !== 'none');
-  const cftrHco3TransEpiFlux = transepithelialFlux('HCO3-', ['NBCe1','AE1','Pendrin'], ['CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const directHco3TransEpiFlux = transepithelialFlux('HCO3-', ['NBCe1','AE1'], ['CFTR','Pendrin'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let hTransEpiFlux = 0;
-  let hco3TransEpiFlux = cftrHco3TransEpiFlux;
+  let hco3TransEpiFlux = directHco3TransEpiFlux;
   let acidBaseFluxPairs = [];
   let acidBaseCellSupport = {
     active: false,
@@ -1934,6 +2146,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     fluxEvents,
     transepiFluxData,
     waterReport,
+    pumpSupportReport,
     chargeReport,
     coupledMismatchReport,
     cellImbalanceReport,
@@ -1959,9 +2172,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const tissueOption = TISSUE_OPTIONS.find(option => option.value === tissuePreset) || TISSUE_OPTIONS[0];
   const displayOrientation = displayOrientationForTissue(tissueOption);
   const allTissueOption = TISSUE_OPTIONS[0];
+  const selectableTissueOptions = TISSUE_OPTIONS.filter(isSelectableTissueOption);
+  const tissueLimitationRows = Object.entries(TISSUE_LIMITATION_NOTES).map(([value, note]) => ({
+    value,
+    note,
+    label: TISSUE_OPTIONS.find(option => option.value === value)?.label || value
+  }));
   const groupedTissueOptions = TISSUE_OPTION_GROUPS.map(group => ({
     group,
-    options: TISSUE_OPTIONS.filter(option => option.group === group)
+    options: selectableTissueOptions.filter(option => option.group === group)
   })).filter(group => group.options.length > 0);
   const visibleTransporterIds = new Set(tissueOption.transporterIds);
   const orientText = text => {
@@ -2093,7 +2312,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }));
   const visibleDirectionalFluxGroups = directionalFluxGroups.filter(group =>
     group.key === 'ions' ||
-    group.rows.some(row =>
+      group.rows.some(row =>
       ['apicalStep', 'basolateralStep', 'paracellularStep', 'transepithelial']
         .some(key => Math.abs(Number(row[key] || 0)) > DIRECTIONAL_FLUX_GRAPH_EPSILON)
     )
@@ -2249,6 +2468,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const formatChargeValue = value => Number(value ?? 0).toFixed(2);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const formatTableValue = value => Number(value ?? 0).toFixed(3);
+  const formatCompactFluxValue = value => {
+    const numeric = Number(value ?? 0);
+    if (!Number.isFinite(numeric)) return '0';
+    return String(Number(Math.abs(numeric).toFixed(3)));
+  };
   const formatSettingsConcentration = value => {
     const numeric = Number(value ?? 0);
     if (!Number.isFinite(numeric)) return '0';
@@ -2270,14 +2494,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const acidBaseCellWarning = hasCellAcidBaseImbalance
     ? 'Acid/base imbalance: ' + acidBaseCellTendency
     : null;
-  const dominantFluxRow = soluteTransepiFluxData
-    .filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.001)
-    .reduce((strongest, row) => {
-      if (!strongest) return row;
-      return Math.abs(Number(row.transepithelial || 0)) > Math.abs(Number(strongest.transepithelial || 0))
-        ? row
-        : strongest;
-    }, null);
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
   const osmoticPullValue = waterReport?.osmoticPull?.value ?? 0;
   const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
@@ -2290,6 +2506,28 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     : acidBaseFluxValue > 0
       ? 'Acid ' + displayOrientation.negativeProcessLabel
       : 'Base ' + displayOrientation.negativeProcessLabel;
+  const netFluxRows = soluteTransepiFluxData
+    .filter(row => Math.abs(Number(row.transepithelial || 0)) >= 0.005)
+    .map(row => ({
+      ion: row.ion,
+      label: ION_LABEL[row.ion] || row.ion,
+      value: Number(row.transepithelial || 0)
+    }));
+  const absorbedFluxRows = netFluxRows.filter(row => row.value > 0);
+  const secretedFluxRows = netFluxRows.filter(row => row.value < 0);
+  const fluxSummaryStatus = netFluxRows.length
+    ? absorbedFluxRows.length + ' absorbed; ' + secretedFluxRows.length + ' secreted'
+    : 'No strong net solute flux';
+  const fluxSummarySections = [
+    {
+      label: displayOrientation === DISPLAY_ORIENTATIONS.epithelial ? 'Absorbed' : displayOrientation.positiveFluxLabel,
+      rows: absorbedFluxRows
+    },
+    {
+      label: displayOrientation === DISPLAY_ORIENTATIONS.epithelial ? 'Secreted' : displayOrientation.negativeFluxLabel,
+      rows: secretedFluxRows
+    }
+  ];
   const cellBalanceStatus = hasIntracellularImbalance
     ? cellImbalanceReport.length === 1
       ? cellImbalanceReport[0].label + ' ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
@@ -2310,12 +2548,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     : hasCoupledMismatch
       ? 'Review pathway completion'
       : 'No major intracellular imbalance';
-  const dominantFluxStatus = dominantFluxRow
-    ? (ION_LABEL[dominantFluxRow.ion] || dominantFluxRow.ion) + ' ' + directionLabelForValue(dominantFluxRow.transepithelial)
-    : 'No strong net flux';
-  const dominantFluxDetail = dominantFluxRow
-    ? formatTableValue(dominantFluxRow.transepithelial) + ' net epithelial flux units'
-    : 'Net epithelial movement is weak';
   const hasBackgroundPull = waterReport && Math.abs(Number(waterReport.backgroundPull?.value || 0)) >= WATER_EPSILON;
   const backgroundPullStatus = hasBackgroundPull
     ? orientText(String(waterReport.backgroundPull.status || '').replace(/^Tissue default/, 'tissue default'))
@@ -2326,18 +2558,19 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const snapshotIndicatorPercent = (value, maxAbs) => 50 + clamp(Number(value || 0) / maxAbs, -1, 1) * 45;
   const resultsSnapshotTiles = result ? [
     {
+      key: 'flux-summary',
+      title: 'Net Flux Summary',
+      status: fluxSummaryStatus,
+      detail: netFluxRows.length ? null : 'Net epithelial solute movement is weak',
+      state: netFluxRows.length ? 'accent' : 'neutral',
+      fluxSections: fluxSummarySections
+    },
+    {
       key: 'balance',
       title: 'Cell Balance',
       status: cellBalanceStatus,
       detail: cellBalanceDetail,
       state: hasIntracellularImbalance || hasCellAcidBaseImbalance || hasCoupledMismatch ? 'warning' : 'good'
-    },
-    {
-      key: 'dominant-flux',
-      title: 'Dominant Epithelial Flux',
-      status: dominantFluxStatus,
-      detail: dominantFluxDetail,
-      state: dominantFluxRow ? 'accent' : 'neutral'
     },
     {
       key: 'tep',
@@ -2405,8 +2638,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       ]
     }
   ] : [];
-  const compactSnapshotTiles = resultsSnapshotTiles.filter(tile => tile.key !== 'water');
-  const waterSnapshotTile = resultsSnapshotTiles.find(tile => tile.key === 'water');
   const waterDetailRows = waterReport ? [
     {
       label: 'Osmotic pull',
@@ -2527,8 +2758,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       neutral: 'border-gray-200 bg-gray-50'
     }[tile.state] || 'border-gray-200 bg-gray-50';
     const hasMeter = tile.indicator || tile.indicators?.length;
-    const sizeClass = hasMeter ? 'min-h-[104px]' : 'min-h-[68px]';
-    return 'rounded border p-2 ' + sizeClass + ' ' + stateClass;
+    const hasFluxSections = tile.fluxSections?.length;
+    const sizeClass = hasMeter || hasFluxSections ? 'min-h-[116px]' : 'min-h-[92px]';
+    return 'h-full rounded border p-2 ' + sizeClass + ' ' + stateClass;
   };
   const snapshotStatusClass = state => ({
     good: 'text-emerald-800',
@@ -2578,6 +2810,27 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           {tile.detail}
         </div>
       )}
+      {tile.fluxSections && (
+        <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+          {tile.fluxSections.map(section => (
+            <div key={section.label}>
+              <div className="mb-1 font-semibold text-gray-700">{section.label}</div>
+              {section.rows.length ? (
+                <ul className="space-y-0.5 text-gray-700">
+                  {section.rows.map(row => (
+                    <li key={row.ion} className="flex justify-between gap-2">
+                      <span>{row.label}</span>
+                      <span className="font-mono">{formatCompactFluxValue(row.value)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-gray-500">None</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <SnapshotIndicator indicator={tile.indicator} />
       {tile.indicators?.map(indicator => (
         <SnapshotIndicator key={indicator.label} indicator={indicator} />
@@ -2619,6 +2872,281 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       ))}
     </ul>
   );
+  const mechanismSoluteColor = ion => ({
+    'Na+': '#2563eb',
+    'K+': '#059669',
+    'Cl-': '#7c3aed',
+    'H+': '#dc2626',
+    'HCO3-': '#0891b2',
+    'Ca2+': '#ea580c',
+    Phosphate: '#ca8a04',
+    Glucose: '#db2777',
+    AA: '#16a34a',
+    Peptide: '#0d9488',
+    'OA-': '#9333ea',
+    'OC+': '#be123c',
+    H2O: '#0284c7'
+  }[ion] || '#475569');
+  const mechanismStrokeWidth = value => {
+    const magnitude = Math.abs(Number(value || 0));
+    if (magnitude < 0.15) return 1.8;
+    if (magnitude < 0.5) return 2.6;
+    return 3.5;
+  };
+  const mechanismMembraneY = {
+    apical: { outside: 78, cell: 158 },
+    basolateral: { outside: 352, cell: 270 }
+  };
+  const mechanismArrowCoordinates = (step, index) => {
+    if (step.pathway === 'paracellular') {
+      const towardBlood = step.value > 0;
+      return {
+        x1: 745,
+        y1: towardBlood ? 86 : 344,
+        x2: 745,
+        y2: towardBlood ? 344 : 86,
+        labelX: 760,
+        labelY: 210 + (index % 4) * 16
+      };
+    }
+    const laneBase = step.placement === 'apical' ? 265 : 305;
+    const laneX = laneBase + (index % 7) * 58;
+    const y = mechanismMembraneY[step.placement] || mechanismMembraneY.apical;
+    const intoCell = step.value > 0;
+    return {
+      x1: laneX,
+      y1: intoCell ? y.outside : y.cell,
+      x2: laneX,
+      y2: intoCell ? y.cell : y.outside,
+      labelX: laneX + 8,
+      labelY: (intoCell ? y.outside + y.cell : y.cell + y.outside) / 2 - 4
+    };
+  };
+  const mechanismSteps = (() => {
+    if (!result) return [];
+    const steps = [];
+    (result.fluxEvents || []).forEach(event => {
+      if (event.id === SUPPORT_PUMP_ID || event.placement === 'none') return;
+      (event.solutes || []).forEach(solute => {
+        let value = Number(solute.flux || 0);
+        if (event.id === 'ROMK' && solute.ion === 'K+') {
+          const displayFlux = event.placement === 'apical'
+            ? Number(result.displayApicalFlux?.['K+'] || 0)
+            : Number(result.displayBasolateralFlux?.['K+'] || 0);
+          if (
+            Math.sign(displayFlux) === Math.sign(value) &&
+            Math.abs(displayFlux) > Math.abs(value)
+          ) {
+            value = displayFlux;
+          }
+        }
+        if (Math.abs(value) < 0.05) return;
+        steps.push({
+          id: event.id + '-' + event.placement + '-' + solute.ion + '-' + steps.length,
+          pathway: 'transporter',
+          role: event.type === 'passive' ? 'membrane pathway' : 'coupled/active step',
+          placement: event.placement,
+          transporter: event.name,
+          solute: solute.ion,
+          value
+        });
+      });
+    });
+    const pumpGraphFlux = result.pumpSupportReport?.graphFlux || {};
+    ['apical', 'basolateral'].forEach(placement => {
+      ['Na+', 'K+'].forEach(ion => {
+        const value = Number(pumpGraphFlux[placement]?.[ion] || 0);
+        if (Math.abs(value) < 0.05) return;
+        steps.push({
+          id: 'nak-' + placement + '-' + ion,
+          pathway: 'pump',
+          role: 'Na⁺/K⁺ pump support',
+          placement,
+          transporter: 'Na⁺/K⁺-ATPase',
+          solute: ion,
+          value
+        });
+      });
+    });
+    const waterReportForMechanism = result.waterReport || {};
+    const transcellularWater = Number(waterReportForMechanism.transcellular?.value || 0);
+    if (Math.abs(transcellularWater) >= WATER_EPSILON) {
+      steps.push({
+        id: 'water-transcellular-apical',
+        pathway: 'water',
+        role: 'transcellular water pathway',
+        placement: 'apical',
+        transporter: 'AQP',
+        solute: 'H2O',
+        value: transcellularWater
+      });
+      steps.push({
+        id: 'water-transcellular-basolateral',
+        pathway: 'water',
+        role: 'transcellular water pathway',
+        placement: 'basolateral',
+        transporter: 'AQP',
+        solute: 'H2O',
+        value: -transcellularWater
+      });
+    }
+    const paracellularWater = Number(waterReportForMechanism.paracellular?.value || 0);
+    if (Math.abs(paracellularWater) >= WATER_EPSILON) {
+      steps.push({
+        id: 'water-paracellular',
+        pathway: 'paracellular',
+        role: 'paracellular water pathway',
+        placement: 'paracellular',
+        transporter: 'Cation + Water Pore',
+        solute: 'H2O',
+        value: paracellularWater
+      });
+    }
+    Object.entries(result.paraFlux || {}).forEach(([ion, value]) => {
+      if (Math.abs(Number(value || 0)) < 0.05) return;
+      steps.push({
+        id: 'para-' + ion,
+        pathway: 'paracellular',
+        role: 'paracellular pathway',
+        placement: 'paracellular',
+        transporter: paracellularType === 'cation' ? 'Cation + Water Pore' : 'Anion Pore',
+        solute: ion,
+        value: Number(value || 0)
+      });
+    });
+    return steps;
+  })();
+  const mechanismTransporterChips = placement => {
+    const placed = membraneTransporters(placement);
+    const maxChips = 5;
+    const visible = placed.slice(0, maxChips);
+    const hiddenCount = Math.max(placed.length - maxChips, 0);
+    const y = placement === 'apical' ? 120 : 294;
+    let cursorX = 220;
+    const chips = visible.map((transporter, index) => {
+      const name = mechanismChipLabel(transporter.name);
+      const width = Math.min(84, Math.max(48, name.length * 6.2 + 16));
+      const chip = { key: transporter.uid || transporter.id + index, name, x: cursorX, y, width };
+      cursorX += width + 10;
+      return chip;
+    });
+    if (hiddenCount) {
+      chips.push({ key: placement + '-more', name: '+' + hiddenCount, x: cursorX, y, width: 42 });
+    }
+    return chips;
+  };
+  const mechanismDirectionText = step => {
+    if (step.pathway === 'paracellular') {
+      return step.value > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
+    }
+    if (step.placement === 'apical') {
+      return step.value > 0
+        ? displayOrientation.apicalShortLabel + ' side to cell'
+        : 'cell to ' + displayOrientation.apicalShortLabel.toLowerCase() + ' side';
+    }
+    return step.value > 0
+      ? displayOrientation.basolateralShortLabel + ' side to cell'
+      : 'cell to ' + displayOrientation.basolateralShortLabel.toLowerCase() + ' side';
+  };
+  const mechanismChipLabel = name => (name.length > 10 ? name.slice(0, 9) + '...' : name);
+  const MechanismDiagram = () => {
+    const apicalChips = mechanismTransporterChips('apical');
+    const basolateralChips = mechanismTransporterChips('basolateral');
+    const hasPump = transporters.some(t => t.id === SUPPORT_PUMP_ID && t.placement !== 'none');
+    return (
+      <section className="border rounded p-3 bg-white" aria-labelledby="mechanism-diagram-title">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+          <h3 id="mechanism-diagram-title" className="font-semibold">Mechanism Diagram</h3>
+          <div className="text-xs text-gray-600">Qualitative pathway view</div>
+        </div>
+        <div className="overflow-x-auto">
+          <svg viewBox="0 0 900 430" role="img" aria-label="Epithelial mechanism diagram showing transporter placement and solute pathway arrows." className="min-w-[760px] w-full h-auto">
+            <defs>
+              <marker id="mechanism-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
+              </marker>
+            </defs>
+            <rect x="180" y="24" width="540" height="70" rx="6" fill="#eff6ff" stroke="#bfdbfe" />
+            <rect x="180" y="116" width="540" height="196" rx="8" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="2" />
+            <rect x="180" y="334" width="540" height="58" rx="6" fill="#ecfdf5" stroke="#bbf7d0" />
+            <rect x="726" y="116" width="38" height="196" rx="8" fill="#fff7ed" stroke="#fdba74" strokeDasharray="4 3" />
+            <text x="450" y="56" textAnchor="middle" fontSize="15" fontWeight="700" fill="#1e40af">{displayOrientation.apicalLabel}</text>
+            <text x="450" y="214" textAnchor="middle" fontSize="15" fontWeight="700" fill="#334155">Cell interior</text>
+            <text x="450" y="368" textAnchor="middle" fontSize="15" fontWeight="700" fill="#047857">{displayOrientation.basolateralLabel}</text>
+            <text x="745" y="214" textAnchor="middle" fontSize="12" fontWeight="700" fill="#9a3412" transform="rotate(90 745 214)">Paracellular</text>
+            {apicalChips.map(chip => (
+              <g key={chip.key}>
+                <rect x={chip.x} y={chip.y} width={chip.width} height="24" rx="4" fill="#dbeafe" stroke="#2563eb" />
+                <text x={chip.x + chip.width / 2} y={chip.y + 16} textAnchor="middle" fontSize="10" fill="#1e3a8a">{chip.name}</text>
+              </g>
+            ))}
+            {basolateralChips.map(chip => (
+              <g key={chip.key}>
+                <rect x={chip.x} y={chip.y} width={chip.width} height="24" rx="4" fill="#dcfce7" stroke="#059669" />
+                <text x={chip.x + chip.width / 2} y={chip.y + 16} textAnchor="middle" fontSize="10" fill="#064e3b">{chip.name}</text>
+              </g>
+            ))}
+            {mechanismSteps.map((step, index) => {
+              const coords = mechanismArrowCoordinates(step, index);
+              const color = mechanismSoluteColor(step.solute);
+              return (
+                <g key={step.id}>
+                  <line
+                    x1={coords.x1}
+                    y1={coords.y1}
+                    x2={coords.x2}
+                    y2={coords.y2}
+                    stroke={color}
+                    strokeWidth={mechanismStrokeWidth(step.value)}
+                    strokeDasharray={step.pathway === 'pump' ? '5 4' : step.pathway === 'paracellular' ? '3 3' : undefined}
+                    markerEnd="url(#mechanism-arrow)"
+                    opacity="0.88"
+                  />
+                  <text x={coords.labelX} y={coords.labelY} fontSize="10" fontWeight="700" fill={color}>
+                    {(ION_LABEL[step.solute] || step.solute) + ' ' + step.transporter}
+                  </text>
+                </g>
+              );
+            })}
+            {!mechanismSteps.length && (
+              <text x="450" y="214" textAnchor="middle" fontSize="13" fill="#64748b">
+                No active pathway arrows for this layout.
+              </text>
+            )}
+          </svg>
+        </div>
+        <div className="mt-2 text-xs text-gray-600">
+          {hasPump && !mechanismSteps.some(step => step.pathway === 'pump')
+            ? 'Na⁺/K⁺-ATPase is present and establishes Na⁺/K⁺ gradients, but no pump-supported Na⁺ or K⁺ pathway is active in this layout.'
+            : 'Arrows show local transporter steps, pump-supported Na⁺/K⁺ steps, water movement, and paracellular movement when active.'}
+        </div>
+        <AccessibleTable
+          caption="Mechanism steps. Arrows are qualitative and are not scaled as quantitative rates."
+          captionClassName="text-left text-xs font-normal text-gray-600 mt-3 mb-2"
+          columns={[
+            { key: 'solute', label: 'Solute' },
+            { key: 'transporter', label: 'Pathway' },
+            { key: 'direction', label: 'Direction' },
+            { key: 'role', label: 'Role' },
+            { key: 'value', label: 'Model value', format: formatTableValue }
+          ]}
+          rows={mechanismSteps.length
+            ? mechanismSteps.map(step => ({
+              ...step,
+              solute: ION_LABEL[step.solute] || step.solute,
+              direction: mechanismDirectionText(step)
+            }))
+            : [{
+              solute: 'None',
+              transporter: hasPump ? 'Na⁺/K⁺-ATPase gradient state' : 'None',
+              direction: hasPump ? 'No paired Na⁺ entry or K⁺ exit pathway' : 'No active pathway',
+              role: hasPump ? 'gradient support only' : 'none',
+              value: 0
+            }]}
+        />
+      </section>
+    );
+  };
 
   const AccessibleTable = ({ caption, captionClassName = 'text-left font-semibold mb-2', columns, rows }) => (
     <table className="min-w-full table-auto text-left text-sm border">
@@ -2694,8 +3222,20 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NKCC, TRPV5/6, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
         <li><b>Organic ion transport:</b> Organic ion transport is simplified in SALT. OAT represents tertiary-active organic anion uptake used in secretion pathways. In real proximal tubule cells, OAT exchange is supported indirectly by the Na⁺ gradient and intracellular dicarboxylates, but SALT does not model those exchanged solutes. Therefore, OAT requires Na⁺/K⁺-ATPase support in the model. MRP/BCRP represents simplified organic anion efflux, while OCT and MATE provide a simplified organic cation secretion pathway.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support; pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. The Mechanism view shows Na⁺ extrusion and K⁺ loading arrows when any modeled Na⁺ entry or K⁺ exit pathway gives the pump a pathway to cycle; pump-only layouts establish gradients without showing Na⁺ or K⁺ flux arrows. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 does not include dynamic inhibition by intracellular Ca²⁺.</li>
       </ul>
+      <h3 className="text-lg font-semibold mt-4 mb-1">Tissue Preset Caveats</h3>
+      <p className="text-sm mb-2">
+        {TISSUE_LIMITATION_SYMBOL} in the Tissue selector marks presets whose core teaching pattern is useful but whose simplified output has a known tissue-specific limitation.
+      </p>
+      <ul className="list-disc ml-6 mb-3 text-sm">
+        {tissueLimitationRows.map(row => (
+          <li key={row.value}><b>{row.label}:</b> {row.note}</li>
+        ))}
+      </ul>
+      <p className="text-sm mb-3">
+        Airway surface epithelium, choroid plexus, and placenta presets are currently hidden from the selector because their expected physiology is too specialized for the current simplified teaching rules.
+      </p>
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
@@ -2729,7 +3269,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
           <i>Action:</i> Regulated epithelial anion channel; moves Cl⁻ and a smaller HCO₃⁻ component according to the simplified electrochemical tendency in this teaching model.<br/>
-          <i>Rule:</i> Can complete Cl⁻ secretion when paired with NKCC or another Cl⁻ loading pathway on the opposite membrane. CFTR alone is not treated as a complete secretion mechanism when intracellular anion loading is weak. Dynamic gating and detailed bicarbonate selectivity are not modeled.
+          <i>Rule:</i> Can complete Cl⁻ movement in either direction when paired with a compatible opposite-membrane Cl⁻ pathway. Basolateral NKCC plus apical CFTR can support secretion; apical CFTR plus basolateral ClC can support sweat-duct-like Cl⁻ reabsorption. CFTR alone is not treated as a complete transepithelial mechanism. Dynamic gating and detailed bicarbonate selectivity are not modeled.
         </li>
         <li>
           <b>ClC:</b> CLC family voltage-gated chloride channel class; includes ClC-Kb<br/>
@@ -2739,7 +3279,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
           <i>Action:</i> Sodium channel; passive Na⁺ flux follows chemical tendency and the fixed implicit membrane-potential tendency when pump support is present.<br/>
-          <i>Rule:</i> Can provide apical Na⁺ entry. Completed transepithelial Na⁺ absorption is limited by available Na⁺/K⁺-ATPase extrusion support.
+          <i>Rule:</i> Can provide Na⁺ entry when placed on a membrane. Completed transepithelial Na⁺ absorption is limited by available apical Na⁺ entry and Na⁺/K⁺-ATPase extrusion support.
         </li>
         <li>
           <b>GLUT2:</b> glucose transporter 2<br/>
@@ -2789,7 +3329,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>NBCe1:</b> electrogenic sodium bicarbonate cotransporter 1<br/>
           <i>Action:</i> Electrogenic Na⁺-bicarbonate cotransporter; moves Na⁺ and HCO₃⁻ together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present. Basolateral NBCe1 can support HCO₃⁻ loading in bicarbonate secretory layouts, and it pairs with proton extruders or apical HCO₃⁻ exit pathways for transepithelial acid/base flux. Routine voltage-driven reversal is not modeled.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present. Basolateral NBCe1 can support HCO₃⁻ loading in bicarbonate secretory layouts, including pairing with apical pendrin or CFTR for HCO₃⁻ secretion. It can also pair with proton extruders for transepithelial acid/base flux. Routine voltage-driven reversal is not modeled.
         </li>
         <li>
           <b>NCC:</b> sodium-chloride cotransporter<br/>
@@ -2814,7 +3354,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
           <i>Biological action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
-          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much basolateral Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. Pump-supported basolateral Na⁺ extrusion is displayed only when paired with apical Na⁺ entry, and K⁺ loading support is displayed only when paired with apical K⁺ exit. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
+          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. The Mechanism view shows pump Na⁺ extrusion and K⁺ loading arrows when a modeled Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts show gradient support without net Na⁺ or K⁺ flux. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
         </li>
         <li>
           <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
@@ -2829,7 +3369,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>Pendrin:</b> Cl⁻/HCO₃⁻ exchanger<br/>
           <i>Action:</i> Cl⁻/HCO₃⁻ exchanger; moves Cl⁻ and HCO₃⁻ in opposite directions.<br/>
-          <i>Rule:</i> Can pair with an opposite-membrane proton extruder for acid/base flux, and can contribute to Cl⁻/HCO₃⁻ imbalance when placed without a matching pathway. Voltage-driven reversal is not added in this teaching phase.
+          <i>Rule:</i> Can pair with basolateral NBCe1 for HCO₃⁻ secretion or with an opposite-membrane proton extruder for paired acid/base flux. It can contribute to Cl⁻/HCO₃⁻ imbalance when placed without a matching pathway. Voltage-driven reversal is not added in this teaching phase.
         </li>
         <li>
           <b>PepT:</b> peptide transporter class; representative members include PepT1 and PepT2<br/>
@@ -2887,7 +3427,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
-        <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide apical Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling.</li>
+        <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling. The Mechanism view can trace pump cycling from Na⁺ entry on either membrane.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. With Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1/2, or pendrin can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
@@ -2895,7 +3435,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> Pump-supported OAT and MRP/BCRP on opposite membranes complete organic anion pathways. OCT and MATE on opposite membranes complete organic cation pathways.</li>
-        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1/2, or pendrin on the opposite membrane. CFTR can provide an HCO₃⁻ exit tendency when paired with a compatible HCO₃⁻ entry pathway. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1/2, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
+        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1/2, or pendrin on the opposite membrane can create paired acid/base flux. Basolateral NBCe1 can also load HCO₃⁻ for apical pendrin or CFTR-mediated HCO₃⁻ secretion. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1/2, pendrin, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
@@ -2930,11 +3470,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     className="w-full border rounded p-1"
     aria-label="Tissue transporter set"
   >
-    <option value={allTissueOption.value}>{allTissueOption.label}</option>
+    <option value={allTissueOption.value}>{tissueOptionDisplayLabel(allTissueOption)}</option>
     {groupedTissueOptions.map(group => (
       <optgroup key={group.group} label={group.group}>
         {group.options.map(option => (
-          <option key={option.value} value={option.value}>{option.label}</option>
+          <option key={option.value} value={option.value}>{tissueOptionDisplayLabel(option)}</option>
         ))}
       </optgroup>
     ))}
@@ -3080,7 +3620,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             })}
           </div>
           <p className="text-gray-500 mt-2">
-            Explore keeps the standard student-facing behavior. Instructor Demo replaces the current layout with the selected tissue's preset transporter placements, paracellular pathway, and tissue-default osmotic pull.
+            Explore keeps the standard student-facing behavior. Instructor Demo replaces the current layout with the selected preset's transporter placements, paracellular pathway, and default osmotic pull.
           </p>
         </fieldset>
       )}
@@ -3120,7 +3660,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
         </p>
         <p className="text-gray-500 mb-2">
-          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. Pump-supported flux is shown only when paired with appropriate apical Na⁺ entry or K⁺ exit pathways, and pump activity is not shown as a standalone Na⁺ or K⁺ flux bar. Editable ECF concentrations are constrained to physiological teaching ranges.
+          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. The Mechanism view shows pump Na⁺/K⁺ cycling arrows when Na⁺ entry or K⁺ exit pathways let the pump cycle; pump-only layouts establish gradients without Na⁺ or K⁺ flux arrows. Editable ECF concentrations are constrained to physiological teaching ranges.
         </p>
         <table className="min-w-full table-auto text-left border">
           <caption className="sr-only">Baseline concentration settings. {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
@@ -3211,7 +3751,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'AQP':
           return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway, scaled by their combined density.<br/></>;
         case 'CFTR':
-          return <><b>CFTR regulated anion channel</b>: passive Cl⁻ and smaller HCO₃⁻ movement follow the simplified electrochemical tendency. CFTR can support secretion when intracellular anion loading is present, but it is not treated as an ATP-driven Cl⁻ pump. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
+          return <><b>CFTR regulated anion channel</b>: passive Cl⁻ and smaller HCO₃⁻ movement follow the simplified electrochemical tendency. CFTR can support Cl⁻ secretion or reabsorption when paired with a compatible opposite-membrane Cl⁻ pathway, but it is not treated as an ATP-driven Cl⁻ pump. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
           return <><b>ClC chloride channel family</b>: passive Cl⁻ movement follows the simplified electrochemical tendency in this teaching model. Includes ClC-Kb; voltage dependence is not modeled.<br/></>;
         case 'ENaC':
@@ -3235,7 +3775,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NaAA':
           return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter.<br/></>;
         case 'NBCe1':
-          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: moves Na⁺ and HCO₃⁻ together in pump-supported bicarbonate loading layouts; routine voltage-driven reversal is not modeled.<br/></>;
+          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: moves Na⁺ and HCO₃⁻ together in pump-supported bicarbonate loading layouts; can pair with apical pendrin or CFTR for HCO₃⁻ secretion. Routine voltage-driven reversal is not modeled.<br/></>;
         case 'NCC':
           return <><b>Sodium-chloride cotransporter</b>: moves Na⁺ and Cl⁻ together by pump-supported NaCl coupling; not treated as strongly voltage-driven.<br/></>;
         case 'NCX1':
@@ -3245,7 +3785,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NKCC':
           return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves Na⁺, K⁺, and 2 Cl⁻ together using pump-supported coupled transport logic.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading; supported flux appears only with matching apical Na⁺ entry or K⁺ exit pathways, not as a standalone Na⁺ or K⁺ flux bar. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
+          return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading. In the Mechanism view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
           return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; tertiary-active OA⁻ uptake for secretion pathways. Requires Na⁺/K⁺-ATPase support; SALT does not model the exchanged dicarboxylate.<br/></>;
         case 'OCT':
@@ -3255,7 +3795,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PepT':
           return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves H⁺ and small peptides together.<br/></>;
         case 'Pendrin':
-          return <><b>Pendrin</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions; behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
+          return <><b>Pendrin</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions; can pair with basolateral NBCe1 for HCO₃⁻ secretion. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'ROMK':
           return <><b>Kir potassium channel class</b>: passive K⁺ movement follows the simplified electrochemical tendency. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
@@ -3290,6 +3830,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               <fieldset className="inline-flex items-center rounded border border-gray-300 bg-white p-0.5 text-xs" aria-label="Results view">
                 <legend className="sr-only">Results view</legend>
                 {[
+                  { value: 'mechanism', label: 'Mechanism' },
                   { value: 'graphs', label: 'Graphs' },
                   { value: 'tables', label: 'Tables' }
                 ].map(option => {
@@ -3321,22 +3862,19 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
                 <div className="text-xs text-gray-600">Interpreted model outputs</div>
               </div>
-              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-2 items-start">
-                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start" aria-label="Core Results Snapshot output tiles">
-                  {compactSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
-                </ul>
-                {waterSnapshotTile && (
-                  <ul className="grid grid-cols-1 self-start" aria-label="Water Results Snapshot output tile">
-                    <SnapshotTile tile={waterSnapshotTile} />
-                  </ul>
-                )}
-              </div>
+              <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 items-stretch" aria-label="Results Snapshot output tiles">
+                {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
+              </ul>
               <div className="mt-2 text-xs text-gray-600">
                 Detailed flux, concentration, and balance views appear below.
               </div>
             </section>
 
-            {resultsView === 'graphs' ? (
+            {resultsView === 'mechanism' ? (
+              <div className="space-y-4">
+                <MechanismDiagram />
+              </div>
+            ) : resultsView === 'graphs' ? (
               <div className="space-y-4">
                 <section className="border rounded p-3 bg-white">
                   <h3 className="font-semibold">Membrane and Epithelial Fluxes</h3>
@@ -3545,7 +4083,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
             {acidBaseReport && (
               <div>
                 <h3 className="font-semibold mb-2">Acid/Base &amp; pH</h3>
-                {resultsView === 'graphs' && (
+                {(resultsView === 'graphs' || resultsView === 'mechanism') && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                     <div className="border rounded p-3">
                       <div className="font-semibold">{displayOrientation.apicalShortLabel} surface</div>
