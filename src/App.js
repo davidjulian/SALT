@@ -33,6 +33,8 @@ const WATER_DRIVE_SCALE = 0.5;
 const CHARGE_EPSILON = 0.05;
 const PARACELLULAR_TEP_DRIVE_MAX = 2;
 const PARACELLULAR_TEP_SENSITIVITY = 1.5;
+const PARACELLULAR_TEP_SOLVER_BOUND = 50;
+const PARACELLULAR_TEP_SOLVER_ITERATIONS = 50;
 const ION_VALENCE = {
   'Na+': 1,
   'K+': 1,
@@ -143,10 +145,97 @@ function paracellularElectrochemicalDrive(ion, apicalConcentration, basolateralC
   const chemicalDrive = Number(apicalConcentration ?? 0) - Number(basolateralConcentration ?? 0);
   const electricalTendency = Number(transepithelialElectricalTendency || 0);
   const valence = ION_VALENCE[ion] || 0;
-  if (valence === 0 || Math.abs(electricalTendency) < CHARGE_EPSILON) return chemicalDrive;
+  if (valence === 0) return chemicalDrive;
   const boundedTep = Math.tanh(electricalTendency / PARACELLULAR_TEP_SENSITIVITY);
   const electricalDrive = valence * boundedTep * PARACELLULAR_TEP_DRIVE_MAX;
   return chemicalDrive + electricalDrive;
+}
+
+function paracellularPermeantIonConfigs(paracellularType, cationPerm, anionPerm) {
+  if (paracellularType === 'cation') {
+    return ['Na+','K+']
+      .map(ion => ({ ion, permeability: Math.max(Number(cationPerm) || 0, 0) }))
+      .filter(config => config.permeability > 0);
+  }
+  if (paracellularType === 'anion') {
+    return ['Cl-','HCO3-']
+      .map(ion => ({ ion, permeability: Math.max(Number(anionPerm) || 0, 0) }))
+      .filter(config => config.permeability > 0);
+  }
+  return [];
+}
+
+function paracellularFluxesForElectricalTendency(ionConfigs, apicalSurface, basolateralSurface, electricalTendency) {
+  return ionConfigs.reduce((fluxes, { ion, permeability }) => {
+    fluxes[ion] = permeability * paracellularElectrochemicalDrive(
+      ion,
+      apicalSurface[ion],
+      basolateralSurface[ion],
+      electricalTendency
+    );
+    return fluxes;
+  }, {});
+}
+
+function paracellularElectricalResidual(electricalTendency, transepiFluxDataNoH2O, ionConfigs, apicalSurface, basolateralSurface) {
+  const candidateParaFlux = paracellularFluxesForElectricalTendency(
+    ionConfigs,
+    apicalSurface,
+    basolateralSurface,
+    electricalTendency
+  );
+  const combinedCharge = transepiFluxDataNoH2O
+    .filter(row => row.ion !== 'H2O')
+    .reduce((sum, row) => {
+      const valence = ION_VALENCE[row.ion] || 0;
+      return sum + valence * (Number(row.transepithelial || 0) + Number(candidateParaFlux[row.ion] || 0));
+    }, 0);
+  return electricalTendency + combinedCharge;
+}
+
+function solveParacellularElectricalTendency(transepiFluxDataNoH2O, ionConfigs, apicalSurface, basolateralSurface) {
+  if (!ionConfigs.length) return transepithelialPotentialValue(transepiFluxDataNoH2O);
+
+  // Paracellular current shunts the voltage that drives it, so solve for the final TEP.
+  let lower = -PARACELLULAR_TEP_SOLVER_BOUND;
+  let upper = PARACELLULAR_TEP_SOLVER_BOUND;
+  const lowerResidual = paracellularElectricalResidual(
+    lower,
+    transepiFluxDataNoH2O,
+    ionConfigs,
+    apicalSurface,
+    basolateralSurface
+  );
+  const upperResidual = paracellularElectricalResidual(
+    upper,
+    transepiFluxDataNoH2O,
+    ionConfigs,
+    apicalSurface,
+    basolateralSurface
+  );
+
+  if (lowerResidual > 0 || upperResidual < 0) {
+    return transepithelialPotentialValue(transepiFluxDataNoH2O);
+  }
+
+  for (let i = 0; i < PARACELLULAR_TEP_SOLVER_ITERATIONS; i += 1) {
+    const mid = (lower + upper) / 2;
+    const residual = paracellularElectricalResidual(
+      mid,
+      transepiFluxDataNoH2O,
+      ionConfigs,
+      apicalSurface,
+      basolateralSurface
+    );
+    if (Math.abs(residual) < 1e-6) return mid;
+    if (residual > 0) {
+      upper = mid;
+    } else {
+      lower = mid;
+    }
+  }
+
+  return (lower + upper) / 2;
 }
 
 function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData) {
@@ -1755,21 +1844,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     }
   });
 
-  const paracellularElectricalTendency = transepithelialPotentialValue(transepiFluxDataNoH2O);
-  if (paracellularType === 'cation') {
-    ['Na+','K+'].forEach(ion => {
-      const cap = apicalSurface[ion];
-      const blp = basolateralSurface[ion];
-      paraFlux[ion] = paraCationPerm * paracellularElectrochemicalDrive(ion, cap, blp, paracellularElectricalTendency);
-    });
-  }
-  if (paracellularType === 'anion') {
-    ['Cl-','HCO3-'].forEach(ion => {
-      const cap = apicalSurface[ion];
-      const blp = basolateralSurface[ion];
-      paraFlux[ion] = paraAnionPerm * paracellularElectrochemicalDrive(ion, cap, blp, paracellularElectricalTendency);
-    });
-  }
+  const paracellularIonConfigs = paracellularPermeantIonConfigs(paracellularType, paraCationPerm, paraAnionPerm);
+  const paracellularElectricalTendency = solveParacellularElectricalTendency(
+    transepiFluxDataNoH2O,
+    paracellularIonConfigs,
+    apicalSurface,
+    basolateralSurface
+  );
+  const solvedParaFlux = paracellularFluxesForElectricalTendency(
+    paracellularIonConfigs,
+    apicalSurface,
+    basolateralSurface,
+    paracellularElectricalTendency
+  );
+  Object.entries(solvedParaFlux).forEach(([ion, flux]) => {
+    paraFlux[ion] = flux;
+  });
   Object.keys(netFlux).forEach(ion => { netFlux[ion] += paraFlux[ion] || 0; });
 
   // Add paracellular fluxes
