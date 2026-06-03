@@ -2173,6 +2173,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const displayOrientation = displayOrientationForTissue(tissueOption);
   const allTissueOption = TISSUE_OPTIONS[0];
   const selectableTissueOptions = TISSUE_OPTIONS.filter(isSelectableTissueOption);
+  const selectedTissueLimitation = TISSUE_LIMITATION_NOTES[tissueOption.value] || null;
   const tissueLimitationRows = Object.entries(TISSUE_LIMITATION_NOTES).map(([value, note]) => ({
     value,
     note,
@@ -3479,6 +3480,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       </optgroup>
     ))}
   </select>
+  {selectedTissueLimitation && (
+    <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+      <div className="font-semibold">Known tissue-model limitation</div>
+      <div>{selectedTissueLimitation}</div>
+    </div>
+  )}
   <div className="text-xs text-gray-500 mt-1">
     {instructorDemoMode
       ? 'Places the instructor demo layout for the selected tissue.'
