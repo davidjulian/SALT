@@ -399,12 +399,6 @@ const TISSUE_OPTIONS = [
     transporterIds: INITIAL_TRANSPORTERS.map(t => t.id)
   },
   {
-    value: 'simple-na-absorption',
-    label: 'Teaching example: simple Na+ absorption',
-    group: 'Teaching examples',
-    transporterIds: ['ENaC', 'NaKATPase', 'ROMK']
-  },
-  {
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
     group: 'Kidney and urinary tract',
@@ -516,7 +510,6 @@ const TISSUE_OPTIONS = [
 ];
 
 const TISSUE_OPTION_GROUPS = [
-  'Teaching examples',
   'Kidney and urinary tract',
   'Gastrointestinal and hepatobiliary',
   'Exocrine, airway, and skin',
@@ -556,13 +549,6 @@ const TISSUE_DEMO_PRESETS = {
   all: {
     paracellularType: 'none',
     placements: {}
-  },
-  'simple-na-absorption': {
-    paracellularType: 'none',
-    placements: {
-      apical: ['ENaC'],
-      basolateral: ['NaKATPase', 'ROMK']
-    }
   },
   'proximal-tubule': {
     paracellularType: 'cation',
