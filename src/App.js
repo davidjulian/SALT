@@ -1470,7 +1470,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [appMode, setAppMode] = useState('explore');
-  const [resultsView, setResultsView] = useState('graphs');
+  const [resultsView, setResultsView] = useState('mechanism');
   const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
   const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
   const [concentrationValidation, setConcentrationValidation] = useState({});
@@ -1605,7 +1605,7 @@ export default function App() {
     setConcentrationValidation({});
     setTissuePreset('all');
     setBackgroundOsmoticPullSetting('tissue');
-    setResultsView('graphs');
+    setResultsView('mechanism');
     setZoomedConcentrationIon(null);
     setShowInfoModal(false);
     setModalTransporterId(null);
@@ -2333,8 +2333,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
     const margin = 8;
-    const width = Math.min(256, viewportWidth - margin * 2);
-    const estimatedHeight = 96;
+    const words = String(description).split(/\s+/).filter(Boolean);
+    const longestWord = words.reduce((max, word) => Math.max(max, word.length), 0);
+    const estimatedChars = Math.min(String(description).length, Math.max(longestWord, 18));
+    const width = Math.min(Math.max(140, Math.ceil(estimatedChars * 6.5) + 20), Math.min(210, viewportWidth - margin * 2));
+    const estimatedHeight = Math.max(72, Math.ceil(String(description).length / 26) * 18);
     const left = Math.min(Math.max(rect.left, margin), viewportWidth - width - margin);
     const top = rect.bottom + estimatedHeight + margin > viewportHeight
       ? Math.max(margin, rect.top - estimatedHeight - 6)
@@ -2898,30 +2901,34 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     apical: { outside: 78, cell: 158 },
     basolateral: { outside: 352, cell: 270 }
   };
-  const mechanismArrowCoordinates = (step, index) => {
-    if (step.pathway === 'paracellular') {
-      const towardBlood = step.value > 0;
-      return {
-        x1: 745,
-        y1: towardBlood ? 86 : 344,
-        x2: 745,
-        y2: towardBlood ? 344 : 86,
-        labelX: 760,
-        labelY: 210 + (index % 4) * 16
-      };
-    }
-    const laneBase = step.placement === 'apical' ? 265 : 305;
-    const laneX = laneBase + (index % 7) * 58;
-    const y = mechanismMembraneY[step.placement] || mechanismMembraneY.apical;
-    const intoCell = step.value > 0;
-    return {
-      x1: laneX,
-      y1: intoCell ? y.outside : y.cell,
-      x2: laneX,
-      y2: intoCell ? y.cell : y.outside,
-      labelX: laneX + 8,
-      labelY: (intoCell ? y.outside + y.cell : y.cell + y.outside) / 2 - 4
+  const mechanismSlotKey = (placement, transporterId) => placement + '-' + transporterId;
+  const mechanismChipLabel = (name, maxChars = 10) => {
+    if (!name) return '';
+    if (name.length <= maxChars) return name;
+    return name.slice(0, Math.max(3, maxChars - 3)) + '...';
+  };
+  const mechanismDisplaySoluteLabel = solute => {
+    const compactLabels = {
+      Glucose: 'Gluc',
+      Peptide: 'Pept',
+      Phosphate: 'PO4',
+      'HCO3-': 'HCO3'
     };
+    if (compactLabels[solute]) return compactLabels[solute];
+    if (!solute) return '';
+    return String(solute).replace(/\d*[+-]+$/, '') || String(solute);
+  };
+  const mechanismLabelWidth = label => Math.max(20, label.length * 6 + 8);
+  const mechanismLabelBoxesOverlap = (a, b) => !(
+    a.right + 3 < b.left ||
+    a.left - 3 > b.right ||
+    a.bottom + 2 < b.top ||
+    a.top - 2 > b.bottom
+  );
+  const mechanismLabelCandidates = placement => {
+    if (placement === 'apical') return [0, -5, -10, -15, 5, 10];
+    if (placement === 'basolateral') return [0, 5, 10, 15, -5, -10];
+    return [0, -5, 5, -10, 10];
   };
   const mechanismSteps = (() => {
     if (!result) return [];
@@ -2947,6 +2954,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           pathway: 'transporter',
           role: event.type === 'passive' ? 'membrane pathway' : 'coupled/active step',
           placement: event.placement,
+          transporterId: event.id,
           transporter: event.name,
           solute: solute.ion,
           value
@@ -2963,6 +2971,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           pathway: 'pump',
           role: 'Na⁺/K⁺ pump support',
           placement,
+          transporterId: SUPPORT_PUMP_ID,
           transporter: 'Na⁺/K⁺-ATPase',
           solute: ion,
           value
@@ -2977,6 +2986,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         pathway: 'water',
         role: 'transcellular water pathway',
         placement: 'apical',
+        transporterId: 'AQP',
         transporter: 'AQP',
         solute: 'H2O',
         value: transcellularWater
@@ -2986,6 +2996,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         pathway: 'water',
         role: 'transcellular water pathway',
         placement: 'basolateral',
+        transporterId: 'AQP',
         transporter: 'AQP',
         solute: 'H2O',
         value: -transcellularWater
@@ -2998,6 +3009,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         pathway: 'paracellular',
         role: 'paracellular water pathway',
         placement: 'paracellular',
+        transporterId: 'paracellular',
         transporter: 'Cation + Water Pore',
         solute: 'H2O',
         value: paracellularWater
@@ -3010,6 +3022,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         pathway: 'paracellular',
         role: 'paracellular pathway',
         placement: 'paracellular',
+        transporterId: 'paracellular',
         transporter: paracellularType === 'cation' ? 'Cation + Water Pore' : 'Anion Pore',
         solute: ion,
         value: Number(value || 0)
@@ -3017,25 +3030,205 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     });
     return steps;
   })();
-  const mechanismTransporterChips = placement => {
+  const mechanismTransporterSlots = placement => {
     const placed = membraneTransporters(placement);
-    const maxChips = 5;
-    const visible = placed.slice(0, maxChips);
-    const hiddenCount = Math.max(placed.length - maxChips, 0);
+    const minX = 215;
+    const maxX = 678;
     const y = placement === 'apical' ? 120 : 294;
-    let cursorX = 220;
-    const chips = visible.map((transporter, index) => {
-      const name = mechanismChipLabel(transporter.name);
-      const width = Math.min(84, Math.max(48, name.length * 6.2 + 16));
-      const chip = { key: transporter.uid || transporter.id + index, name, x: cursorX, y, width };
-      cursorX += width + 10;
-      return chip;
+    if (!placed.length) return [];
+    const step = placed.length > 1 ? (maxX - minX) / (placed.length - 1) : 0;
+    return placed.map((transporter, index) => {
+      const centerX = placed.length > 1 ? minX + index * step : (minX + maxX) / 2;
+      const maxWidth = placed.length > 1 ? Math.max(38, Math.min(76, step - 10)) : 82;
+      const label = mechanismChipLabel(transporter.name, maxWidth < 52 ? 6 : 10);
+      const width = Math.min(maxWidth, Math.max(38, label.length * 5.8 + 14));
+      const x = centerX - width / 2;
+      return {
+        key: transporter.uid || transporter.id + '-' + placement,
+        transporterId: transporter.id,
+        placement,
+        name: label,
+        fullName: transporter.name,
+        x,
+        y,
+        width,
+        height: 24,
+        centerX,
+        arrowBaseX: Math.min(x + width + 10, maxX + 26)
+      };
     });
-    if (hiddenCount) {
-      chips.push({ key: placement + '-more', name: '+' + hiddenCount, x: cursorX, y, width: 42 });
-    }
-    return chips;
   };
+  const mechanismFallbackSlot = placement => ({
+    transporterId: 'fallback',
+    placement,
+    x: 430,
+    y: placement === 'apical' ? 120 : 294,
+    width: 54,
+    height: 24,
+    centerX: 457,
+    arrowBaseX: 472
+  });
+  const mechanismLayout = (() => {
+    const apicalChips = mechanismTransporterSlots('apical');
+    const basolateralChips = mechanismTransporterSlots('basolateral');
+    const allChips = [...apicalChips, ...basolateralChips];
+    const slotsByKey = Object.fromEntries(allChips.map(chip => [
+      mechanismSlotKey(chip.placement, chip.transporterId),
+      chip
+    ]));
+    const membraneSteps = mechanismSteps.filter(step => step.placement !== 'paracellular');
+    const groupedSteps = membraneSteps.reduce((groups, step) => {
+      const key = mechanismSlotKey(step.placement, step.transporterId || step.transporter);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(step);
+      return groups;
+    }, {});
+    const arrows = [];
+    Object.entries(groupedSteps).forEach(([key, steps]) => {
+      steps.forEach((step, index) => {
+        const slot = slotsByKey[key] || mechanismFallbackSlot(step.placement);
+        const y = mechanismMembraneY[step.placement] || mechanismMembraneY.apical;
+        const offset = (index - (steps.length - 1) / 2) * 12;
+        const x = slot.centerX + offset;
+        const intoCell = step.value > 0;
+        arrows.push({
+          ...step,
+          arrowId: step.id,
+          x1: x,
+          y1: intoCell ? y.outside : y.cell,
+          x2: x,
+          y2: intoCell ? y.cell : y.outside,
+          labelX: x,
+          labelY: step.placement === 'apical' ? y.outside - 5 : y.outside + 15,
+          cellX: x,
+          cellY: y.cell,
+          labelText: mechanismDisplaySoluteLabel(step.solute),
+          cellDirection: intoCell ? 'in' : 'out'
+        });
+      });
+    });
+
+    const paracellularSteps = mechanismSteps.filter(step => step.placement === 'paracellular');
+    const paracellularGap = paracellularSteps.length > 5 ? 9 : 13;
+    const paracellularCenterX = 770;
+    const paracellularBaseX = paracellularCenterX - ((paracellularSteps.length - 1) * paracellularGap) / 2;
+    paracellularSteps.forEach((step, index) => {
+      const towardBlood = step.value > 0;
+      const x = paracellularBaseX + index * paracellularGap;
+      arrows.push({
+        ...step,
+        arrowId: step.id,
+        x1: x,
+        y1: towardBlood ? 86 : 344,
+        x2: x,
+        y2: towardBlood ? 344 : 86,
+        labelX: x,
+        labelY: towardBlood ? 355 : 78,
+        cellX: null,
+        cellY: null,
+        labelText: mechanismDisplaySoluteLabel(step.solute),
+        cellDirection: null
+      });
+    });
+
+    const arrowsWithLabels = arrows.map(arrow => ({ ...arrow }));
+    ['apical', 'basolateral', 'paracellular'].forEach(lane => {
+      const laneArrows = arrowsWithLabels
+        .filter(arrow => (lane === 'paracellular' ? arrow.placement === 'paracellular' : arrow.placement === lane))
+        .sort((a, b) => a.labelX - b.labelX || a.arrowId.localeCompare(b.arrowId));
+      const occupiedBoxes = [];
+      laneArrows.forEach(arrow => {
+        const width = mechanismLabelWidth(arrow.labelText);
+        const candidates = mechanismLabelCandidates(arrow.placement);
+        const baseY = arrow.labelY;
+        let chosenY = baseY;
+        let chosenBox = null;
+        let fallbackBox = null;
+        candidates.some(delta => {
+          const candidateY = baseY + delta;
+          const candidateBox = {
+            left: arrow.labelX - width / 2,
+            right: arrow.labelX + width / 2,
+            top: candidateY - 9,
+            bottom: candidateY + 3
+          };
+          if (!occupiedBoxes.some(box => mechanismLabelBoxesOverlap(box, candidateBox))) {
+            chosenY = candidateY;
+            chosenBox = candidateBox;
+            return true;
+          }
+          if (!fallbackBox) fallbackBox = candidateBox;
+          return false;
+        });
+        arrow.labelY = chosenY;
+        occupiedBoxes.push(chosenBox || fallbackBox || {
+          left: arrow.labelX - width / 2,
+          right: arrow.labelX + width / 2,
+          top: chosenY - 9,
+          bottom: chosenY + 3
+        });
+      });
+    });
+
+    const connectors = [];
+    const membraneArrowsBySolute = arrowsWithLabels
+      .filter(arrow => arrow.placement !== 'paracellular' && arrow.cellX != null)
+      .reduce((groups, arrow) => {
+        if (!groups[arrow.solute]) groups[arrow.solute] = [];
+        groups[arrow.solute].push(arrow);
+        return groups;
+      }, {});
+    Object.entries(membraneArrowsBySolute).forEach(([solute, soluteArrows]) => {
+      const inward = soluteArrows.filter(arrow => arrow.cellDirection === 'in');
+      const outward = soluteArrows.filter(arrow => arrow.cellDirection === 'out');
+      const usedInward = new Set();
+      const usedOutward = new Set();
+
+      const addConnector = (inArrow, outArrow, kind) => {
+        if (!outArrow) return;
+        usedInward.add(inArrow.arrowId);
+        usedOutward.add(outArrow.arrowId);
+        const sameMembrane = inArrow.placement === outArrow.placement;
+        const midY = sameMembrane
+          ? (inArrow.placement === 'apical' ? inArrow.cellY + 48 : inArrow.cellY - 48)
+          : (inArrow.cellY + outArrow.cellY) / 2;
+        connectors.push({
+          id: 'connector-' + kind + '-' + inArrow.arrowId + '-' + outArrow.arrowId,
+          solute,
+          kind,
+          d: 'M ' + inArrow.cellX + ' ' + inArrow.cellY +
+            ' C ' + inArrow.cellX + ' ' + midY + ', ' + outArrow.cellX + ' ' + midY + ', ' + outArrow.cellX + ' ' + outArrow.cellY
+        });
+      };
+
+      if (inward.length > 1 && outward.length === 1) {
+        inward.forEach(inArrow => addConnector(inArrow, outward[0], 'transcellular'));
+        return;
+      }
+      if (outward.length > 1 && inward.length === 1) {
+        outward.forEach(outArrow => addConnector(inward[0], outArrow, 'transcellular'));
+        return;
+      }
+
+      inward.forEach(inArrow => {
+        const candidates = outward
+          .filter(outArrow => outArrow.placement !== inArrow.placement && !usedOutward.has(outArrow.arrowId))
+          .sort((a, b) => Math.abs(a.cellX - inArrow.cellX) - Math.abs(b.cellX - inArrow.cellX));
+        addConnector(inArrow, candidates[0], 'transcellular');
+      });
+
+      inward
+        .filter(inArrow => !usedInward.has(inArrow.arrowId))
+        .forEach(inArrow => {
+          const candidates = outward
+            .filter(outArrow => outArrow.placement === inArrow.placement && !usedOutward.has(outArrow.arrowId))
+            .sort((a, b) => Math.abs(a.cellX - inArrow.cellX) - Math.abs(b.cellX - inArrow.cellX));
+          addConnector(inArrow, candidates[0], 'recycling');
+      });
+    });
+
+    return { apicalChips, basolateralChips, arrows: arrowsWithLabels, connectors };
+  })();
   const mechanismDirectionText = step => {
     if (step.pathway === 'paracellular') {
       return step.value > 0 ? displayOrientation.positiveFluxLabel : displayOrientation.negativeFluxLabel;
@@ -3049,10 +3242,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       ? displayOrientation.basolateralShortLabel + ' side to cell'
       : 'cell to ' + displayOrientation.basolateralShortLabel.toLowerCase() + ' side';
   };
-  const mechanismChipLabel = name => (name.length > 10 ? name.slice(0, 9) + '...' : name);
   const MechanismDiagram = () => {
-    const apicalChips = mechanismTransporterChips('apical');
-    const basolateralChips = mechanismTransporterChips('basolateral');
+    const { apicalChips, basolateralChips, arrows, connectors } = mechanismLayout;
     const hasPump = transporters.some(t => t.id === SUPPORT_PUMP_ID && t.placement !== 'none');
     return (
       <section className="border rounded p-3 bg-white" aria-labelledby="mechanism-diagram-title">
@@ -3067,50 +3258,124 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
               </marker>
             </defs>
-            <rect x="180" y="24" width="540" height="70" rx="6" fill="#eff6ff" stroke="#bfdbfe" />
+            <rect x="180" y="24" width="540" height="75" rx="6" fill="#eff6ff" stroke="#bfdbfe" />
             <rect x="180" y="116" width="540" height="196" rx="8" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="2" />
-            <rect x="180" y="334" width="540" height="58" rx="6" fill="#ecfdf5" stroke="#bbf7d0" />
-            <rect x="726" y="116" width="38" height="196" rx="8" fill="#fff7ed" stroke="#fdba74" strokeDasharray="4 3" />
-            <text x="450" y="56" textAnchor="middle" fontSize="15" fontWeight="700" fill="#1e40af">{displayOrientation.apicalLabel}</text>
+            <rect x="180" y="333" width="540" height="76" rx="6" fill="#ecfdf5" stroke="#bbf7d0" />
+            <rect x="732" y="116" width="92" height="196" rx="8" fill="#fff7ed" stroke="#fdba74" strokeDasharray="4 3" />
+            <text x="450" y="40" textAnchor="middle" fontSize="15" fontWeight="700" fill="#1e40af">{displayOrientation.apicalLabel}</text>
             <text x="450" y="214" textAnchor="middle" fontSize="15" fontWeight="700" fill="#334155">Cell interior</text>
-            <text x="450" y="368" textAnchor="middle" fontSize="15" fontWeight="700" fill="#047857">{displayOrientation.basolateralLabel}</text>
-            <text x="745" y="214" textAnchor="middle" fontSize="12" fontWeight="700" fill="#9a3412" transform="rotate(90 745 214)">Paracellular</text>
+            <text x="450" y="399" textAnchor="middle" fontSize="15" fontWeight="700" fill="#047857">{displayOrientation.basolateralLabel}</text>
+            <text x="812" y="214" textAnchor="middle" fontSize="12" fontWeight="700" fill="#9a3412" transform="rotate(90 812 214)">Paracellular</text>
+            {connectors.map(connector => (
+              <path
+                key={connector.id}
+                d={connector.d}
+                fill="none"
+                stroke={mechanismSoluteColor(connector.solute)}
+                strokeWidth={connector.kind === 'recycling' ? '1.8' : '1.6'}
+                strokeDasharray={connector.kind === 'recycling' ? '3 4' : '6 5'}
+                strokeLinecap="round"
+                opacity={connector.kind === 'recycling' ? '0.5' : '0.42'}
+              />
+            ))}
             {apicalChips.map(chip => (
-              <g key={chip.key}>
-                <rect x={chip.x} y={chip.y} width={chip.width} height="24" rx="4" fill="#dbeafe" stroke="#2563eb" />
-                <text x={chip.x + chip.width / 2} y={chip.y + 16} textAnchor="middle" fontSize="10" fill="#1e3a8a">{chip.name}</text>
+              <g
+                key={chip.key}
+                tabIndex={0}
+                role="button"
+                aria-label={chip.fullName || chip.name}
+                onMouseEnter={event => showTransporterTooltip(event, 'mechanism-tooltip-' + chip.key, chip.fullName || chip.name)}
+                onMouseLeave={hideTransporterTooltip}
+                onFocus={event => showTransporterTooltip(event, 'mechanism-tooltip-' + chip.key, chip.fullName || chip.name)}
+                onBlur={hideTransporterTooltip}
+              >
+                <rect x={chip.x} y={chip.y - 10} width={chip.width} height="24" rx="4" fill="#dbeafe" stroke="#2563eb" />
               </g>
             ))}
             {basolateralChips.map(chip => (
-              <g key={chip.key}>
+              <g
+                key={chip.key}
+                tabIndex={0}
+                role="button"
+                aria-label={chip.fullName || chip.name}
+                onMouseEnter={event => showTransporterTooltip(event, 'mechanism-tooltip-' + chip.key, chip.fullName || chip.name)}
+                onMouseLeave={hideTransporterTooltip}
+                onFocus={event => showTransporterTooltip(event, 'mechanism-tooltip-' + chip.key, chip.fullName || chip.name)}
+                onBlur={hideTransporterTooltip}
+              >
                 <rect x={chip.x} y={chip.y} width={chip.width} height="24" rx="4" fill="#dcfce7" stroke="#059669" />
-                <text x={chip.x + chip.width / 2} y={chip.y + 16} textAnchor="middle" fontSize="10" fill="#064e3b">{chip.name}</text>
               </g>
             ))}
-            {mechanismSteps.map((step, index) => {
-              const coords = mechanismArrowCoordinates(step, index);
+            {arrows.map(step => {
               const color = mechanismSoluteColor(step.solute);
               return (
-                <g key={step.id}>
-                  <line
-                    x1={coords.x1}
-                    y1={coords.y1}
-                    x2={coords.x2}
-                    y2={coords.y2}
-                    stroke={color}
-                    strokeWidth={mechanismStrokeWidth(step.value)}
-                    strokeDasharray={step.pathway === 'pump' ? '5 4' : step.pathway === 'paracellular' ? '3 3' : undefined}
-                    markerEnd="url(#mechanism-arrow)"
-                    opacity="0.88"
-                  />
-                  <text x={coords.labelX} y={coords.labelY} fontSize="10" fontWeight="700" fill={color}>
-                    {(ION_LABEL[step.solute] || step.solute) + ' ' + step.transporter}
-                  </text>
-                </g>
+                <line
+                  key={step.arrowId}
+                  x1={step.placement === 'apical' ? step.x1 : step.x1}
+                  y1={step.placement === 'apical' ? step.y1 : step.y1}
+                  x2={step.placement === 'apical' ? step.x2 : step.x2}
+                  y2={step.placement === 'apical' ? step.y2 : step.y2}
+                  stroke={color}
+                  strokeWidth={mechanismStrokeWidth(step.value)}
+                  strokeDasharray={step.pathway === 'pump' ? '5 4' : step.pathway === 'paracellular' ? '3 3' : step.pathway === 'water' ? '2 3' : undefined}
+                  markerEnd="url(#mechanism-arrow)"
+                  opacity="0.88"
+                />
               );
             })}
+            {arrows.map(step => {
+              const color = mechanismSoluteColor(step.solute);
+              return (
+                <text
+                  key={step.arrowId + '-label'}
+                  x={step.labelX}
+                  y={step.placement === 'apical' ? step.labelY : step.labelY}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fontWeight="700"
+                  fill={color}
+                  stroke="#ffffff"
+                  strokeWidth="3"
+                  paintOrder="stroke"
+                >
+                  {step.labelText || mechanismDisplaySoluteLabel(step.solute)}
+                </text>
+              );
+            })}
+            {apicalChips.map(chip => (
+              <text
+                key={chip.key + '-label'}
+                x={chip.x + chip.width / 2}
+                y={chip.y + 6}
+                textAnchor="middle"
+                fontSize="10"
+                fill="#1e3a8a"
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                paintOrder="stroke"
+                pointerEvents="none"
+              >
+                {chip.name}
+              </text>
+            ))}
+            {basolateralChips.map(chip => (
+              <text
+                key={chip.key + '-label'}
+                x={chip.x + chip.width / 2}
+                y={chip.y + 16}
+                textAnchor="middle"
+                fontSize="10"
+                fill="#064e3b"
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                paintOrder="stroke"
+                pointerEvents="none"
+              >
+                {chip.name}
+              </text>
+            ))}
             {!mechanismSteps.length && (
-              <text x="450" y="214" textAnchor="middle" fontSize="13" fill="#64748b">
+              <text x="450" y="234" textAnchor="middle" fontSize="13" fill="#64748b">
                 No active pathway arrows for this layout.
               </text>
             )}
