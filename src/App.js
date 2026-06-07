@@ -815,7 +815,7 @@ function demoTransportersForTissue(tissuePreset) {
 }
 
 const TRANSPORTER_DESCRIPTIONS = {
-  AE1: 'Chloride-bicarbonate exchanger: exchanges Cl- and HCO3- in opposite directions. Includes AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1 examples.',
+  AE1: 'Chloride-bicarbonate exchanger class: moves 1 Cl- and 1 HCO3- in opposite directions. Includes AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1 examples.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
   AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Includes AQP2, AQP3, AQP4.',
@@ -828,21 +828,21 @@ const TRANSPORTER_DESCRIPTIONS = {
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
   NaPi2: 'NaPi 2:1: sodium-phosphate cotransporter; moves 2 Na+ with 1 Pi. Electroneutral; represents NaPi-IIc.',
   NaPi: 'NaPi 3:1: sodium-phosphate cotransporter; moves 3 Na+ with 1 Pi. Electrogenic; represents NaPi-IIa/IIb.',
-  NaAA: 'Na+-AA cotransporter: generic Na+-coupled neutral amino acid transporter.',
-  NBCe1: 'Sodium-bicarbonate cotransporter class: moves Na+ and HCO3- together. NBCe1 is the representative electrogenic example in SALT.',
-  NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
-  NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
-  NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
-  NKCC: 'Na-K-Cl contransporter class: moves Na+, K+, and Cl- together. Includes NKCC1 and NKCC2.',
+  NaAA: 'Na+-AA cotransporter: moves 1 Na+ and 1 neutral amino acid together.',
+  NBCe1: 'Sodium-bicarbonate cotransporter class: moves 1 Na+ and 2 HCO3- together. Includes NBCe1.',
+  NCC: 'Sodium-chloride cotransporter class: moves 1 Na+ and 1 Cl- together.',
+  NCX1: 'Sodium-calcium exchanger: exchanges 3 Na+ and 1 Ca2+ in opposite directions.',
+  NHE3: 'Sodium-hydrogen exchanger: exchanges 1 Na+ and 1 H+ in opposite directions.',
+  NKCC: 'Na-K-Cl cotransporter class: moves 1 Na+, 1 K+, and 2 Cl- together. Includes NKCC1 and NKCC2.',
   NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients.',
   OAT: 'Organic anion transporter class: tertiary-active OA- exchange. Requires Na+/K+-ATPase support; SALT does not model the exchanged dicarboxylate.',
   OCT: 'Organic cation transporter class: facilitated OC+ movement.',
   PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
-  MATE: 'Multidrug and toxin extrusion transporter class: exchanges organic cations and H+ in opposite directions.',
+  MATE: 'Multidrug and toxin extrusion transporter class: exchanges 1 organic cation and 1 H+ in opposite directions.',
   MRPBCRP: 'MRP (multidrug resistance-associated protein) and BCRP (breast cancer resistance protein) transporter class: pumps organic anions out using ATP.',
-  PepT: 'PepT peptide transporter class: moves H+ and small peptides together. Includes PepT1 and PepT2.',
+  PepT: 'PepT peptide transporter class: moves 1 H+ and 1 small peptide together. Includes PepT1 and PepT2.',
   ROMK: 'Kir potassium channel class: passive K+ flux. Includes ROMK.',
-  SGLT: 'Sodium-glucose-linked transporter class: moves Na+ and glucose together. Includes SGLT1 and SGLT2.'
+  SGLT: 'Sodium-glucose-linked transporter class: moves 1 Na+ and 1 glucose together. Includes SGLT1 and SGLT2.'
 };
 
 const INITIAL_CONCENTRATIONS = {
@@ -3587,7 +3587,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>MATE:</b> multidrug and toxin extrusion transporter class; representative members include MATE1 and MATE2-K<br/>
-          <i>Action:</i> H⁺/organic cation exchange.<br/>
+          <i>Action:</i> H⁺/organic cation exchange; exchanges 1 H⁺ and 1 organic cation in opposite directions.<br/>
           <i>Rule:</i> Can pair with OCT on the opposite membrane for organic cation transport.
         </li>
         <li>
@@ -3607,17 +3607,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>Na⁺-AA:</b> sodium-amino acid cotransporter class; representative examples include neutral amino acid transport systems such as B⁰AT/SLC6 family transporters<br/>
-          <i>Action:</i> Na⁺-coupled neutral amino acid movement.<br/>
+          <i>Action:</i> Na⁺-coupled neutral amino acid movement; moves 1 Na⁺ and 1 amino acid together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with an AA facilitator on the opposite membrane for completed amino acid transport.
         </li>
         <li>
           <b>NBC:</b> sodium-bicarbonate cotransporter class<br/>
-          <i>Action:</i> Electrogenic Na⁺-bicarbonate cotransporter; moves Na⁺ and HCO₃⁻ together.<br/>
+          <i>Action:</i> Electrogenic Na⁺-bicarbonate cotransporter; moves 1 Na⁺ and 2 HCO₃⁻ together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present. NBCe1 is the representative electrogenic example in SALT. Basolateral NBC can support HCO₃⁻ loading in bicarbonate secretory layouts, including pairing with apical CBE or CFTR for HCO₃⁻ secretion. It can also pair with proton extruders for transepithelial acid/base flux. Routine voltage-driven reversal is not modeled.
         </li>
         <li>
           <b>NCC:</b> sodium-chloride cotransporter<br/>
-          <i>Action:</i> Na⁺-Cl⁻ symporter; co-transports Na⁺ and Cl⁻ together.<br/>
+          <i>Action:</i> Na⁺-Cl⁻ symporter; co-transports 1 Na⁺ and 1 Cl⁻ together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase support and remains primarily governed by coordinated NaCl coupling. Cl⁻ transepithelial completion requires compatible NCC, NKCC, CFTR, or chloride channel pathways on opposite membranes; otherwise Cl⁻ imbalance can appear.
         </li>
         <li>
@@ -3627,12 +3627,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>NHE3:</b> sodium-hydrogen exchanger 3<br/>
-          <i>Action:</i> Na⁺/H⁺ exchanger; exchanges Na⁺ and H⁺ in opposite directions.<br/>
+          <i>Action:</i> Na⁺/H⁺ exchanger; exchanges 1 Na⁺ and 1 H⁺ in opposite directions.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBC for transepithelial HCO₃⁻ and H⁺ flux. The Na⁺ gradient and pH teaching rule remain primary.
         </li>
         <li>
           <b>NKCC:</b> sodium-potassium-chloride cotransporter class; representative members include NKCC1 and NKCC2<br/>
-          <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports Na⁺, K⁺, and 2 Cl⁻ together.<br/>
+          <i>Action:</i> Na⁺-K⁺-2Cl⁻ symporter; co-transports 1 Na⁺, 1 K⁺, and 2 Cl⁻ together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase support and is not treated as strongly voltage-driven. Basolateral NKCC plus apical CFTR can produce Cl⁻ secretion; apical NKCC plus basolateral Cl⁻ exit can produce absorptive patterns. Kir channels, including ROMK in TAL-like layouts, can support K⁺ recycling but are not a hard gate for this generalized class.
         </li>
         <li>
@@ -3652,7 +3652,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>PepT:</b> peptide transporter class; representative members include PepT1 and PepT2<br/>
-          <i>Action:</i> H⁺-coupled small peptide movement.<br/>
+          <i>Action:</i> H⁺-coupled small peptide movement; moves 1 H⁺ and 1 small peptide together.<br/>
           <i>Rule:</i> Peptide-derived nutrient absorption can be completed by an AA facilitator on the opposite membrane, representing intracellular peptide hydrolysis in this teaching layer.
         </li>
         <li>
@@ -3667,7 +3667,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
-          <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose together.<br/>
+          <i>Action:</i> Na⁺-glucose symporter; co-transports 1 Na⁺ and 1 glucose together.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT must be on opposite membranes. Pump-supported Na⁺ gradient logic dominates; the implicit cell-negative context provides only small bounded support and does not create routine reversal.
         </li>
         <li>
@@ -4028,7 +4028,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {(() => {
       switch (modalTransporter.id) {
         case 'AE1':
-          return <><b>Chloride-bicarbonate exchanger (CBE)</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
+          return <><b>Chloride-bicarbonate exchanger (CBE)</b>: moves 1 Cl⁻ and 1 HCO₃⁻ in opposite directions. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'AAFacilitator':
           return <><b>AA facilitator</b>: generic facilitated neutral amino acid transporter; representative examples include LAT/SLC7 family transporters.<br/></>;
         case 'PiFacilitator':
@@ -4050,7 +4050,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'HKATPase':
           return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
         case 'MATE':
-          return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges H⁺ and organic cations.<br/></>;
+          return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges 1 H⁺ and 1 organic cation in opposite directions.<br/></>;
         case 'MRPBCRP':
           return <><b>MRP/BCRP efflux transporter class</b>: moves organic anions out of the cell toward the adjacent extracellular side. Apical placement can support OA⁻ secretion after basolateral OAT uptake.<br/></>;
         case 'NaPi2':
@@ -4058,17 +4058,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NaPi':
           return <><b>NaPi 3:1 cotransporter class</b>: represents NaPi-IIa/IIb; moves 3 Na⁺ with 1 phosphate. This pathway is electrogenic and receives small bounded implicit electrical support when pump support is present.<br/></>;
         case 'NaAA':
-          return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter.<br/></>;
+          return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter; moves 1 Na⁺ and 1 neutral amino acid together.<br/></>;
         case 'NBCe1':
-          return <><b>NBC sodium-bicarbonate cotransporter class</b>: moves Na⁺ and HCO₃⁻ together in pump-supported bicarbonate loading layouts. NBCe1 is the representative electrogenic example in SALT; NBC can pair with apical CBE or CFTR for HCO₃⁻ secretion. Routine voltage-driven reversal is not modeled.<br/></>;
+          return <><b>NBC sodium-bicarbonate cotransporter class</b>: moves 1 Na⁺ and 2 HCO₃⁻ together in pump-supported bicarbonate loading layouts. NBCe1 is the representative electrogenic example in SALT; NBC can pair with apical CBE or CFTR for HCO₃⁻ secretion. Routine voltage-driven reversal is not modeled.<br/></>;
         case 'NCC':
-          return <><b>Sodium-chloride cotransporter</b>: moves Na⁺ and Cl⁻ together by pump-supported NaCl coupling; not treated as strongly voltage-driven.<br/></>;
+          return <><b>Sodium-chloride cotransporter</b>: moves 1 Na⁺ and 1 Cl⁻ together by pump-supported NaCl coupling; not treated as strongly voltage-driven.<br/></>;
         case 'NCX1':
           return <><b>Sodium-calcium exchanger</b>: exchanges 3 Na⁺ and 1 Ca²⁺ in opposite directions. In SALT, Ca²⁺ extrusion requires pump support and a Ca²⁺ loading context such as opposite-membrane TRPV5/6.<br/></>;
         case 'NHE3':
-          return <><b>Sodium-hydrogen exchanger 3</b>: exchanges Na⁺ and H⁺ in opposite directions using pump-supported Na⁺ gradient and existing pH teaching logic.<br/></>;
+          return <><b>Sodium-hydrogen exchanger 3</b>: exchanges 1 Na⁺ and 1 H⁺ in opposite directions using pump-supported Na⁺ gradient and existing pH teaching logic.<br/></>;
         case 'NKCC':
-          return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves Na⁺, K⁺, and 2 Cl⁻ together using pump-supported coupled transport logic.<br/></>;
+          return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves 1 Na⁺, 1 K⁺, and 2 Cl⁻ together using pump-supported coupled transport logic.<br/></>;
         case 'NaKATPase':
           return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading. In the Mechanism view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
@@ -4078,13 +4078,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PMCA':
           return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
         case 'PepT':
-          return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves H⁺ and small peptides together.<br/></>;
+          return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves 1 H⁺ and 1 small peptide together.<br/></>;
         case 'Pendrin':
           return <><b>Chloride-bicarbonate exchanger (CBE)</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'ROMK':
           return <><b>Kir potassium channel class</b>: passive K⁺ movement follows the simplified electrochemical tendency. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
-          return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves Na⁺ and glucose together using pump-supported Na⁺ gradient logic with small bounded implicit electrical support.<br/></>;
+          return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves 1 Na⁺ and 1 glucose together using pump-supported Na⁺ gradient logic with small bounded implicit electrical support.<br/></>;
         default:
           return null;
       }
