@@ -824,8 +824,8 @@ const TRANSPORTER_DESCRIPTIONS = {
   ENaC: 'Epithelial Na+ channel: passive Na+ flux.',
   GLUT2: 'Glucose transporter class: passive glucose flux follows the glucose gradient. Includes GLUT1/GLUT2 examples.',
   TRPV56: 'TRPV5/6 Ca2+ channel class: passive Ca2+ flux with reduced teaching conductance; SALT does not model dynamic inhibition by intracellular Ca2+.',
-  HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
-  HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
+  HATPase: 'Proton-ATPase: moves 1 H+ out per ATP.',
+  HKATPase: 'Proton-potassium ATPase: moves 1 H+ out and 1 K+ in per ATP.',
   NaPi2: 'NaPi 2:1: sodium-phosphate cotransporter; moves 2 Na+ with 1 Pi. Electroneutral; represents NaPi-IIc.',
   NaPi: 'NaPi 3:1: sodium-phosphate cotransporter; moves 3 Na+ with 1 Pi. Electrogenic; represents NaPi-IIa/IIb.',
   NaAA: 'Na+-AA cotransporter: moves 1 Na+ and 1 neutral amino acid together.',
@@ -834,10 +834,10 @@ const TRANSPORTER_DESCRIPTIONS = {
   NCX1: 'Sodium-calcium exchanger: exchanges 3 Na+ and 1 Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges 1 Na+ and 1 H+ in opposite directions.',
   NKCC: 'Na-K-Cl cotransporter class: moves 1 Na+, 1 K+, and 2 Cl- together. Includes NKCC1 and NKCC2.',
-  NaKATPase: 'Sodium-potassium pump: establishes steady-state Na+ and K+ gradients.',
+  NaKATPase: 'Sodium-potassium pump: moves 3 Na+ out and 2 K+ in per ATP.',
   OAT: 'Organic anion transporter class: tertiary-active OA- exchange. Requires Na+/K+-ATPase support; SALT does not model the exchanged dicarboxylate.',
   OCT: 'Organic cation transporter class: facilitated OC+ movement.',
-  PMCA: 'Plasma membrane calcium ATPase: pumps Ca2+ out using ATP.',
+  PMCA: 'Plasma membrane calcium ATPase: moves 1 Ca2+ out per ATP.',
   MATE: 'Multidrug and toxin extrusion transporter class: exchanges 1 organic cation and 1 H+ in opposite directions.',
   MRPBCRP: 'MRP (multidrug resistance-associated protein) and BCRP (breast cancer resistance protein) transporter class: pumps organic anions out using ATP.',
   PepT: 'PepT peptide transporter class: moves 1 H+ and 1 small peptide together. Includes PepT1 and PepT2.',
@@ -3572,12 +3572,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>H⁺-ATPase:</b> proton ATPase<br/>
-          <i>Action:</i> Proton pump; pumps H⁺ out using ATP.<br/>
+          <i>Action:</i> Proton pump; moves 1 H⁺ out per ATP.<br/>
           <i>Rule:</i> Contributes to local H⁺ flux and pH tendency; completed acid/base flux is modeled when paired with NBC on the opposite membrane.
         </li>
         <li>
           <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
-          <i>Action:</i> Proton-potassium pump; exchanges one H⁺ out and K⁺ in using ATP.<br/>
+          <i>Action:</i> Proton-potassium pump; moves 1 H⁺ out and 1 K⁺ in per ATP.<br/>
           <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBC on the opposite membrane.
         </li>
         <li>
@@ -3637,7 +3637,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
-          <i>Biological action:</i> Active pump; extrudes 3 Na⁺ and imports 2 K⁺ per ATP.<br/>
+          <i>Biological action:</i> Active pump; moves 3 Na⁺ out and 2 K⁺ in per ATP.<br/>
           <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. The Mechanism view shows pump Na⁺ extrusion and K⁺ loading arrows when a modeled Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts show gradient support without net Na⁺ or K⁺ flux. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
         </li>
         <li>
@@ -3662,7 +3662,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         </li>
         <li>
           <b>PMCA:</b> plasma membrane calcium ATPase<br/>
-          <i>Action:</i> Ca²⁺ pump; pumps Ca²⁺ out using ATP.<br/>
+          <i>Action:</i> Ca²⁺ pump; moves 1 Ca²⁺ out per ATP.<br/>
           <i>Rule:</i> Can complete Ca²⁺ flux when paired with TRPV5/6 on the opposite membrane.
         </li>
         <li>
@@ -4046,9 +4046,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'TRPV56':
           return <><b>TRPV5/6 epithelial calcium channel class</b>: passive Ca²⁺ entry follows chemical tendency plus the fixed implicit membrane-potential tendency when pump support is present, with reduced teaching conductance so Ca²⁺ flux stays smaller than bulk NaCl movement. SALT does not model dynamic inhibition by intracellular Ca²⁺; unmatched entry is shown as intracellular Ca²⁺ accumulation tendency.<br/></>;
         case 'HATPase':
-          return <><b>Proton-ATPase (V-type)</b>: pumps one H⁺ out per ATP.<br/></>;
+          return <><b>Proton-ATPase (V-type)</b>: moves 1 H⁺ out per ATP.<br/></>;
         case 'HKATPase':
-          return <><b>Proton-potassium ATPase</b>: exchanges one H⁺ out for one K⁺ in per ATP.<br/></>;
+          return <><b>Proton-potassium ATPase</b>: moves 1 H⁺ out and 1 K⁺ in per ATP.<br/></>;
         case 'MATE':
           return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges 1 H⁺ and 1 organic cation in opposite directions.<br/></>;
         case 'MRPBCRP':
@@ -4070,13 +4070,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NKCC':
           return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves 1 Na⁺, 1 K⁺, and 2 Cl⁻ together using pump-supported coupled transport logic.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium-potassium pump</b>: establishes steady-state low cell Na⁺ and high cell K⁺ when present. Density limits supported Na⁺ extrusion or K⁺ loading. In the Mechanism view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
+          return <><b>Sodium-potassium pump</b>: moves 3 Na⁺ out and 2 K⁺ in per ATP. Density limits supported Na⁺ extrusion or K⁺ loading. In the Mechanism view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
           return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; tertiary-active OA⁻ uptake for secretion pathways. Requires Na⁺/K⁺-ATPase support; SALT does not model the exchanged dicarboxylate.<br/></>;
         case 'OCT':
           return <><b>OCT transporter class</b>: representative members include OCT1 and OCT2; facilitated OC⁺ movement.<br/></>;
         case 'PMCA':
-          return <><b>Plasma membrane calcium ATPase</b>: pumps one Ca²⁺ out per ATP.<br/></>;
+          return <><b>Plasma membrane calcium ATPase</b>: moves 1 Ca²⁺ out per ATP.<br/></>;
         case 'PepT':
           return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves 1 H⁺ and 1 small peptide together.<br/></>;
         case 'Pendrin':
