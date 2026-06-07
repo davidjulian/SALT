@@ -358,19 +358,19 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
 
 const INITIAL_TRANSPORTERS = [
   { id: 'AQP',      name: 'AQP',        type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AE1',      name: 'AE1/2',      type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'AE1',      name: 'CBE',        type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PiFacilitator', name: 'Pi Facilitator', type: 'carrier', stoich: { Phosphate: -1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'CFTR',     name: 'CFTR',       type: 'channel',    stoich: { 'Cl-': -1, 'HCO3-': -0.5 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ClCKb',    name: 'ClC',        type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'GLUT2',    name: 'GLUT2',      type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
+  { id: 'GLUT2',    name: 'GLUT',       type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', density: 1 },
   { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NaPi2',    name: 'NaPi 2:1',   type: 'symporter',  stoich: { 'Na+': 2, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NaPi',     name: 'NaPi 3:1',   type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NBCe1',    name: 'NBCe1',      type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
+  { id: 'NBCe1',    name: 'NBC',        type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
   { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
   { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
@@ -383,15 +383,25 @@ const INITIAL_TRANSPORTERS = [
   { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'Pendrin',  name: 'SLC26 CBE', type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
   { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
 ];
 
+const TRANSPORTER_ID_ALIASES = {
+  CBE: 'AE1',
+  Pendrin: 'AE1',
+  GLUT: 'GLUT2',
+  NBC: 'NBCe1'
+};
+
+function canonicalTransporterId(id) {
+  return TRANSPORTER_ID_ALIASES[id] || id;
+}
+
 const TRANSPORTER_GROUPS = [
   { label: 'Channels', ids: ['AQP', 'CFTR', 'ClCKb', 'ENaC', 'ROMK', 'TRPV56'] },
   { label: 'Cotransporters', ids: ['NaAA', 'NaPi2', 'NaPi', 'NBCe1', 'NCC', 'NKCC', 'PepT', 'SGLT'] },
-  { label: 'Exchangers', ids: ['AE1', 'NCX1', 'NHE3', 'Pendrin'] },
+  { label: 'Exchangers', ids: ['AE1', 'NCX1', 'NHE3'] },
   { label: 'Facilitators', ids: ['GLUT2', 'PiFacilitator'] },
   { label: 'Organic Solute Carriers', ids: ['AAFacilitator', 'MATE', 'MRPBCRP', 'OAT', 'OCT'] },
   { label: 'Pumps', ids: ['HATPase', 'HKATPase', 'NaKATPase', 'PMCA'] }
@@ -443,7 +453,7 @@ const TISSUE_OPTIONS = [
     value: 'collecting-duct-beta',
     label: 'Beta-intercalated cell',
     group: 'Kidney and urinary tract',
-    transporterIds: ['Pendrin', 'HATPase', 'ClCKb']
+    transporterIds: ['AE1', 'HATPase', 'ClCKb']
   },
   {
     value: 'gastric-parietal',
@@ -467,31 +477,31 @@ const TISSUE_OPTIONS = [
     value: 'colon-absorptive',
     label: 'Colon absorptive epithelium',
     group: 'Gastrointestinal and hepatobiliary',
-    transporterIds: ['AQP', 'ENaC', 'NHE3', 'NaKATPase', 'ClCKb', 'Pendrin', 'HATPase']
+    transporterIds: ['AQP', 'ENaC', 'NHE3', 'NaKATPase', 'ClCKb', 'AE1', 'HATPase']
   },
   {
     value: 'gallbladder',
     label: 'Gallbladder epithelium',
     group: 'Gastrointestinal and hepatobiliary',
-    transporterIds: ['AQP', 'CFTR', 'NHE3', 'ClCKb', 'Pendrin', 'NaKATPase']
+    transporterIds: ['AQP', 'CFTR', 'NHE3', 'ClCKb', 'AE1', 'NaKATPase']
   },
   {
     value: 'pancreatic-duct',
     label: 'Pancreatic duct',
     group: 'Exocrine, airway, and skin',
-    transporterIds: ['AQP', 'CFTR', 'NBCe1', 'Pendrin', 'ClCKb', 'NHE3', 'NaKATPase', 'HATPase']
+    transporterIds: ['AQP', 'CFTR', 'NBCe1', 'AE1', 'ClCKb', 'NHE3', 'NaKATPase', 'HATPase']
   },
   {
     value: 'salivary-duct',
     label: 'Salivary duct',
     group: 'Exocrine, airway, and skin',
-    transporterIds: ['ENaC', 'ROMK', 'CFTR', 'ClCKb', 'Pendrin', 'NBCe1', 'NaKATPase']
+    transporterIds: ['ENaC', 'ROMK', 'CFTR', 'ClCKb', 'AE1', 'NBCe1', 'NaKATPase']
   },
   {
     value: 'airway-surface',
     label: 'Airway surface epithelium',
     group: 'Exocrine, airway, and skin',
-    transporterIds: ['AQP', 'CFTR', 'ENaC', 'ClCKb', 'NaKATPase', 'Pendrin']
+    transporterIds: ['AQP', 'CFTR', 'ENaC', 'ClCKb', 'NaKATPase', 'AE1']
   },
   {
     value: 'sweat-duct',
@@ -594,7 +604,7 @@ const TISSUE_DEMO_PRESETS = {
   'collecting-duct-beta': {
     paracellularType: 'none',
     placements: {
-      apical: ['Pendrin'],
+      apical: ['AE1'],
       basolateral: ['HATPase', 'ClCKb']
     }
   },
@@ -622,35 +632,35 @@ const TISSUE_DEMO_PRESETS = {
   'colon-absorptive': {
     paracellularType: 'anion',
     placements: {
-      apical: ['AQP', 'ENaC', 'NHE3', 'Pendrin', 'HATPase'],
+      apical: ['AQP', 'ENaC', 'NHE3', 'AE1', 'HATPase'],
       basolateral: ['AQP', 'NaKATPase', 'ClCKb']
     }
   },
   gallbladder: {
     paracellularType: 'cation',
     placements: {
-      apical: ['AQP', 'CFTR', 'NHE3', 'Pendrin'],
+      apical: ['AQP', 'CFTR', 'NHE3', 'AE1'],
       basolateral: ['AQP', 'ClCKb', 'NaKATPase']
     }
   },
   'pancreatic-duct': {
     paracellularType: 'cation',
     placements: {
-      apical: ['AQP', { id: 'CFTR', density: 2 }, 'Pendrin', { id: 'NHE3', density: 0.5 }],
+      apical: ['AQP', { id: 'CFTR', density: 2 }, 'AE1', { id: 'NHE3', density: 0.5 }],
       basolateral: ['AQP', 'NBCe1', { id: 'ClCKb', density: 2 }, 'NaKATPase', 'HATPase']
     }
   },
   'salivary-duct': {
     paracellularType: 'none',
     placements: {
-      apical: ['ENaC', 'ROMK', 'CFTR', 'Pendrin'],
+      apical: ['ENaC', 'ROMK', 'CFTR', 'AE1'],
       basolateral: ['ClCKb', 'NaKATPase', 'NBCe1']
     }
   },
   'airway-surface': {
     paracellularType: 'cation',
     placements: {
-      apical: ['AQP', 'CFTR', 'ENaC', 'Pendrin'],
+      apical: ['AQP', 'CFTR', 'ENaC', 'AE1'],
       basolateral: ['AQP', 'ClCKb', 'NaKATPase']
     }
   },
@@ -777,14 +787,15 @@ function createTransporterUid(id, placement) {
 }
 
 function createTransporterInstance(id, placement, density = 1) {
-  const template = INITIAL_TRANSPORTERS.find(t => t.id === id);
+  const canonicalId = canonicalTransporterId(id);
+  const template = INITIAL_TRANSPORTERS.find(t => t.id === canonicalId);
   if (!template) return null;
   return {
     ...template,
     kinetics: { ...template.kinetics },
     placement,
     density,
-    uid: createTransporterUid(id, placement)
+    uid: createTransporterUid(canonicalId, placement)
   };
 }
 
@@ -804,21 +815,21 @@ function demoTransportersForTissue(tissuePreset) {
 }
 
 const TRANSPORTER_DESCRIPTIONS = {
-  AE1: 'Anion exchanger 1/2 class: exchanges Cl- and HCO3- in opposite directions. Includes AE1 and AE2.',
+  AE1: 'Chloride-bicarbonate exchanger: exchanges Cl- and HCO3- in opposite directions. Includes AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1 examples.',
   AAFacilitator: 'AA facilitator: generic facilitated neutral amino acid transporter.',
   PiFacilitator: 'Pi Facilitator: generic facilitated inorganic phosphate transporter.',
   AQP: 'Aquaporin water channel class: supports H2O movement when apical and basolateral AQP form a complete pathway. Includes AQP2, AQP3, AQP4.',
   CFTR: 'Cystic fibrosis transmembrane conductance regulator: passive Cl- and HCO3- flux.',
   ClCKb: 'ClC chloride channel class: passive Cl- flux. Includes ClC-K.',
   ENaC: 'Epithelial Na+ channel: passive Na+ flux.',
-  GLUT2: 'Glucose transporter 2: passive glucose flux follows the glucose gradient.',
+  GLUT2: 'Glucose transporter class: passive glucose flux follows the glucose gradient. Includes GLUT1/GLUT2 examples.',
   TRPV56: 'TRPV5/6 Ca2+ channel class: passive Ca2+ flux with reduced teaching conductance; SALT does not model dynamic inhibition by intracellular Ca2+.',
   HATPase: 'Proton-ATPase: pumps H+ out using ATP.',
   HKATPase: 'Proton-potassium ATPase: exchanges one H+ out for one K+ in using ATP.',
   NaPi2: 'NaPi 2:1: sodium-phosphate cotransporter; moves 2 Na+ with 1 Pi. Electroneutral; represents NaPi-IIc.',
   NaPi: 'NaPi 3:1: sodium-phosphate cotransporter; moves 3 Na+ with 1 Pi. Electrogenic; represents NaPi-IIa/IIb.',
   NaAA: 'Na+-AA cotransporter: generic Na+-coupled neutral amino acid transporter.',
-  NBCe1: 'Electrogenic sodium bicarbonate cotransporter: moves Na+ and HCO3- together.',
+  NBCe1: 'Sodium-bicarbonate cotransporter class: moves Na+ and HCO3- together. NBCe1 is the representative electrogenic example in SALT.',
   NCC: 'Sodium-chloride cotransporter: moves Na+ and Cl- together.',
   NCX1: 'Sodium-calcium exchanger: exchanges Na+ and Ca2+ in opposite directions.',
   NHE3: 'Sodium-hydrogen exchanger: exchanges Na+ and H+ in opposite directions.',
@@ -830,7 +841,6 @@ const TRANSPORTER_DESCRIPTIONS = {
   MATE: 'Multidrug and toxin extrusion transporter class: exchanges organic cations and H+ in opposite directions.',
   MRPBCRP: 'MRP (multidrug resistance-associated protein) and BCRP (breast cancer resistance protein) transporter class: pumps organic anions out using ATP.',
   PepT: 'PepT peptide transporter class: moves H+ and small peptides together. Includes PepT1 and PepT2.',
-  Pendrin: 'SLC26 chloride-bicarbonate exchanger (CBE) class: exchanges Cl- and HCO3- in opposite directions. Includes pendrin as well as related DRA/PAT-1/SLC26A6-type exchangers.',
   ROMK: 'Kir potassium channel class: passive K+ flux. Includes ROMK.',
   SGLT: 'Sodium-glucose-linked transporter class: moves Na+ and glucose together. Includes SGLT1 and SGLT2.'
 };
@@ -941,7 +951,7 @@ const CELL_IMBALANCE_EPSILON = 0.1;
 const ELECTROCHEMICAL_CONTEXT_EPSILON = 0.05;
 const COUPLED_MISMATCH_EPSILON = 0.05;
 const COUPLED_COMPLETION_FRACTION = 0.85;
-const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID, 'AE1', 'CFTR', 'Pendrin', 'MATE', 'PepT'];
+const COUPLED_MISMATCH_EXCLUSIONS = [SUPPORT_PUMP_ID, 'AE1', 'CFTR', 'MATE', 'PepT'];
 
 function cloneConcentrations(source) {
   return {
@@ -1613,7 +1623,10 @@ export default function App() {
 
 // Helper to get placements for a transporter in this simulation step
 function placementsForTick(id, tList) {
-  return tList.filter(t => t.id === id && t.placement !== 'none').map(t => t.placement);
+  const canonicalId = canonicalTransporterId(id);
+  return tList
+    .filter(t => canonicalTransporterId(t.id) === canonicalId && t.placement !== 'none')
+    .map(t => t.placement);
 }
 
 // Refactored transepithelialFlux
@@ -1960,7 +1973,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const rawPhosphateTransEpiFlux = transepithelialFlux('Phosphate', NAPI_TRANSPORTER_IDS, ['PiFacilitator'], true, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const phosphateTransEpiFlux = naPiPhosphateFluxWithNaSupport(rawPhosphateTransEpiFlux, coupledEvents, supportedNaAbsorption);
   const naTransEpiFlux = supportedNaAbsorption;
-  const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], ['NKCC','NCC','ClCKb','AE1','Pendrin','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','CFTR'], ['NKCC','NCC','ClCKb','AE1','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
 
   // K+ logic (HKATPase or other)
@@ -1979,8 +1992,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   }
 
   const hExtruders = tList.filter(t => ['NHE3','HATPase','HKATPase'].includes(t.id) && t.placement !== 'none');
-  const hco3ExitTransporters = tList.filter(t => ['NBCe1','AE1','Pendrin'].includes(t.id) && t.placement !== 'none');
-  const directHco3TransEpiFlux = transepithelialFlux('HCO3-', ['NBCe1','AE1'], ['CFTR','Pendrin'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
+  const hco3ExitTransporters = tList.filter(t => ['NBCe1','AE1'].includes(canonicalTransporterId(t.id)) && t.placement !== 'none');
+  const directHco3TransEpiFlux = transepithelialFlux('HCO3-', ['NBCe1','AE1'], ['CFTR','AE1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   let hTransEpiFlux = 0;
   let hco3TransEpiFlux = directHco3TransEpiFlux;
   let acidBaseFluxPairs = [];
@@ -1995,7 +2008,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     for (let t of hExtruders) {
       for (let hco3Exit of hco3ExitTransporters) {
         if (t.placement !== hco3Exit.placement) {
-          const pairHasSupport = hasNaKATPase || (t.id !== 'NHE3' && hco3Exit.id !== 'NBCe1');
+          const pairHasSupport = hasNaKATPase || (t.id !== 'NHE3' && canonicalTransporterId(hco3Exit.id) !== 'NBCe1');
           if (!pairHasSupport) continue;
           const extruderRate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
           const hco3Stoich = Math.abs(hco3Exit.stoich['HCO3-'] || 1);
@@ -2322,8 +2335,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const visibleIonDirectionalFluxGroups = visibleDirectionalFluxGroups.filter(group => group.key === 'ions');
   const visibleSupplementalDirectionalFluxGroups = visibleDirectionalFluxGroups.filter(group => group.key !== 'ions');
 
-  const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === modalTransporterId);
-  const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === id);
+  const modalTransporter = INITIAL_TRANSPORTERS.find(t => t.id === canonicalTransporterId(modalTransporterId));
+  const transporterTemplateById = id => INITIAL_TRANSPORTERS.find(t => t.id === canonicalTransporterId(id));
   const membraneTransporters = placement => transporters.filter(t => t.placement === placement);
   const transporterIsOnMembrane = (id, placement) => transporters.some(t => t.id === id && t.placement === placement);
   const effectiveBackgroundOsmoticPull = resolveBackgroundOsmoticPull(tissueOption.value, backgroundOsmoticPullSetting);
@@ -3487,7 +3500,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
-        <li><b>Class-level transporters:</b> AQP, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NKCC, TRPV5/6, SLC26 CBE, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Class-level transporters:</b> AQP, GLUT, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NBC, NKCC, TRPV5/6, CBE, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
         <li><b>Organic ion transport:</b> Organic ion transport is simplified in SALT. OAT represents tertiary-active organic anion uptake used in secretion pathways. In real proximal tubule cells, OAT exchange is supported indirectly by the Na⁺ gradient and intracellular dicarboxylates, but SALT does not model those exchanged solutes. Therefore, OAT requires Na⁺/K⁺-ATPase support in the model. MRP/BCRP represents simplified organic anion efflux, while OCT and MATE provide a simplified organic cation secretion pathway.</li>
         <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. The Mechanism view shows Na⁺ extrusion and K⁺ loading arrows when any modeled Na⁺ entry or K⁺ exit pathway gives the pump a pathway to cycle; pump-only layouts establish gradients without showing Na⁺ or K⁺ flux arrows. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. Apical Kir-mediated K⁺ recycling can add a lumen-positive TEP tendency when paired with apical K⁺ loading. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 uses a reduced teaching conductance so Ca²⁺ absorption remains smaller than bulk NaCl transport; dynamic inhibition by intracellular Ca²⁺ is not modeled.</li>
       </ul>
@@ -3511,9 +3524,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
         <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
-        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, CFTR, and TRPV5/6 use simplified electrochemical direction rules when Na⁺/K⁺-ATPase is present and primarily follow chemical concentration tendency when it is absent. GLUT2 remains non-voltage-sensitive and follows the glucose gradient.</li>
+        <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, CFTR, and TRPV5/6 use simplified electrochemical direction rules when Na⁺/K⁺-ATPase is present and primarily follow chemical concentration tendency when it is absent. GLUT remains non-voltage-sensitive and follows the glucose gradient.</li>
         <li><b>Coupled transport and exchangers:</b> Na⁺-coupled cotransporters and exchangers remain governed primarily by pump-supported Na⁺ gradient logic, stoichiometric coupling, and pathway completion. Selected electrogenic coupled pathways receive only small bounded implicit-Vm support and are not allowed to reverse routine teaching layouts.</li>
-        <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBCe1, NCC, NKCC, NHE3, AE1/2, and SLC26 CBE remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
+        <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBC, NCC, NKCC, NHE3, and CBE remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch, intracellular accumulation/depletion tendencies, or qualitative acid/base cell tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the detailed results below.</li>
         <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
@@ -3523,9 +3536,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <h3 className="text-lg font-semibold mt-6 mb-1">Transporter Actions &amp; Rules</h3>
       <ul className="list-disc ml-6 text-sm space-y-2">
         <li>
-          <b>AE1/2:</b> anion exchanger 1/2 class; includes AE1 and AE2<br/>
+          <b>CBE:</b> chloride-bicarbonate exchanger<br/>
           <i>Action:</i> Cl⁻/HCO₃⁻ exchanger; moves Cl⁻ and HCO₃⁻ in opposite directions.<br/>
-          <i>Rule:</i> Can pair with an opposite-membrane proton extruder to support acid secretion/base absorption or the reverse, depending on placement. Voltage-driven reversal is not added in this teaching phase.
+          <i>Rule:</i> Represents chloride-bicarbonate exchanger activity. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Can pair with an opposite-membrane proton extruder to support acid secretion/base absorption or the reverse, depending on placement. Voltage-driven reversal is not added in this teaching phase.
         </li>
         <li>
           <b>AA facilitator:</b> facilitated amino acid transporter class; representative examples include LAT/SLC7 family transporters<br/>
@@ -3553,19 +3566,19 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can provide Na⁺ entry when placed on a membrane. Completed transepithelial Na⁺ absorption is limited by available apical Na⁺ entry and Na⁺/K⁺-ATPase extrusion support.
         </li>
         <li>
-          <b>GLUT2:</b> glucose transporter 2<br/>
+          <b>GLUT:</b> glucose transporter class<br/>
           <i>Action:</i> Facilitated glucose transporter; passive glucose flux follows the glucose gradient.<br/>
-          <i>Rule:</i> SGLT can raise modeled cell glucose enough to drive GLUT2. If the adjacent bath glucose is higher than the displayed cell glucose, GLUT2 favors glucose entry instead of exit.
+          <i>Rule:</i> SGLT can raise modeled cell glucose enough to drive GLUT. If the adjacent bath glucose is higher than the displayed cell glucose, GLUT favors glucose entry instead of exit.
         </li>
         <li>
           <b>H⁺-ATPase:</b> proton ATPase<br/>
           <i>Action:</i> Proton pump; pumps H⁺ out using ATP.<br/>
-          <i>Rule:</i> Contributes to local H⁺ flux and pH tendency; completed acid/base flux is modeled when paired with NBCe1 on the opposite membrane.
+          <i>Rule:</i> Contributes to local H⁺ flux and pH tendency; completed acid/base flux is modeled when paired with NBC on the opposite membrane.
         </li>
         <li>
           <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
           <i>Action:</i> Proton-potassium pump; exchanges one H⁺ out and K⁺ in using ATP.<br/>
-          <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBCe1 on the opposite membrane.
+          <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBC on the opposite membrane.
         </li>
         <li>
           <b>Kir:</b> inward-rectifier potassium channel class<br/>
@@ -3598,9 +3611,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Requires Na⁺/K⁺-ATPase support and pairs with an AA facilitator on the opposite membrane for completed amino acid transport.
         </li>
         <li>
-          <b>NBCe1:</b> electrogenic sodium bicarbonate cotransporter 1<br/>
+          <b>NBC:</b> sodium-bicarbonate cotransporter class<br/>
           <i>Action:</i> Electrogenic Na⁺-bicarbonate cotransporter; moves Na⁺ and HCO₃⁻ together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present. Basolateral NBCe1 can support HCO₃⁻ loading in bicarbonate secretory layouts, including pairing with apical SLC26 CBE or CFTR for HCO₃⁻ secretion. It can also pair with proton extruders for transepithelial acid/base flux. Routine voltage-driven reversal is not modeled.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present. NBCe1 is the representative electrogenic example in SALT. Basolateral NBC can support HCO₃⁻ loading in bicarbonate secretory layouts, including pairing with apical CBE or CFTR for HCO₃⁻ secretion. It can also pair with proton extruders for transepithelial acid/base flux. Routine voltage-driven reversal is not modeled.
         </li>
         <li>
           <b>NCC:</b> sodium-chloride cotransporter<br/>
@@ -3615,7 +3628,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>NHE3:</b> sodium-hydrogen exchanger 3<br/>
           <i>Action:</i> Na⁺/H⁺ exchanger; exchanges Na⁺ and H⁺ in opposite directions.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBCe1 for transepithelial HCO₃⁻ and H⁺ flux. The Na⁺ gradient and pH teaching rule remain primary.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; activity decreases at higher pH; paired with NBC for transepithelial HCO₃⁻ and H⁺ flux. The Na⁺ gradient and pH teaching rule remain primary.
         </li>
         <li>
           <b>NKCC:</b> sodium-potassium-chloride cotransporter class; representative members include NKCC1 and NKCC2<br/>
@@ -3638,11 +3651,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           <i>Rule:</i> Can pair with MATE on the opposite membrane for organic cation transport.
         </li>
         <li>
-          <b>SLC26 CBE:</b> SLC26 chloride-bicarbonate exchanger class<br/>
-          <i>Action:</i> Cl⁻/HCO₃⁻ exchanger; moves Cl⁻ and HCO₃⁻ in opposite directions.<br/>
-          <i>Rule:</i> Represents SLC26-family chloride-bicarbonate exchangers, including pendrin and related DRA/PAT-1/SLC26A6-type exchangers. Can pair with basolateral NBCe1 for HCO₃⁻ secretion or with an opposite-membrane proton extruder for paired acid/base flux. It can contribute to Cl⁻/HCO₃⁻ imbalance when placed without a matching pathway. Voltage-driven reversal is not added in this teaching phase.
-        </li>
-        <li>
           <b>PepT:</b> peptide transporter class; representative members include PepT1 and PepT2<br/>
           <i>Action:</i> H⁺-coupled small peptide movement.<br/>
           <i>Rule:</i> Peptide-derived nutrient absorption can be completed by an AA facilitator on the opposite membrane, representing intracellular peptide hydrolysis in this teaching layer.
@@ -3660,7 +3668,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>
           <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
           <i>Action:</i> Na⁺-glucose symporter; co-transports Na⁺ and glucose together.<br/>
-          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT2 must be on opposite membranes. Pump-supported Na⁺ gradient logic dominates; the implicit cell-negative context provides only small bounded support and does not create routine reversal.
+          <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT must be on opposite membranes. Pump-supported Na⁺ gradient logic dominates; the implicit cell-negative context provides only small bounded support and does not create routine reversal.
         </li>
         <li>
           <b>TRPV5/6:</b> epithelial calcium channel class; representative members include renal TRPV5 and intestinal TRPV6<br/>
@@ -3697,16 +3705,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
-        <li><b>Glucose:</b> SGLT on one membrane and GLUT2 on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
+        <li><b>Glucose:</b> SGLT on one membrane and GLUT on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling. The Mechanism view can trace pump cycling from Na⁺ entry on either membrane.</li>
         <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. With Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity.</li>
-        <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, AE1/2, or SLC26 CBE can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
+        <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, or CBE can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
         <li><b>Amino acids:</b> Na⁺-AA on one membrane and AA facilitator on the opposite membrane produce completed neutral amino acid transport.</li>
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> Pump-supported OAT and MRP/BCRP on opposite membranes complete organic anion pathways. OCT and MATE on opposite membranes complete organic cation pathways.</li>
-        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBCe1, AE1/2, or SLC26 CBE on the opposite membrane can create paired acid/base flux. Basolateral NBCe1 can also load HCO₃⁻ for apical SLC26 CBE or CFTR-mediated HCO₃⁻ secretion. NHE3 and NBCe1 require Na⁺/K⁺-ATPase support; AE1/2, SLC26 CBE, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
+        <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBC or CBE on the opposite membrane can create paired acid/base flux. Basolateral NBC can also load HCO₃⁻ for apical CBE or CFTR-mediated HCO₃⁻ secretion. NHE3 and NBC require Na⁺/K⁺-ATPase support; CBE, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
         <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
@@ -4020,7 +4028,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     {(() => {
       switch (modalTransporter.id) {
         case 'AE1':
-          return <><b>Anion exchanger 1/2 class</b>: includes AE1 and AE2; exchanges Cl⁻ and HCO₃⁻ in opposite directions. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
+          return <><b>Chloride-bicarbonate exchanger (CBE)</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'AAFacilitator':
           return <><b>AA facilitator</b>: generic facilitated neutral amino acid transporter; representative examples include LAT/SLC7 family transporters.<br/></>;
         case 'PiFacilitator':
@@ -4034,7 +4042,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'ENaC':
           return <><b>Epithelial sodium channel</b>: passive Na⁺ movement follows chemical tendency plus the fixed implicit membrane-potential tendency when pump support is present.<br/></>;
         case 'GLUT2':
-          return <><b>Glucose transporter 2</b>: passive glucose flux follows the glucose gradient.<br/></>;
+          return <><b>GLUT glucose transporter class</b>: passive glucose flux follows the glucose gradient. GLUT1 and GLUT2 are representative examples.<br/></>;
         case 'TRPV56':
           return <><b>TRPV5/6 epithelial calcium channel class</b>: passive Ca²⁺ entry follows chemical tendency plus the fixed implicit membrane-potential tendency when pump support is present, with reduced teaching conductance so Ca²⁺ flux stays smaller than bulk NaCl movement. SALT does not model dynamic inhibition by intracellular Ca²⁺; unmatched entry is shown as intracellular Ca²⁺ accumulation tendency.<br/></>;
         case 'HATPase':
@@ -4052,7 +4060,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'NaAA':
           return <><b>Na⁺-AA cotransporter</b>: generic Na⁺-coupled neutral amino acid transporter.<br/></>;
         case 'NBCe1':
-          return <><b>Electrogenic sodium bicarbonate cotransporter 1</b>: moves Na⁺ and HCO₃⁻ together in pump-supported bicarbonate loading layouts; can pair with apical SLC26 CBE or CFTR for HCO₃⁻ secretion. Routine voltage-driven reversal is not modeled.<br/></>;
+          return <><b>NBC sodium-bicarbonate cotransporter class</b>: moves Na⁺ and HCO₃⁻ together in pump-supported bicarbonate loading layouts. NBCe1 is the representative electrogenic example in SALT; NBC can pair with apical CBE or CFTR for HCO₃⁻ secretion. Routine voltage-driven reversal is not modeled.<br/></>;
         case 'NCC':
           return <><b>Sodium-chloride cotransporter</b>: moves Na⁺ and Cl⁻ together by pump-supported NaCl coupling; not treated as strongly voltage-driven.<br/></>;
         case 'NCX1':
@@ -4072,7 +4080,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         case 'PepT':
           return <><b>PepT transporter class</b>: representative members include PepT1 and PepT2; moves H⁺ and small peptides together.<br/></>;
         case 'Pendrin':
-          return <><b>SLC26 chloride-bicarbonate exchanger (CBE) class</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions. Includes pendrin and related DRA/PAT-1/SLC26A6-type exchangers; can pair with basolateral NBCe1 for HCO₃⁻ secretion. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
+          return <><b>Chloride-bicarbonate exchanger (CBE)</b>: exchanges Cl⁻ and HCO₃⁻ in opposite directions. Biological examples include AE1/2, pendrin, DRA/SLC26A3, and SLC26A6/PAT-1. Behavior remains placement- and coupling-based rather than voltage-driven.<br/></>;
         case 'ROMK':
           return <><b>Kir potassium channel class</b>: passive K⁺ movement follows the simplified electrochemical tendency. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
