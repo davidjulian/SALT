@@ -15,7 +15,7 @@ You need four conventions to begin:
    - The **basolateral membrane** faces the **blood side** (**interstitial fluid side**).
 2. **Absorption** means the net movement of water or a solute from the lumen to the blood side.
 3. **Secretion** means the net movement of water or a solute from the blood side to the lumen.
-4. In the Membrane and Epithelial Fluxes output:
+4. In the Results frame, the **Mechanism** tab is the main place to look for transporter actions and pathway roles. The **Fluxes** and **Concentrations** tabs remain available for movement, gradient, and quantitative checks.
    - **Positive flux = absorption = movement toward blood**
    - **Negative flux = secretion = movement toward lumen**
 
@@ -50,8 +50,9 @@ By the end of this lesson, you should be able to:
 
 In the Results frame (the output displays on the right side of the app), look at:
 
-- **Membrane and Epithelial Fluxes**: These graphs display fluxes across the apical membrane, basolateral membrane, paracellular pathway, and net epithelium for all solutes modeled in SALT. Note that there are three graphs: 1) **Inorganic Ions**, 2) **Nutrients**, and 3) **Organic Ions**. The Nutrients graph and Organic Ions graph remain hidden unless there are relevant fluxes, so they are not currently visible.
-- **Solute Concentrations**: This graph displays solute concentrations in the apical bulk ECF, apical surface ECF, ICF, basolateral surface ECF, and basolateral bulk ECF. The graph shows the major solutes.     
+- **Mechanism**: This tab shows the transporter layout, mechanism arrows, and qualitative pathway summary.
+- **Fluxes**: This tab displays movement across the apical membrane, basolateral membrane, paracellular pathway, and net epithelium for all solutes modeled in SALT. Note that there are three graph groups: 1) **Inorganic Ions**, 2) **Nutrients**, and 3) **Organic Ions**. The Nutrients graph and Organic Ions graph remain hidden unless there are relevant fluxes, so they are not currently visible.
+- **Concentrations**: This tab displays solute concentrations in the apical bulk ECF, apical surface ECF, ICF, basolateral surface ECF, and basolateral bulk ECF. The graph shows the major solutes.
 
 Focus on the Na⁺ and K⁺ concentrations and whether there are any fluxes.
 
@@ -115,7 +116,7 @@ Remember:
 
 ### Part 2
 
-In the Results frame, under **Charge & Polarity**, examine **Transepithelial Potential**.
+In the Results Snapshot, examine **TEP**. For more detail, open the **Details** tab and look under **Charge & Polarity**.
 
 You already know membrane potential from excitable cells. **Transepithelial potential**, or **TEP**, is different. While membrane potential is the voltage across one cell membrane, TEP is the voltage across the entire epithelial layer, comparing the lumen side with the blood/interstitial side.
 
@@ -129,7 +130,7 @@ Note that SALT reports TEP qualitatively. Treat it as an epithelial-scale electr
 
 ### Part 3
 
-Note that there is a **Cell balance** card at the top left of the Results frame. It should now indicate intracellular K⁺ accumulation. To examine this tendency in more detail, look at the **Cell Balance** table that is lower in the Results frame.
+Note that there is a **Cell balance** card in the Results Snapshot. It should now indicate intracellular K⁺ accumulation. To examine this tendency in more detail, open the **Concentrations** tab and look at the **Intracellular Balance** table.
 > [!NOTE]
 > **Result:** Intracellular K⁺ accumulation (0.33)
 
@@ -175,7 +176,7 @@ Targets:
 By the end of this lesson, you should be able to:
 
 - Predict passive glucose movement from glucose gradients and transporter placement.
-- Explain why GLUT2 can move glucose down its gradient but cannot drive glucose uphill.
+- Explain why GLUT can move glucose down its gradient but cannot drive glucose uphill.
 - Explain why glucose uptake against its gradient requires an energy source.
 - Describe how SGLT uses the Na⁺ gradient to support glucose uptake.
 - Explain how Na⁺/K⁺-ATPase indirectly supports glucose absorption.
@@ -190,7 +191,7 @@ Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway*
 
 ## Experiment 2A: Inspect the Glucose Gradient
 
-Look at the **Solute Concentrations** graph and find glucose.
+Open the **Concentrations** tab, look at the solute concentration graph, and find glucose.
 
 Compare:
 
@@ -204,26 +205,26 @@ Compare:
 > [!TIP]
 > Insight 2A: Glucose has a concentration gradient before any glucose transporter is added.
 
-## Experiment 2B: GLUT2
+## Experiment 2B: GLUT
 
-In this experiment, you will test the passive glucose transporter **GLUT2**, which can be added from *Facilitators* in the transporter menus.
+In this experiment, you will test the passive glucose transporter **GLUT**, which can be added from *Facilitators* in the transporter menus.
 ```
-Apical GLUT2
+Apical GLUT
 (Barrier paracellular pathway)
 ```
-Look at glucose in the Membrane and Epithelial Fluxes graph.
+Look at glucose in the **Mechanism** tab first, then check the **Fluxes** tab if you want the flux values.
 
 > [!NOTE]
 > **Result:** Positive apical glucose flux (1.14), increased ICF glucose concentration (2.14)
 
 > [!TIP]
-> Insight 2B: Apical GLUT2 allows passive glucose movement into the cell when the glucose gradient favors entry.
+> Insight 2B: Apical GLUT allows passive glucose movement into the cell when the glucose gradient favors entry.
 
-## Experiment 2C: Basolateral GLUT2
+## Experiment 2C: Basolateral GLUT
 
-Remove the apical GLUT2 and prepare the following layout:
+Remove the apical GLUT and prepare the following layout:
 ```
-Basolateral GLUT2
+Basolateral GLUT
 (Barrier paracellular pathway)
 ```
 Observe glucose flux again.
@@ -233,11 +234,11 @@ Observe glucose flux again.
 > Negative basolateral glucose flux (-1.14), increased ICF glucose concentration (2.14)
 
 > [!TIP]
-> Insight 2C: Basolateral GLUT2 can provide a glucose pathway, but placement determines which compartment it connects to the cell.
+> Insight 2C: Basolateral GLUT can provide a glucose pathway, but placement determines which compartment it connects to the cell.
 
 ## Experiment 2D: SGLT 
 
-GLUT2 can provide a passive glucose pathway, with the net flux direction depending on the glucose gradient. Therefore, with the current ECF and ICF glucose concentrations, net glucose flux is into the cell regardless of which membrane GLUT2 is placed on.
+GLUT can provide a passive glucose pathway, with the net flux direction depending on the glucose gradient. Therefore, with the current ECF and ICF glucose concentrations, net glucose flux is into the cell regardless of which membrane GLUT is placed on.
 
 Assume that the goal is to increase the intracellular glucose concentration *above* the ECF glucose concentration. This would require uphill glucose transport against its concentration gradient.
 
@@ -247,7 +248,7 @@ Keep the transporter layout from the preceding experiment, but add apical SGLT:
 
 ```
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway)
 ```
@@ -270,7 +271,7 @@ Remove the basolateral Na⁺/K⁺-ATPase and prepare the following layout:
 
 ```
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 (Barrier paracellular pathway)
 ```
 Observe:
@@ -281,7 +282,7 @@ Glucose flux
 Net epithelial glucose flux
 
 > [!NOTE]
-> **Result:** Reverts to conditions of Experiment 2C (GLUT2 without SGLT or Na/K pump). Negative basolateral glucose flux (-1.14), ICF glucose concentration increased above default (2.14).
+> **Result:** Reverts to conditions of Experiment 2C (GLUT without SGLT or Na/K pump). Negative basolateral glucose flux (-1.14), ICF glucose concentration increased above default (2.14).
 
 > [!TIP]
 > Insight 2E: Removing Na⁺/K⁺-ATPase removes the pump-supported Na⁺ gradient state needed for SGLT-dependent glucose absorption.
@@ -327,7 +328,7 @@ Compare the phosphate layout with the glucose layout.
 |---|---|---|
 | Apical Na⁺-linked uptake | SGLT | NaPi 2:1 |
 | Na⁺ gradient support | Na⁺/K⁺-ATPase | Na⁺/K⁺-ATPase |
-| Basolateral exit | GLUT2 | Pi facilitator |
+| Basolateral exit | GLUT | Pi facilitator |
 
 The important transfer idea is:
 
@@ -426,7 +427,7 @@ In Lesson 2, you built a glucose absorption layout:
 
 ```
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway)
 ```
@@ -445,7 +446,7 @@ Build the glucose absorption layout from Lesson 2, then add one transporter to r
 
 ```
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway)
 ```
@@ -465,7 +466,7 @@ Your final layout should:
 >
 > ````
 > Apical SGLT
-> Basolateral GLUT2
+> Basolateral GLUT
 > Basolateral Na⁺/K⁺-ATPase
 > Basolateral Kir
 > (Barrier paracellular pathway)
@@ -520,7 +521,7 @@ Basolateral Kir
 (Barrier paracellular pathway)
 ```
 
-The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the Water Movement cards at the bottom of the Results frame.
+The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the **Details** tab under **Water Movement**.
 
 > [!NOTE]
 >
@@ -547,7 +548,7 @@ Observe:
 - Cell balance
 - Osmotic pull and water flux
 
-The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the Water Movement cards at the bottom of the Results frame.
+The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the **Details** tab under **Water Movement**.
 
 > [!NOTE]
 > **Result:** There is no change from the above results.
@@ -574,7 +575,7 @@ Observe:
 - Cell balance
 - Osmotic pull and water flux
 
-The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the Water Movement cards at the bottom of the Results frame.
+The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the **Details** tab under **Water Movement**.
 
 > [!NOTE]
 > **Result:** Water flux toward blood (0.3). Otherwise no changes from the above results.
@@ -654,7 +655,7 @@ Press the **Reset** button to remove any placed transporters and background osmo
 
 ```text
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Na⁺/K⁺-ATPase
 Basolateral Kir
 (Barrier paracellular pathway, no background osmotic pull)
@@ -681,7 +682,7 @@ Your final layout should:
 > Apical AQP
 > Apical SGLT
 > Basolateral AQP
-> Basolateral GLUT2
+> Basolateral GLUT
 > Basolateral Kir
 > Basolateral Na⁺/K⁺-ATPase
 > (Barrier paracellular pathway, no background osmotic pull)
@@ -712,7 +713,7 @@ By the end of this lesson, you should be able to:
 
 In earlier lessons, most examples focused on absorption: solutes moving from the lumen toward the blood side. Now you will build a secretory mechanism. **Secretion** means net movement from the blood side toward the lumen.
 
-Note from the Solute Concentrations graph that the Cl⁻ concentration is much higher in the ECF (105 mmol/L) than in the ICF (10 mmol/L).  
+Open the **Concentrations** tab and note from the graph that the Cl⁻ concentration is much higher in the ECF (105 mmol/L) than in the ICF (10 mmol/L).
 
 For Cl⁻ secretion, the epithelial cell needs two major steps:
 
@@ -818,7 +819,7 @@ This is a simplified **secretory epithelial** layout relevant to tissues such as
 
 ## Electrochemical Context: Why Cl⁻ Can Leave Through CFTR
 
-After adding CFTR, NKCC, and Na⁺/K⁺-ATPase, look at the **Electrochemical Context** table in the Results frame.
+After adding CFTR, NKCC, and Na⁺/K⁺-ATPase, open the **Details** tab and look at the **Electrochemical Context** table.
 
 You may notice something that seems surprising. For apical CFTR, the concentration of Cl⁻ is much higher in the ECF than in the ICF, which would seem to favor movement from the lumen into the cell. However, the net Cl⁻ flux is secretory, meaning Cl⁻ moves against its concentration gradient.
 
@@ -831,7 +832,7 @@ For ions, the concentration gradient is only one part of the driving force. Ion 
 
 Together, these create the **net electrochemical force**.
 
-You can view a summary of these forces in the **Electrochemical Context** table, which summarizes the combined direction SALT expects for that ion through that pathway.
+You can view a summary of these forces in the **Details** tab under **Electrochemical Context**, which summarizes the combined direction SALT expects for that ion through that pathway.
 
 For example, in this Cl⁻ secretory layout:
 
@@ -935,7 +936,7 @@ Observe:
 
 - Na⁺ and K⁺ fluxes
 - Cell balance
-- TEP in the Results Snapshot and more details under **Charge & Polarity**
+- TEP in the Results Snapshot and more details in the **Details** tab under **Charge & Polarity**
 
 > [!NOTE]
 > **Result:** Na⁺ absorption (0.50) and a moderate lumen-negative TEP (0.50). Intracellular K⁺ accumulation (0.33).
@@ -1042,8 +1043,8 @@ Basolateral Na⁺/K⁺-ATPase
 Observe:
 
 - Net fluxes of Cl⁻, Na⁺, and K⁺.
-- TEP in the Results Snapshot and under **Charge & Polarity**
-- Electrochemical Context for CFTR and Kir
+- TEP in the Results Snapshot and in the **Details** tab under **Charge & Polarity**
+- **Electrochemical Context** for CFTR and Kir in the **Details** tab
 
 In this layout, Cl⁻ moves toward the lumen. Cl⁻ is negatively charged, so Cl⁻ secretion does not have the same electrical meaning as K⁺ secretion. Both are secretory fluxes, but they move opposite charges.
 
@@ -1121,19 +1122,22 @@ In previous lessons, you built layouts in which solutes and water moved **throug
 
 Epithelia can also allow movement **between** cells. This is called **paracellular transport**.
 
-In SALT, the paracellular pathway is simplified into three settings:
+In SALT, the paracellular pathway is simplified into four settings:
 
 1. **Barrier**: No paracellular solute or water flux.
 2. **Cation + Water Pore**: Allows cations and water to move between cells.
-3. **Anion Pore**: Allows anions to move between cells.
+3. **Cation Pore**: Allows cations to move between cells without water.
+4. **Anion Pore**: Allows anions to move between cells.
 
-Real tight junctions are more complex than these three categories. They vary by tissue and can differ in selectivity, permeability, and regulation. In this lesson, focus on the core idea:
+Real tight junctions are more complex than these four categories. They vary by tissue and can differ in selectivity, permeability, and regulation. In this lesson, focus on the core idea:
 
 > A paracellular pathway is another route across the epithelial layer, so it can change the net epithelial result even when the membrane transporters stay the same.
 
 In Lesson 6, you used TEP to interpret the electrical tendency created by transcellular movement of charged solutes. In this lesson, TEP becomes important in a new way:
 
 > When a paracellular pathway allows charged solutes to move between cells, TEP can influence the direction of that paracellular movement.
+
+Use **Cation + Water Pore** when you want a cation-selective paracellular route that also carries water. Use **Cation Pore** when you want cation movement without paracellular water, which is the kind of simplification used for some water-tight but cation-leaky epithelia.
 
 
 
@@ -1154,7 +1158,7 @@ Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
 ```
 
-Look at **Membrane and Epithelial Fluxes**.
+Look at the **Mechanism** view first, then check **Membrane and Epithelial Fluxes** if you want the flux values.
 
 Observe:
 
@@ -1210,10 +1214,11 @@ Basolateral Na⁺/K⁺-ATPase
 (Anion Pore paracellular pathway)
 ```
 
-Compare this result with both previous conditions:
+Compare this result with the previous conditions:
 
 - Barrier
 - Cation + Water Pore
+- Cation Pore
 
 Observe:
 
@@ -1528,7 +1533,7 @@ Build the glucose absorption layout from earlier lessons:
 
 ```text
 Apical SGLT
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Kir
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
@@ -1541,7 +1546,7 @@ Observe:
 - Cell balance
 - Osmotic pull and water flux
 
-This layout uses SGLT for apical glucose uptake, GLUT2 for basolateral glucose exit, Na⁺/K⁺-ATPase for Na⁺ gradient support, and basolateral Kir for K⁺ recycling.
+This layout uses SGLT for apical glucose uptake, GLUT for basolateral glucose exit, Na⁺/K⁺-ATPase for Na⁺ gradient support, and basolateral Kir for K⁺ recycling.
 
 The target solute is glucose, but the supporting solute is Na⁺.
 
@@ -1582,7 +1587,7 @@ This layout uses the same functional pattern as glucose absorption:
 | Functional role          | Glucose layout  | Phosphate layout |
 | ------------------------ | --------------- | ---------------- |
 | Apical Na⁺-linked uptake | SGLT            | NaPi             |
-| Basolateral exit         | GLUT2           | Pi Facilitator   |
+| Basolateral exit         | GLUT           | Pi Facilitator   |
 | Na⁺ gradient support     | Na⁺/K⁺-ATPase   | Na⁺/K⁺-ATPase    |
 | K⁺ recycling             | Basolateral Kir | Basolateral Kir  |
 
@@ -1600,7 +1605,7 @@ Press **Reset** or remove NaPi and Pi facilitator.
 
 Like SGLT for glucose and NaPi for Pi, the **Na⁺-AA** cotransporter moves Na⁺ and amino acids in across the membrane in the same direction. Note that in SALT, Na⁺-AA is a simplification that represents a family of symporters for different amino acids.
 
-Similarly, like GLUT2 and the Pi facilitator, the **AA facilitator** in SALT represents a family of transporters that move amino acids passively across the membrane.
+Similarly, like GLUT and the Pi facilitator, the **AA facilitator** in SALT represents a family of transporters that move amino acids passively across the membrane.
 
 Use Na⁺-AA and the AA facilitator to build an amino acid absorption layout:
 
@@ -1635,7 +1640,7 @@ Now combine the layouts above to build a multi-solute absorption layout:
 Apical SGLT
 Apical NaPi 2:1
 Apical Na⁺-AA
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Pi Facilitator
 Basolateral AA Facilitator
 Basolateral Kir
@@ -1668,7 +1673,7 @@ Apical SGLT
 Apical NaPi 2:1
 Apical Na⁺-AA
 Basolateral AQP
-Basolateral GLUT2
+Basolateral GLUT
 Basolateral Pi Facilitator
 Basolateral AA Facilitator
 Basolateral Kir
@@ -1786,17 +1791,17 @@ This means a Na⁺ absorptive mechanism can also have an acid/base consequence.
 
 
 
-## Experiment 10B: NBCe1
+## Experiment 10B: NBC
 
 In the preceding experiment, you achieved H⁺ flux into the lumen, but there was no net acid secretion or base absorption because the reaction was uncoupled.
 
-**NBCe1** is the electrogenic Na-bicarbonate cotransporter. It moves Na⁺ and HCO₃⁻ in the same direction. You will now use NBCe1 to provide the missing step.
+**NBC** is the electrogenic Na-bicarbonate cotransporter. It moves Na⁺ and HCO₃⁻ in the same direction. You will now use NBC to provide the missing step.
 
-Keep the apical NHE3 layout from Experiment 10A and add NBCe1 to the basolateral membrane.
+Keep the apical NHE3 layout from Experiment 10A and add NBC to the basolateral membrane.
 
 ```text
 Apical NHE3
-Basolateral NBCe1
+Basolateral NBC
 Basolateral Kir
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
@@ -1825,7 +1830,7 @@ Press **Reset** and build the following layout:
 
 ```text
 Apical CFTR
-Basolateral NBCe1
+Basolateral NBC
 Basolateral Kir
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
@@ -1847,16 +1852,16 @@ Observe:
 
 
 
-## Experiment 10D: Pendrin
+## Experiment 10D: CBE
 
 In the kidneys, **β-intercalated cells** in the **cortical collecting duct** secrete HCO₃⁻ into the lumen while absorbing H⁺ into the blood.
 
-**Pendrin** is a Cl⁻/HCO₃⁻ exchanger that moves Cl⁻ and HCO₃⁻ in opposite directions. You will now use Pendrin to model the layout of a β-intercalated cell.
+**CBE** is chloride-bicarbonate exchanger activity: it moves Cl⁻ and HCO₃⁻ in opposite directions. Biological examples include pendrin, AE1/2, DRA/SLC26A3, and SLC26A6/PAT-1. You will now use CBE to model the layout of a β-intercalated cell; pendrin is the relevant example in this tissue.
 
 Press **Reset** and build this layout:
 
 ```
-Apical Pendrin
+Apical CBE
 Basolateral H⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
 ```
@@ -1872,32 +1877,32 @@ Observe:
 > **Result:** Net base secretion, with H⁺ absorption (0.35) and HCO₃⁻ secretion (-0.35). Positive apical Cl⁻ flux (0.35) and Cl⁻ accumulation. Moderate lumen-negative TEP (-0.70). Message indicates that CO₂ + H₂O is the source of H⁺ and HCO₃⁻.
 
 > [!TIP]
-> Insight 10D: A β-intercalated-cell-like layout reverses α-cell polarity: apical Pendrin supports HCO₃⁻ secretion, while basolateral H⁺-ATPase supports acid-side handling toward the blood side. 
+> Insight 10D: A β-intercalated-cell-like layout reverses α-cell polarity: apical CBE supports HCO₃⁻ secretion, while basolateral H⁺-ATPase supports acid-side handling toward the blood side.
 
-## Mini-Challenge 10: AE1/2
+## Mini-Challenge 10: Acid Secretion with CBE
 
 In this lesson, you have modeled proximal-tubule-like acid/base handling and two base-secreting epithelial layouts. Now apply the same logic to a different cell type, **α-intercalated-cells**, which are acid-secreting cells in the **cortical collecting duct**.
 
-You will need one new transporter: **AE1/2** is an anion exchanger class that passively exchanges one Cl⁻ and one HCO₃⁻.
+You will now use the same **CBE** activity on the opposite membrane to build an acid-secreting layout.
 
 ### Challenge
 
-Build a simplified **α-intercalated cell** acid-secreting layout using AE1/2 *and* any of the following: NHE3, Pendrin, NBCe1, and/or H⁺-ATPase. Do not use any other transporters, except Na⁺/K⁺-ATPase if necessary.
+Build a simplified **α-intercalated cell** acid-secreting layout using CBE *and* any of the following: NHE3, NBC, and/or H⁺-ATPase. Do not use any other transporters, except Na⁺/K⁺-ATPase if necessary.
 
 ### Targets
 
-Your final layout should include **AE1/2** and show both net H⁺ secretion and net HCO₃⁻ absorption.
+Your final layout should include **CBE** and show both net H⁺ secretion and net HCO₃⁻ absorption.
 
 > [!NOTE]
 > **Solution:**
 >
 > ```
 > Apical H+-ATPase
-> Basolateral AE1/2
+> Basolateral CBE
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> This layout models an α-intercalated-cell-like acid-secreting pattern. Apical H+-ATPase moves H+ toward the lumen. Basolateral AE1/2 provides HCO₃⁻ exit toward the blood/interstitial side in exchange for Cl−. The Acid/Base & pH output should indicate when CO₂ is supplying intracellular H+ and HCO₃⁻.
+> This layout models an α-intercalated-cell-like acid-secreting pattern. Apical H+-ATPase moves H+ toward the lumen. Basolateral CBE provides HCO₃⁻ exit toward the blood/interstitial side in exchange for Cl−. The Acid/Base & pH output should indicate when CO₂ is supplying intracellular H+ and HCO₃⁻.
 
 > [!TIP]
 >
@@ -2049,7 +2054,7 @@ Press the **Reset** button to remove any placed transporters.
 
 Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
 
-Note that organic solute fluxes appear in a separate **Organic Ions** graph in the Membrane and Epithelial Fluxes output. Use the flux outputs as your main evidence of transport.
+Note that organic solute fluxes appear in a separate **Organic Ions** graph in the **Fluxes** tab. Use the **Mechanism** tab as your main evidence of transport, and use the **Fluxes** tab when you want a more quantitative check.
 
 ------
 
@@ -2121,13 +2126,13 @@ Your final layout should:
 > Apical MATE
 > Apical NHE3
 > Basolateral OCT
-> Basolateral NBCe1
+> Basolateral NBC
 > Basolateral Kir
 > Basolateral Na⁺/K⁺-ATPase
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBCe1 provide the proximal-tubule-like acid/base machinery that helps support the H+ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺-dependent transport, and basolateral Kir supports K⁺ recycling.
+> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBC provide the proximal-tubule-like acid/base machinery that helps support the H+ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺-dependent transport, and basolateral Kir supports K⁺ recycling.
 >
 
 > [!TIP]
@@ -2246,6 +2251,7 @@ This reference lists the current selectable SALT settings for tissue context, pa
 
 - Barrier
 - Cation + Water Pore
+- Cation Pore
 - Anion Pore
 
 ## Transporters by Category
@@ -2263,7 +2269,7 @@ This reference lists the current selectable SALT settings for tissue context, pa
 - CFTR
 - ClC
 - ENaC
-- GLUT2
+- GLUT
 - Kir
 - TRPV5/6
 
@@ -2272,7 +2278,7 @@ This reference lists the current selectable SALT settings for tissue context, pa
 - Na⁺-AA
 - NaPi 2:1
 - NaPi 3:1
-- NBCe1
+- NBC
 - NCC
 - NKCC
 - PepT
@@ -2280,10 +2286,9 @@ This reference lists the current selectable SALT settings for tissue context, pa
 
 ### Exchangers
 
-- AE1/2
+- CBE
 - NCX1
 - NHE3
-- Pendrin
 
 ### Organic Solute Carriers
 
