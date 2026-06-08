@@ -152,8 +152,23 @@ function paracellularElectrochemicalDrive(ion, apicalConcentration, basolateralC
   return chemicalDrive + electricalDrive;
 }
 
+function paracellularTransporterLabel(paracellularType) {
+  if (paracellularType === 'cation') return 'Cation + Water Pore';
+  if (paracellularType === 'cationOnly') return 'Cation Pore';
+  if (paracellularType === 'anion') return 'Anion Pore';
+  return 'Barrier';
+}
+
+function paracellularHasCationPath(paracellularType) {
+  return paracellularType === 'cation' || paracellularType === 'cationOnly';
+}
+
+function paracellularHasWaterPath(paracellularType) {
+  return paracellularType === 'cation';
+}
+
 function paracellularPermeantIonConfigs(paracellularType, cationPerm, anionPerm) {
-  if (paracellularType === 'cation') {
+  if (paracellularHasCationPath(paracellularType)) {
     return ['Na+','K+']
       .map(ion => ({ ion, permeability: Math.max(Number(cationPerm) || 0, 0) }))
       .filter(config => config.permeability > 0);
@@ -295,20 +310,25 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
   const apicalWaterPath = apicalAqpDensity > 0;
   const basolateralWaterPath = basolateralAqpDensity > 0;
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
-  const hasParacellularPath = paracellularType === 'cation';
+  const hasParacellularWaterPath = paracellularHasWaterPath(paracellularType);
+  const hasParacellularIonPath = paracellularHasCationPath(paracellularType) || paracellularType === 'anion';
   const transcellularPathStatus = hasTranscellularPath
     ? 'complete AQP path; AQP density scale ' + aqpDensityScale.toFixed(2)
     : apicalWaterPath || basolateralWaterPath
       ? 'incomplete AQP path'
       : 'none';
-  const paracellularPathStatus = hasParacellularPath ? 'present' : 'none';
+  const paracellularPathStatus = hasParacellularWaterPath
+    ? 'present'
+    : hasParacellularIonPath
+      ? 'ion only'
+      : 'none';
   const soluteDrive = soluteLinkedWaterDrive(transepiFluxDataNoH2O);
   const backgroundValue = Number(backgroundOsmoticPull?.value || 0);
   const osmoticPullValue = soluteDrive.value + backgroundValue;
-  const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularPath ? 1 : 0);
+  const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularWaterPath ? 1 : 0);
   const pathwayShare = expressedPathwayCount > 0 ? 1 / expressedPathwayCount : 0;
   const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare * aqpDensityScale : 0;
-  const paracellularValue = hasParacellularPath ? osmoticPullValue * pathwayShare : 0;
+  const paracellularValue = hasParacellularWaterPath ? osmoticPullValue * pathwayShare : 0;
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
   return {
@@ -346,13 +366,15 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
     paracellularPath: {
       label: 'Paracellular water pathway',
       status: paracellularPathStatus,
-      note: hasParacellularPath
+      note: hasParacellularWaterPath
         ? 'Cation + Water Pore provides a paracellular water pathway'
-        : 'Barrier and Anion Pore do not provide a water pathway'
+        : hasParacellularIonPath
+          ? 'Cation Pore provides a paracellular cation pathway without water'
+          : 'Barrier and Anion Pore do not provide a water pathway'
     },
     transcellular: transepithelialWaterTendency(transcellularValue, hasTranscellularPath, 'Transcellular water contribution', transcellularPathStatus),
-    paracellular: transepithelialWaterTendency(paracellularValue, hasParacellularPath, 'Paracellular water contribution', 'no paracellular water pathway'),
-    netTransepithelial: transepithelialWaterTendency(netTransepithelialValue, hasTranscellularPath || hasParacellularPath, 'Net epithelial water flux', 'no water pathway')
+    paracellular: transepithelialWaterTendency(paracellularValue, hasParacellularWaterPath, 'Paracellular water contribution', 'no paracellular water pathway'),
+    netTransepithelial: transepithelialWaterTendency(netTransepithelialValue, hasTranscellularPath || hasParacellularWaterPath, 'Net epithelial water flux', 'no water pathway')
   };
 }
 
@@ -417,7 +439,7 @@ const TISSUE_OPTIONS = [
     value: 'proximal-tubule',
     label: 'Renal proximal tubule',
     group: 'Kidney and urinary tract',
-    transporterIds: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'MRPBCRP', 'OCT', 'MATE']
+    transporterIds: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'PiFacilitator', 'NHE3', 'NBCe1', 'GLUT2', 'NaKATPase', 'NaAA', 'AAFacilitator', 'PepT', 'OAT', 'MRPBCRP', 'OCT', 'MATE']
   },
   {
     value: 'thick-ascending-limb',
@@ -447,13 +469,13 @@ const TISSUE_OPTIONS = [
     value: 'collecting-duct-alpha',
     label: 'Alpha-intercalated cell',
     group: 'Kidney and urinary tract',
-    transporterIds: ['HATPase', 'HKATPase', 'AE1', 'ClCKb']
+    transporterIds: ['HATPase', 'HKATPase', 'AE1', 'ClCKb', 'NaKATPase']
   },
   {
     value: 'collecting-duct-beta',
     label: 'Beta-intercalated cell',
     group: 'Kidney and urinary tract',
-    transporterIds: ['AE1', 'HATPase', 'ClCKb']
+    transporterIds: ['AE1', 'HATPase', 'ClCKb', 'NaKATPase']
   },
   {
     value: 'gastric-parietal',
@@ -471,13 +493,13 @@ const TISSUE_OPTIONS = [
     value: 'small-intestine-crypt',
     label: 'Small intestinal crypt / secretory epithelium',
     group: 'Gastrointestinal and hepatobiliary',
-    transporterIds: ['AQP', 'CFTR', 'NKCC', 'ROMK', 'NaKATPase', 'ClCKb', 'NHE3']
+    transporterIds: ['AQP', 'CFTR', 'NKCC', 'ROMK', 'NaKATPase', 'ClCKb']
   },
   {
     value: 'colon-absorptive',
     label: 'Colon absorptive epithelium',
     group: 'Gastrointestinal and hepatobiliary',
-    transporterIds: ['AQP', 'ENaC', 'NHE3', 'NaKATPase', 'ClCKb', 'AE1', 'HATPase']
+    transporterIds: ['AQP', 'ENaC', 'NHE3', 'NaKATPase', 'ClCKb', 'AE1', 'HATPase', 'CFTR']
   },
   {
     value: 'gallbladder',
@@ -563,11 +585,11 @@ const TISSUE_DEMO_PRESETS = {
     paracellularType: 'cation',
     placements: {
       apical: ['AQP', 'SGLT', 'NaPi2', 'NaPi', 'NHE3', 'NaAA', 'PepT', 'MRPBCRP', 'MATE'],
-      basolateral: ['AQP', 'PiFacilitator', 'NBCe1', 'GLUT2', 'NaKATPase', 'PMCA', 'NCX1', 'AAFacilitator', 'OAT', 'OCT']
+      basolateral: ['AQP', 'PiFacilitator', 'NBCe1', 'GLUT2', 'NaKATPase', 'AAFacilitator', 'OAT', 'OCT']
     }
   },
   'thick-ascending-limb': {
-    paracellularType: 'none',
+    paracellularType: 'cationOnly',
     placements: {
       apical: ['NKCC', 'ROMK'],
       basolateral: ['ClCKb', 'NaKATPase']
@@ -598,14 +620,14 @@ const TISSUE_DEMO_PRESETS = {
     paracellularType: 'none',
     placements: {
       apical: ['HATPase', 'HKATPase'],
-      basolateral: ['AE1', 'ClCKb']
+      basolateral: ['AE1', 'ClCKb', 'NaKATPase']
     }
   },
   'collecting-duct-beta': {
     paracellularType: 'none',
     placements: {
       apical: ['AE1'],
-      basolateral: ['HATPase', 'ClCKb']
+      basolateral: ['HATPase', 'ClCKb', 'NaKATPase']
     }
   },
   'gastric-parietal': {
@@ -1482,7 +1504,7 @@ export default function App() {
   const [backgroundOsmoticPullSetting, setBackgroundOsmoticPullSetting] = useState('tissue');
 
   // Paracellular pathway state
-  const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'anion'
+  const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'cationOnly' | 'anion'
   const [paraCationPerm, setParaCationPerm] = useState(1.0); // default value
   const [paraAnionPerm, setParaAnionPerm] = useState(1.0);   // default value
   const [showParaInfo, setShowParaInfo] = useState(false);
@@ -2086,7 +2108,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   if (paracellularType !== 'none') {
     transepiFluxDataNoH2O.forEach(row => {
       if (
-        (paracellularType === 'cation' && ['Na+','K+'].includes(row.ion)) ||
+        (paracellularHasCationPath(paracellularType) && ['Na+','K+'].includes(row.ion)) ||
         (paracellularType === 'anion' && ['Cl-','HCO3-'].includes(row.ion))
       ) {
         row.transepithelial += paraFlux[row.ion] || 0;
@@ -2507,11 +2529,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const hasIntracellularImbalance = cellImbalanceReport.length > 0;
   const hasCoupledMismatch = coupledMismatchReport?.state === 'mismatch';
   const compactImbalanceDirection = direction => direction.replace(' tendency', '');
+  const sortedCellImbalanceReport = [...cellImbalanceReport].sort((a, b) => Math.abs(Number(b.change || 0)) - Math.abs(Number(a.change || 0)));
+  const topCellImbalanceRows = sortedCellImbalanceReport.slice(0, 3);
+  const remainingCellImbalanceCount = Math.max(0, sortedCellImbalanceReport.length - topCellImbalanceRows.length);
   const acidBaseCellTendency = acidBaseReport?.cell || '';
   const hasCellAcidBaseImbalance = acidBaseCellTendency === 'cell tends acidified' || acidBaseCellTendency === 'cell tends alkalinized';
-  const acidBaseCellWarning = hasCellAcidBaseImbalance
-    ? 'Acid/base imbalance: ' + acidBaseCellTendency
-    : null;
   const tePotentialValue = chargeReport?.transepithelial?.value ?? 0;
   const osmoticPullValue = waterReport?.osmoticPull?.value ?? 0;
   const waterFluxValue = waterReport?.netTransepithelial?.value ?? 0;
@@ -2550,22 +2572,21 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     ? cellImbalanceReport.length === 1
       ? cellImbalanceReport[0].label + ' ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
       : cellImbalanceReport.length + ' tendencies'
-    : hasCellAcidBaseImbalance
-      ? acidBaseCellWarning
     : hasCoupledMismatch
       ? 'Coupled mismatch'
       : 'Balanced';
   const cellBalanceDetail = hasIntracellularImbalance
-    ? hasCellAcidBaseImbalance
-      ? acidBaseCellWarning
-      : cellImbalanceReport.length === 1
-      ? 'Intracellular ' + compactImbalanceDirection(cellImbalanceReport[0].direction)
-      : 'Review imbalance table below'
-    : hasCellAcidBaseImbalance
-      ? 'Review Acid/Base & pH below'
+    ? null
     : hasCoupledMismatch
       ? 'Review pathway completion'
       : 'No major intracellular imbalance';
+  const cellBalanceTendencies = hasIntracellularImbalance
+    ? topCellImbalanceRows.map(row => row.label + ' ' + compactImbalanceDirection(row.direction))
+    : null;
+  const acidBaseDetail = acidBaseReport
+    ? orientText(acidBaseReport.transepithelial.direction) + '; ' + acidBaseReport.transepithelial.strength
+    : 'No acid/base tendency calculated';
+  const acidBaseCellDetail = hasCellAcidBaseImbalance ? acidBaseCellTendency : null;
   const hasBackgroundPull = waterReport && Math.abs(Number(waterReport.backgroundPull?.value || 0)) >= WATER_EPSILON;
   const backgroundPullStatus = hasBackgroundPull
     ? orientText(String(waterReport.backgroundPull.status || '').replace(/^Tissue default/, 'tissue default'))
@@ -2581,14 +2602,17 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       status: fluxSummaryStatus,
       detail: netFluxRows.length ? null : 'Net epithelial solute movement is weak',
       state: netFluxRows.length ? 'accent' : 'neutral',
-      fluxSections: fluxSummarySections
+      fluxSections: fluxSummarySections,
+      layoutClass: 'xl:row-span-2'
     },
     {
       key: 'balance',
       title: 'Cell Balance',
       status: cellBalanceStatus,
       detail: cellBalanceDetail,
-      state: hasIntracellularImbalance || hasCellAcidBaseImbalance || hasCoupledMismatch ? 'warning' : 'good'
+      tendencyRows: cellBalanceTendencies,
+      extraTendencyCount: remainingCellImbalanceCount,
+      state: hasIntracellularImbalance || hasCoupledMismatch ? 'warning' : 'good'
     },
     {
       key: 'tep',
@@ -2605,23 +2629,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         rightLabel: displayOrientation.apicalPolarityLabel + '-positive',
         markerClass: 'bg-slate-700',
         ariaLabel: 'Transepithelial potential indicator: ' + tePotentialStatus + ', ' + formatChargeValue(tePotentialValue) + ' charge units. Left indicates ' + displayOrientation.apicalPolarityLabel + '-negative; right indicates ' + displayOrientation.apicalPolarityLabel + '-positive.'
-      }
-    },
-    {
-      key: 'acid-base',
-      title: 'Net Acid/Base Flux',
-      status: acidBaseFluxStatus,
-      detail: acidBaseReport
-        ? orientText(acidBaseReport.transepithelial.direction) + '; ' + acidBaseReport.transepithelial.strength
-        : 'No acid/base tendency calculated',
-      state: Math.abs(acidBaseFluxValue) < 0.001 ? 'neutral' : 'accent',
-      indicator: {
-        value: acidBaseFluxValue,
-        maxAbs: SNAPSHOT_ACID_BASE_INDICATOR_MAX,
-        leftLabel: 'Base ' + displayOrientation.negativeProcessLabel,
-        rightLabel: 'Acid ' + displayOrientation.negativeProcessLabel,
-        markerClass: 'bg-teal-700',
-        ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base ' + displayOrientation.negativeProcessLabel + '; right indicates acid ' + displayOrientation.negativeProcessLabel + '.'
       }
     },
     {
@@ -2654,6 +2661,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           ariaLabel: 'Water flux indicator: ' + waterFluxStatus + ', ' + formatWaterValue(waterFluxValue) + ' water tendency units. Left indicates ' + displayOrientation.negativeFluxLabel + '; right indicates ' + displayOrientation.positiveFluxLabel + '.'
         }
       ]
+    },
+    {
+      key: 'acid-base',
+      title: 'Net Acid/Base Flux',
+      status: acidBaseFluxStatus,
+      detail: acidBaseDetail,
+      secondaryDetail: acidBaseCellDetail,
+      state: Math.abs(acidBaseFluxValue) < 0.001 && !hasCellAcidBaseImbalance ? 'neutral' : 'accent',
+      indicator: {
+        value: acidBaseFluxValue,
+        maxAbs: SNAPSHOT_ACID_BASE_INDICATOR_MAX,
+        leftLabel: 'Base ' + displayOrientation.negativeProcessLabel,
+        rightLabel: 'Acid ' + displayOrientation.negativeProcessLabel,
+        markerClass: 'bg-teal-700',
+        ariaLabel: 'Net acid/base flux indicator: ' + acidBaseFluxStatus + ', ' + formatChargeValue(acidBaseFluxValue) + ' acid/base units. Left indicates base ' + displayOrientation.negativeProcessLabel + '; right indicates acid ' + displayOrientation.negativeProcessLabel + '.'
+      }
     }
   ] : [];
   const waterDetailRows = waterReport ? [
@@ -2777,8 +2800,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     }[tile.state] || 'border-gray-200 bg-gray-50';
     const hasMeter = tile.indicator || tile.indicators?.length;
     const hasFluxSections = tile.fluxSections?.length;
-    const sizeClass = hasMeter || hasFluxSections ? 'min-h-[116px]' : 'min-h-[92px]';
-    return 'h-full rounded border p-2 ' + sizeClass + ' ' + stateClass;
+    const sizeClass = hasMeter || hasFluxSections ? 'min-h-[104px]' : 'min-h-[78px]';
+    return 'h-full rounded border px-2 py-1.5 ' + sizeClass + ' ' + stateClass + ' ' + (tile.layoutClass || '');
   };
   const snapshotStatusClass = state => ({
     good: 'text-emerald-800',
@@ -2814,22 +2837,42 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   };
   const SnapshotTile = ({ tile }) => (
     <li className={snapshotTileClass(tile)}>
-      <h3 className="text-xs font-semibold uppercase text-gray-600">{tile.title}</h3>
+      <h3 className="text-xs font-semibold text-gray-600">{tile.title}</h3>
       {tile.status && (
         <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
       )}
       {tile.detail && (
         <div
           className={tile.detailBadge
-            ? 'mt-2 inline-flex rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium leading-snug text-indigo-800'
+            ? 'mt-1 inline-flex rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium leading-snug text-indigo-800'
             : 'mt-1 text-xs leading-snug text-gray-600'}
           aria-label={tile.detailAriaLabel}
         >
           {tile.detail}
         </div>
       )}
+      {tile.secondaryDetail && (
+        <div className="mt-1 text-xs font-medium leading-snug text-teal-800">
+          Cell: {tile.secondaryDetail}
+        </div>
+      )}
+      {tile.tendencyRows && (
+        <div className="mt-1 text-xs leading-snug text-gray-700">
+          {tile.extraTendencyCount > 0 && (
+            <div className="font-semibold text-gray-700">Top tendencies</div>
+          )}
+          <ul className="mt-0.5 space-y-0.5">
+            {tile.tendencyRows.map(tendency => (
+              <li key={tendency}>{tendency}</li>
+            ))}
+          </ul>
+          {tile.extraTendencyCount > 0 && (
+            <div className="mt-0.5 text-gray-600">+{tile.extraTendencyCount} more</div>
+          )}
+        </div>
+      )}
       {tile.fluxSections && (
-        <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="mt-1.5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
           {tile.fluxSections.map(section => (
             <div key={section.label}>
               <div className="mb-1 font-semibold text-gray-700">{section.label}</div>
@@ -3037,7 +3080,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         role: 'paracellular pathway',
         placement: 'paracellular',
         transporterId: 'paracellular',
-        transporter: paracellularType === 'cation' ? 'Cation + Water Pore' : 'Anion Pore',
+        transporter: paracellularTransporterLabel(paracellularType),
         solute: ion,
         value: Number(value || 0)
       });
@@ -3529,7 +3572,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBC, NCC, NKCC, NHE3, and CBE remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
         <li><b>Pathway completion:</b> Completed transepithelial flux requires compatible entry and exit steps on opposite membranes. One-sided movement can still create intracellular accumulation or depletion tendencies.</li>
         <li><b>Transport balance:</b> The Results Snapshot flags coupled transporter mismatch, intracellular accumulation/depletion tendencies, or qualitative acid/base cell tendencies. A warning means the layout may not represent a balanced steady-state pathway, so review the detailed results below.</li>
-        <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule.</li>
+        <li><b>Paracellular flux:</b> Paracellular ion movement is shown separately from membrane steps and is included in net epithelial flux when a leaky pathway is enabled. Paracellular ion leaks use concentration gradients plus transepithelial electrical tendency; paracellular water movement requires the Cation + Water Pore and follows the solute-linked water rule. The Cation Pore is ion-selective only.</li>
         <li><b>Editable concentrations:</b> Editable ECF concentrations are constrained to physiological teaching ranges so exploratory changes illustrate meaningful physiology without producing extreme nonphysiological flux behavior.</li>
         <li><b>NKCC and K⁺ recycling:</b> Kir channels can support K⁺ recycling in NKCC-heavy layouts, especially thick ascending limb-like layouts. ROMK is a Kir channel class member, but the generalized NKCC class is not hard-gated by Kir.</li>
       </ul>
@@ -3680,8 +3723,9 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Barrier:</b> Modeled as no paracellular solute or water flux. This is a teaching simplification; real tight junctions vary in permeability and selectivity.</li>
         <li><b>Cation + Water Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency and provides the paracellular water pathway for osmotic-pull-linked H₂O movement.</li>
+        <li><b>Cation Pore:</b> Enables Na⁺ and K⁺ flux down their transepithelial electrochemical tendency without a water pathway.</li>
         <li><b>Anion Pore:</b> Enables Cl⁻ flux, with some HCO₃⁻ permeability, down the transepithelial electrochemical tendency.</li>
-        <li>Paracellular ion flux magnitude depends on the permeability setting, the concentration gradient, and the transepithelial electrical tendency. Paracellular water movement follows the combined osmotic pull when the Cation + Water Pore is present.</li>
+        <li>Paracellular ion flux magnitude depends on the permeability setting, the concentration gradient, and the transepithelial electrical tendency. Paracellular water movement follows the combined osmotic pull when the Cation + Water Pore is present; the Cation Pore does not carry water.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Water Movement Rules</h3>
@@ -3690,7 +3734,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <li>ECF concentration settings and apical/cell/basolateral osmolality differences do not directly drive water flux.</li>
         <li>Osmotic pull combines net epithelial solute movement with the optional background osmotic pull toward blood. The background setting affects water movement only and does not change solute concentrations.</li>
         <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes and is scaled by the combined apical/basolateral AQP density; the Cation + Water Pore provides a paracellular water pathway.</li>
-        <li>Barrier and Anion Pore do not provide paracellular water flux in this teaching model.</li>
+        <li>The Cation Pore and the Anion Pore do not provide paracellular water flux in this teaching model.</li>
       </ul>
 
       <h3 className="text-lg font-semibold mt-4 mb-1">Acid/Base &amp; pH Rules</h3>
@@ -3785,6 +3829,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
          >
   <option value="none">Barrier</option>
   <option value="cation">Cation + Water Pore</option>
+  <option value="cationOnly">Cation Pore</option>
   <option value="anion">Anion Pore</option>
 </select>
 
@@ -3810,13 +3855,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         <ul className="list-disc ml-6 space-y-1">
           <li><b>Barrier:</b> No passive leak</li>
           <li><b>Cation + Water Pore:</b> Permeable to Na⁺, K⁺, and water</li>
+          <li><b>Cation Pore:</b> Permeable to Na⁺ and K⁺, without water</li>
           <li><b>Anion Pore:</b> Permeable to Cl⁻, with some HCO₃⁻ permeability.</li>
         </ul>
       </div>
-      {paracellularType === 'cation' && (
+      {paracellularHasCationPath(paracellularType) && (
         <>
           <div className="mb-2">
-            <label className="block mt-2 text-sm">Cation + Water Pore permeability:</label>
+            <label className="block mt-2 text-sm">{paracellularType === 'cation' ? 'Cation + Water Pore permeability:' : 'Cation Pore permeability:'}</label>
             <input
               type="number"
               min="0"
@@ -4109,23 +4155,32 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <div className="flex-1 p-4 flex flex-col">
        
  {result && (
-          <div className="mt-3 space-y-4 overflow-auto">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold">Results</h2>
-              <fieldset className="inline-flex items-center rounded border border-gray-300 bg-white p-0.5 text-xs" aria-label="Results view">
-                <legend className="sr-only">Results view</legend>
+          <div className="mt-2 space-y-3 overflow-auto">
+            <section className="border rounded p-2 bg-white" aria-labelledby="results-snapshot-title">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
+                <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
+                <div className="text-xs text-gray-600">Interpreted model outputs</div>
+              </div>
+              <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5 items-stretch" aria-label="Results Snapshot output tiles">
+                {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
+              </ul>
+            </section>
+            <fieldset className="border-b border-gray-300 text-sm" aria-label="Results view">
+              <legend className="sr-only">Results view</legend>
+              <div className="flex flex-wrap gap-1">
                 {[
                   { value: 'mechanism', label: 'Mechanism' },
-                  { value: 'graphs', label: 'Graphs' },
-                  { value: 'tables', label: 'Tables' }
+                  { value: 'fluxes', label: 'Fluxes' },
+                  { value: 'concentrations', label: 'Concentrations' },
+                  { value: 'details', label: 'Details' }
                 ].map(option => {
                   const selected = resultsView === option.value;
                   return (
                     <label
                       key={option.value}
                       className={
-                        'cursor-pointer rounded px-2 py-1 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
-                        (selected ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100')
+                        'cursor-pointer border-b-2 px-3 py-1.5 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
+                        (selected ? 'border-blue-700 text-blue-800' : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900')
                       }
                     >
                       <input
@@ -4140,26 +4195,14 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     </label>
                   );
                 })}
-              </fieldset>
-            </div>
-            <section className="border rounded p-3 bg-white" aria-labelledby="results-snapshot-title">
-              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
-                <div className="text-xs text-gray-600">Interpreted model outputs</div>
               </div>
-              <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 items-stretch" aria-label="Results Snapshot output tiles">
-                {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
-              </ul>
-              <div className="mt-2 text-xs text-gray-600">
-                Detailed flux, concentration, and balance views appear below.
-              </div>
-            </section>
+            </fieldset>
 
             {resultsView === 'mechanism' ? (
               <div className="space-y-4">
                 <MechanismDiagram />
               </div>
-            ) : resultsView === 'graphs' ? (
+            ) : resultsView === 'fluxes' ? (
               <div className="space-y-4">
                 <section className="border rounded p-3 bg-white">
                   <h3 className="font-semibold">Membrane and Epithelial Fluxes</h3>
@@ -4215,6 +4258,22 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     )}
                   </div>
                 </section>
+                <AccessibleTable
+                  caption={'Membrane and Epithelial Fluxes. ' + fluxDirectionCaption}
+                  columns={[
+                    { key: 'ion', label: 'Ion or solute' },
+                    { key: 'groupLabel', label: 'Flux group' },
+                    { key: 'apicalStep', label: displayOrientation.apicalMembraneLabel, format: formatTableValue },
+                    { key: 'basolateralStep', label: displayOrientation.basolateralMembraneLabel, format: formatTableValue },
+                    { key: 'paracellularStep', label: 'Paracellular', format: formatTableValue },
+                    { key: 'transepithelial', label: 'Net epithelial', format: formatTableValue },
+                    { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
+                  ]}
+                  rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
+                />
+              </div>
+            ) : resultsView === 'concentrations' ? (
+              <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold">Solute Concentrations</h3>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2" aria-label="Concentration graph legend">
@@ -4285,22 +4344,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     </div>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-6 overflow-auto">
-                <AccessibleTable
-                  caption={'Membrane and Epithelial Fluxes. ' + fluxDirectionCaption}
-                  columns={[
-                    { key: 'ion', label: 'Ion or solute' },
-                    { key: 'groupLabel', label: 'Flux group' },
-                    { key: 'apicalStep', label: displayOrientation.apicalMembraneLabel, format: formatTableValue },
-                    { key: 'basolateralStep', label: displayOrientation.basolateralMembraneLabel, format: formatTableValue },
-                    { key: 'paracellularStep', label: 'Paracellular', format: formatTableValue },
-                    { key: 'transepithelial', label: 'Net epithelial', format: formatTableValue },
-                    { key: 'direction', label: 'Direction', format: (_, row) => fluxDirection(row.transepithelial) }
-                  ]}
-                  rows={directionalFluxRows.map(row => ({ ...row, ion: row.label, direction: fluxDirection(row.transepithelial) }))}
-                />
                 <AccessibleTable
                   caption="Solute Concentrations. Concentrations are shown in mmol/L. Surface and ICF values are model-derived teaching estimates."
                   columns={[
@@ -4313,16 +4356,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   ]}
                   rows={concTableData}
                 />
-              </div>
-            )}
-
-            {chargeReport && (
-              <div>
-                <div className="mb-3">
-                <h3 className="font-semibold mb-2">Intracellular Balance</h3>
+                {chargeReport && (
                   <AccessibleTable
-                    caption="Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
-                    captionClassName="text-left text-xs font-normal text-gray-600 mb-2"
+                    caption="Intracellular Balance. Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
+                    captionClassName="text-left font-semibold mb-2"
                     columns={[
                       { key: 'label', label: 'Ion or solute' },
                       { key: 'direction', label: 'Tendency' },
@@ -4330,7 +4367,12 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                     ]}
                     rows={cellImbalanceRows}
                   />
-                </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4 overflow-auto">
+                {chargeReport && (
+                  <div>
                 <h3 className="font-semibold mb-2">Charge &amp; Polarity</h3>
                 <AccessibleTable
                   caption="Charge and polarity tendencies in arbitrary teaching units."
@@ -4363,12 +4405,11 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                   rows={electrochemicalTableRows}
                 />
               </div>
-            )}
+                )}
 
-            {acidBaseReport && (
-              <div>
+                {acidBaseReport && (
+                  <div>
                 <h3 className="font-semibold mb-2">Acid/Base &amp; pH</h3>
-                {(resultsView === 'graphs' || resultsView === 'mechanism') && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mb-3">
                     <div className="border rounded p-3">
                       <div className="font-semibold">{displayOrientation.apicalShortLabel} surface</div>
@@ -4386,8 +4427,6 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       <div>{acidBaseReport.basolateralSurface}</div>
                     </div>
                   </div>
-                )}
-                {resultsView === 'tables' && (
                   <AccessibleTable
                     caption="Acid/base tendencies. H+ concentration is not graphed with bulk solutes and buffered pH is not recalculated."
                     columns={[
@@ -4402,14 +4441,15 @@ const calculateFluxesAndConcs = (tList = transporters) => {
                       { region: displayOrientation.basolateralShortLabel + ' surface', tendency: acidBaseReport.basolateralSurface, note: 'Based on local H+ flux tendency' }
                     ]}
                   />
-                )}
               </div>
-            )}
+                )}
 
-            {waterReport && (
-              <div>
+                {waterReport && (
+                  <div>
                 <h3 className="font-semibold mb-2">Water Movement</h3>
                 <WaterDetailCards rows={waterDetailRows} />
+              </div>
+                )}
               </div>
             )}
 
