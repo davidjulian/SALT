@@ -15,7 +15,7 @@ You need four conventions to begin:
    - The **basolateral membrane** faces the **blood side** (**interstitial fluid side**).
 2. **Absorption** means the net movement of water or a solute from the lumen to the blood side.
 3. **Secretion** means the net movement of water or a solute from the blood side to the lumen.
-4. In the Results frame, the **Mechanism** tab is the main place to look for transporter actions and pathway roles. The **Fluxes** and **Concentrations** tabs remain available for movement, gradient, and quantitative checks.
+4. In the Results frame, the **Pathways** tab is the main place to look for transporter actions and pathway roles. The **Fluxes** and **Concentrations** tabs remain available for movement, gradient, and quantitative checks.
    - **Positive flux = absorption = movement toward blood**
    - **Negative flux = secretion = movement toward lumen**
 
@@ -50,7 +50,7 @@ By the end of this lesson, you should be able to:
 
 In the Results frame (the output displays on the right side of the app), look at:
 
-- **Mechanism**: This tab shows the transporter layout, mechanism arrows, and qualitative pathway summary.
+- **Pathways**: This tab shows the transporter layout, pathway arrows, and qualitative pathway summary.
 - **Fluxes**: This tab displays movement across the apical membrane, basolateral membrane, paracellular pathway, and net epithelium for all solutes modeled in SALT. Note that there are three graph groups: 1) **Inorganic Ions**, 2) **Nutrients**, and 3) **Organic Ions**. The Nutrients graph and Organic Ions graph remain hidden unless there are relevant fluxes, so they are not currently visible.
 - **Concentrations**: This tab displays solute concentrations in the apical bulk ECF, apical surface ECF, ICF, basolateral surface ECF, and basolateral bulk ECF. The graph shows the major solutes.
 
@@ -212,7 +212,7 @@ In this experiment, you will test the passive glucose transporter **GLUT**, whic
 Apical GLUT
 (Barrier paracellular pathway)
 ```
-Look at glucose in the **Mechanism** tab first, then check the **Fluxes** tab if you want the flux values.
+Look at glucose in the **Pathways** tab first, then check the **Fluxes** tab if you want the flux values.
 
 > [!NOTE]
 > **Result:** Positive apical glucose flux (1.14), increased ICF glucose concentration (2.14)
@@ -1158,7 +1158,7 @@ Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
 ```
 
-Look at the **Mechanism** view first, then check **Membrane and Epithelial Fluxes** if you want the flux values.
+Look at the **Pathways** view first, then check **Membrane and Epithelial Fluxes** if you want the flux values.
 
 Observe:
 
@@ -1704,7 +1704,7 @@ The key idea is:
 
 
 
-## Mechanism Summary
+## Pathways Summary
 
 Several absorptive pathways can use the same epithelial design:
 
@@ -2054,7 +2054,7 @@ Press the **Reset** button to remove any placed transporters.
 
 Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
 
-Note that organic solute fluxes appear in a separate **Organic Ions** graph in the **Fluxes** tab. Use the **Mechanism** tab as your main evidence of transport, and use the **Fluxes** tab when you want a more quantitative check.
+Note that organic solute fluxes appear in a separate **Organic Ions** graph in the **Fluxes** tab. Use the **Pathways** tab as your main evidence of transport, and use the **Fluxes** tab when you want a more quantitative check.
 
 ------
 

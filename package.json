@@ -14,6 +14,8 @@
     "autoprefixer": "^10.4.16"
   },
   "scripts": {
+    "lessons:build": "node scripts/build-lessons.mjs",
+    "prebuild": "npm run lessons:build",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
