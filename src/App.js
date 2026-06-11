@@ -3735,6 +3735,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
           </ul>
         </>
       )}
+      <h3 className="text-lg font-semibold mt-4 mb-1">Hidden Tissue Presets</h3>
       <p className="text-sm mb-3">
         Airway surface epithelium, choroid plexus, and placenta presets are currently hidden from the selector because their expected physiology is too specialized for the current simplified teaching rules.
       </p>
