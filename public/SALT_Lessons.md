@@ -1749,6 +1749,27 @@ In acid/base epithelial cells, intracellular **CO₂** can react with H₂O to s
 
 In SALT, **acid/base flux** is qualitative, not quantitative. It is not a full pH calculation, but you can use the results as evidence for the epithelial acid/base tendency.
 
+## The CO₂ Pathway
+
+Acid/base transport is different from glucose, Na⁺, or Cl⁻ transport because H⁺ and HCO₃⁻ can be generated inside the cell from CO₂ and H₂O.
+
+In SALT, the **CO₂ pathway** represents this intracellular reaction:
+
+```text
+CO₂ + H₂O ⇌ H⁺ + HCO₃⁻
+```
+
+This is not a membrane transporter and it is not shown as a separate transepithelial flux. Instead, it is a cell chemistry source/sink that helps explain how a cell can supply H⁺ for proton extrusion and HCO₃⁻ for bicarbonate exit.
+
+When proton extrusion is active, SALT treats this reaction as raising intracellular HCO₃⁻ toward an elevated acid/base-supported level. When H⁺ movement and HCO₃⁻ movement are paired, the **Pathways** view may show a small intracellular **CO₂** cue. This cue means that intracellular CO₂/H₂O chemistry is supporting the acid/base layout. It does not by itself mean the layout is physiologic or that net epithelial acid/base transport is complete.
+
+Use the CO₂ cue together with:
+
+- H⁺ and HCO₃⁻ membrane fluxes,
+- Net Acid/Base Flux,
+- Cell balance,
+- transporter polarity.
+
 ## Setup
 
 Press the **Reset** button to remove any placed transporters.
@@ -1773,35 +1794,37 @@ Basolateral Kir
 Observe:
 
 - Na⁺ and H⁺ flux
+- ICF HCO₃⁻ in the Concentrations tab
 - Net Acid/Base Flux
 - Cell balance
+- the Cell message in Acid/Base & pH
 - TEP
 
 In this layout, apical NHE3 can support Na⁺ movement from the lumen into the cell while moving H⁺ toward the lumen.
 
-This means a Na⁺ absorptive mechanism can also have an acid/base consequence.
+This means a Na⁺ absorptive mechanism can also have an acid/base consequence. The CO₂ pathway can support the intracellular acid/base chemistry, but this one-membrane layout is still not completed epithelial acid/base transport.
 
 > [!NOTE]
-> **Result:** Negative apical H⁺ flux (-0.5), Na⁺ absorption (0.5), and basolateral positive K⁺ flux (0.15). K⁺ accumulation (0.186), and moderate lumen-negative TEP. No net acid/base flux.
+> **Result:** Negative apical H⁺ flux (-0.5), Na⁺ absorption (0.5), and basolateral positive K⁺ flux (0.15). ICF HCO₃⁻ rises because proton extrusion is treated as supported by intracellular CO₂/H₂O chemistry. K⁺ and HCO₃⁻ accumulation tendencies may appear, with moderate lumen-negative TEP. No net acid/base flux.
 
 > [!TIP]
 >
-> Insight 10A: Apical H⁺ secretion occurs through NHE3, but there is no net H⁺ secretion or net acid/base tendency because the layout lacks a coupled basolateral acid/base step.
+> Insight 10A: Proton extrusion can change the cell acid/base state before epithelial acid/base transport is complete. Apical H⁺ movement through NHE3 is not the same as net epithelial acid secretion unless a coupled HCO₃⁻ pathway is also present.
 >
 
 
 
-## Experiment 10B: NBC
+## Experiment 10B: NBC Efflux
 
 In the preceding experiment, you achieved H⁺ flux into the lumen, but there was no net acid secretion or base absorption because the reaction was uncoupled.
 
-**NBC** is the electrogenic Na-bicarbonate cotransporter. It moves Na⁺ and HCO₃⁻ in the same direction. You will now use NBC to provide the missing step.
+**NBC Efflux** is an electrogenic Na-bicarbonate cotransporter option in SALT. It moves 1 Na⁺ and 3 HCO₃⁻ out of the cell. You will now use NBC Efflux to provide the missing step.
 
-Keep the apical NHE3 layout from Experiment 10A and add NBC to the basolateral membrane.
+Keep the apical NHE3 layout from Experiment 10A and add NBC Efflux to the basolateral membrane.
 
 ```text
 Apical NHE3
-Basolateral NBC
+Basolateral NBC Efflux
 Basolateral Kir
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
@@ -1812,13 +1835,15 @@ Observe:
 - H⁺, HCO₃⁻, and Na⁺ fluxes
 - Net acid/base flux
 - Cell balance
+- the CO₂ cue in Pathways
+- the Cell message in Acid/Base & pH
 - TEP
 
 > [!NOTE]
-> **Result:** H⁺ secretion (-0.50), HCO₃⁻ absorption (0.50), Na⁺ absorption (0.50). Accumulation of K⁺ (0.15). Moderate lumen-positive TEP (0.50). Net acid secretion.
+> **Result:** H⁺ secretion (-0.50), HCO₃⁻ absorption (0.50), Na⁺ absorption (0.50). The CO₂ pathway supports the intracellular H⁺/HCO₃⁻ source for the paired layout. Accumulation of K⁺ may appear. Moderate lumen-positive TEP (0.50). Net acid secretion.
 
 > [!TIP]
-> Insight 10B: Apical H⁺ secretion alone is incomplete; a basolateral acid/base pathway is needed for a completed epithelial acid/base process.
+> Insight 10B: The CO₂ pathway supplies intracellular H⁺ and HCO₃⁻, while transporter polarity determines whether those products become completed epithelial acid/base transport.
 
 
 
@@ -1828,9 +1853,11 @@ Some **pancreatic duct cells** secrete HCO₃⁻ into the intestine to neutraliz
 
 Press **Reset** and build the following layout:
 
+In this layout, **NBC Influx** provides the HCO₃⁻ loading step. It moves 1 Na⁺ and 2 HCO₃⁻ into the cell.
+
 ```text
 Apical CFTR
-Basolateral NBC
+Basolateral NBC Influx
 Basolateral Kir
 Basolateral Na⁺/K⁺-ATPase
 (Barrier paracellular pathway, no background osmotic pull)
@@ -1845,7 +1872,7 @@ Observe:
 - Electrochemical context for CFTR
 
 > [!NOTE]
-> **Result:** Base secretion (-0.15), with negative basolateral Na⁺ flux (-0.23) and positive basolateral K⁺ flux (0.15). Accumulation of Na⁺ (0.23), Cl⁻ (0.28), and HCO₃⁻ (0.556) and depletion of K⁺ (-0.147). Weak lumen-negative TEP (-0.14). 
+> **Result:** Weak base secretion, with NBC Influx loading HCO₃⁻ into the cell and apical CFTR providing HCO₃⁻ exit. Intracellular Na⁺, Cl⁻, and HCO₃⁻ accumulation tendencies may appear, with a K⁺ depletion tendency from the supporting pump/K⁺ pathway. TEP remains weakly lumen-negative.
 
 > [!TIP]
 > Insight 10C: Base secretion follows the same loading-and-exit logic as Cl⁻ secretion, but the transported solute has an acid/base effect.
@@ -1887,7 +1914,7 @@ You will now use the same **CBE** activity on the opposite membrane to build an 
 
 ### Challenge
 
-Build a simplified **α-intercalated cell** acid-secreting layout using CBE *and* any of the following: NHE3, NBC, and/or H⁺-ATPase. Do not use any other transporters, except Na⁺/K⁺-ATPase if necessary.
+Build a simplified **α-intercalated cell** acid-secreting layout using CBE *and* any of the following: NHE3, NBC Efflux, NBC Influx, and/or H⁺-ATPase. Do not use any other transporters, except Na⁺/K⁺-ATPase if necessary.
 
 ### Targets
 
@@ -2126,13 +2153,13 @@ Your final layout should:
 > Apical MATE
 > Apical NHE3
 > Basolateral OCT
-> Basolateral NBC
+> Basolateral NBC Efflux
 > Basolateral Kir
 > Basolateral Na⁺/K⁺-ATPase
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBC provide the proximal-tubule-like acid/base machinery that helps support the H+ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺-dependent transport, and basolateral Kir supports K⁺ recycling.
+> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBC Efflux provide the proximal-tubule-like acid/base machinery that helps support the H+ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺-dependent transport, and basolateral Kir supports K⁺ recycling.
 >
 
 > [!TIP]
@@ -2278,7 +2305,8 @@ This reference lists the current selectable SALT settings for tissue context, pa
 - Na⁺-AA
 - NaPi 2:1
 - NaPi 3:1
-- NBC
+- NBC Efflux
+- NBC Influx
 - NCC
 - NKCC
 - PepT
