@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import {
   ResponsiveContainer,
@@ -9,6 +9,7 @@ import {
   Tooltip,
   ReferenceLine
 } from 'recharts';
+import { buildLayoutUrl, parseLayoutState } from './layoutState';
 // Simple Button for canvas use (replaces shadcn/ui)
 const Button = ({ children, onClick, className = "", variant, size, ...props }) => (
   <button
@@ -810,7 +811,7 @@ function createTransporterUid(id, placement) {
   return id + '-' + placement + '-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 }
 
-function createTransporterInstance(id, placement, density = 1) {
+export function createTransporterInstance(id, placement, density = 1) {
   const canonicalId = canonicalTransporterId(id);
   const template = INITIAL_TRANSPORTERS.find(t => t.id === canonicalId);
   if (!template) return null;
@@ -820,6 +821,29 @@ function createTransporterInstance(id, placement, density = 1) {
     placement,
     density,
     uid: createTransporterUid(canonicalId, placement)
+  };
+}
+
+function transportersFromSharedLayout(layout) {
+  return (layout?.transporters || [])
+    .filter(item => item && ['apical', 'basolateral'].includes(item.placement))
+    .map(item => {
+      const requestedDensity = Number(item.density);
+      const density = DENSITY_OPTIONS.some(option => option.value === requestedDensity)
+        ? requestedDensity
+        : 1;
+      return createTransporterInstance(item.id, item.placement, density);
+    })
+    .filter(Boolean);
+}
+
+function concentrationsFromSharedLayout(layout) {
+  const defaults = cloneConcentrations(INITIAL_CONCENTRATIONS);
+  if (!layout?.baseConcentrations) return defaults;
+  return {
+    apicalECF: { ...defaults.apicalECF, ...layout.baseConcentrations.apicalECF },
+    icf: { ...defaults.icf, ...layout.baseConcentrations.icf },
+    basolateralECF: { ...defaults.basolateralECF, ...layout.baseConcentrations.basolateralECF }
   };
 }
 
@@ -872,7 +896,7 @@ const TRANSPORTER_DESCRIPTIONS = {
 
 const INITIAL_CONCENTRATIONS = {
   apicalECF:     { 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, Phosphate:1.0, 'Glucose':5,  'H2O':100 },
-  icf:           { 'Na+':12,  'K+':140, 'Cl-':10,  'H+':0.00002, 'HCO3-':10, 'Ca2+':0.0001, Phosphate:1.0, 'Glucose':1,  'H2O':100 },
+  icf:           { 'Na+':12,  'K+':140, 'Cl-':10,  'H+':0.000063, 'HCO3-':10, 'Ca2+':0.0001, Phosphate:1.0, 'Glucose':1,  'H2O':100 },
   basolateralECF:{ 'Na+':145, 'K+':4,   'Cl-':105, 'H+':0.00004, 'HCO3-':24, 'Ca2+':1.2, Phosphate:1.0, 'Glucose':5,  'H2O':100 }
 };
 
@@ -999,6 +1023,11 @@ function transporterFluxCapacity(transporter) {
   return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * (Number(transporter.density) || 0);
 }
 
+export function hydrogenMmolToPH(hydrogenMmol) {
+  const hydrogenMolar = Math.max(Number(hydrogenMmol) || 0, 1e-12) / 1000;
+  return -Math.log10(hydrogenMolar);
+}
+
 function localAcidBaseReactionPairPriority(source) {
   const index = LOCAL_ACID_BASE_REACTION_PAIRS.findIndex(pair =>
     pair.hTransporterId === source.hTransporterId &&
@@ -1082,6 +1111,12 @@ function naKATPaseSupportLabel(profile) {
   return 'normal capacity';
 }
 
+function pumpSupportCapacityAt(profile, placement) {
+  return (profile.pumps || [])
+    .filter(pump => pump.placement === placement)
+    .reduce((sum, pump) => sum + Math.max(Number(pump.capacity) || 0, 0), 0);
+}
+
 function apicalNaEntryCapacity(apicalFlux) {
   return Math.max(apicalFlux['Na+'] || 0, 0);
 }
@@ -1092,12 +1127,12 @@ function apicalKExitCapacity(apicalFlux) {
 
 function pumpSupportedNaCompletion(apicalFlux, supportProfile) {
   if (!supportProfile.present) return 0;
-  return Math.min(apicalNaEntryCapacity(apicalFlux), supportProfile.naExtrusionCapacity);
+  return Math.min(apicalNaEntryCapacity(apicalFlux), pumpSupportCapacityAt(supportProfile, 'basolateral'));
 }
 
 function pumpSupportedKCompletion(apicalFlux, supportProfile) {
   if (!supportProfile.present) return 0;
-  return Math.min(apicalKExitCapacity(apicalFlux), supportProfile.kLoadingCapacity);
+  return Math.min(apicalKExitCapacity(apicalFlux), pumpSupportCapacityAt(supportProfile, 'basolateral'));
 }
 
 function pumpKLoadingForNaSupport(supportedNaAbsorption) {
@@ -1134,10 +1169,12 @@ function buildPumpSupportReport(
   mechanismNaExtrusion = null,
   mechanismKLoading = null
 ) {
-  const naExtrusion = Math.max(supportedNaCompletion, pumpNaExtrusionForKCompletion);
-  const kLoading = Math.max(pumpKLoadingForNaCompletion, supportedKCompletion);
-  const tracedNaExtrusion = mechanismNaExtrusion == null ? naExtrusion : Math.max(Number(mechanismNaExtrusion) || 0, 0);
-  const tracedKLoading = mechanismKLoading == null ? kLoading : Math.max(Number(mechanismKLoading) || 0, 0);
+  const baseNaExtrusion = Math.max(supportedNaCompletion, pumpNaExtrusionForKCompletion);
+  const baseKLoading = Math.max(pumpKLoadingForNaCompletion, supportedKCompletion);
+  const tracedNaExtrusion = mechanismNaExtrusion == null ? baseNaExtrusion : Math.max(Number(mechanismNaExtrusion) || 0, 0);
+  const tracedKLoading = mechanismKLoading == null ? baseKLoading : Math.max(Number(mechanismKLoading) || 0, 0);
+  const naExtrusion = Math.max(baseNaExtrusion, tracedNaExtrusion);
+  const kLoading = Math.max(baseKLoading, tracedKLoading);
   const pumpDetails = supportProfile.pumps || [];
   const includedDisplayFlux = emptyPumpFluxByMembrane();
   const hiddenCellFlux = emptyPumpFluxByMembrane();
@@ -1286,6 +1323,43 @@ function coupledTransporterRateFactor(transporter, effectiveStoich, hasNormalImp
     if (!hasCalciumLoadingContext) return 0;
   }
   return qualitativeCoupledVmRateFactor(transporter, effectiveStoich, hasNormalImplicitVm);
+}
+
+function proposedActiveTransporterRate(transporter, effectiveStoich, hasNaKATPase, tList, baseline) {
+  let rate = transporterFluxCapacity(transporter) *
+    coupledTransporterRateFactor(transporter, effectiveStoich, hasNaKATPase, tList, baseline);
+  if (transporter.id === 'NHE3') {
+    const pH = hydrogenMmolToPH(baseline.icf['H+']);
+    const pH50 = 7.2;
+    const sigma = 0.15;
+    rate *= 0.5 + 1 / (1 + Math.exp((pH - pH50) / sigma));
+  }
+  return rate;
+}
+
+function pumpDependentNaEntryDemand(tList, hasNaKATPase, baseline) {
+  if (!hasNaKATPase) return 0;
+  return tList.reduce((demand, transporter) => {
+    if (transporter.placement === 'none' || transporter.id === SUPPORT_PUMP_ID || transporter.id === 'OAT') return demand;
+    const effectiveStoich = activeStoichForPlacement(transporter);
+    const sodiumCoefficient = Number(effectiveStoich['Na+'] || 0);
+    if (
+      sodiumCoefficient <= 0 ||
+      Object.keys(effectiveStoich).includes('H2O') ||
+      PASSIVE_SOLUTE_CHANNELS[transporter.id] ||
+      SELECTED_ELECTROCHEMICAL_CHANNELS[transporter.id]
+    ) {
+      return demand;
+    }
+    const proposedRate = proposedActiveTransporterRate(
+      transporter,
+      effectiveStoich,
+      hasNaKATPase,
+      tList,
+      baseline
+    );
+    return demand + Math.max(proposedRate * sodiumCoefficient, 0);
+  }, 0);
 }
 
 function surfacePHDirection(flux) {
@@ -1485,6 +1559,133 @@ function buildCellImbalanceReport(baselineIcf, modeledIcf) {
     .filter(row => Math.abs(row.change) >= CELL_IMBALANCE_EPSILON);
 }
 
+function buildTransporterActivityReport({
+  tList,
+  fluxEvents,
+  transepiFluxDataNoH2O,
+  pumpSupportProfile,
+  pumpSupportReport,
+  baseline
+}) {
+  const transepithelialByIon = Object.fromEntries(
+    transepiFluxDataNoH2O.map(row => [row.ion, Number(row.transepithelial || 0)])
+  );
+
+  return tList
+    .filter(transporter => transporter.placement !== 'none')
+    .map(transporter => {
+      if (transporter.id === SUPPORT_PUMP_ID) {
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'active',
+          message: pumpSupportReport.active
+            ? 'Active pump cycling supports the displayed Na⁺ and K⁺ pathways.'
+            : 'Active gradient support; no Na⁺ entry or K⁺ exit pathway is currently using pump capacity.'
+        };
+      }
+
+      if (transporter.id === 'AQP') {
+        const oppositePlacement = transporter.placement === 'apical' ? 'basolateral' : 'apical';
+        const hasOppositeAqp = tList.some(item => item.id === 'AQP' && item.placement === oppositePlacement);
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: hasOppositeAqp ? 'active' : 'limited',
+          message: hasOppositeAqp
+            ? 'Active as part of a complete transcellular water pathway.'
+            : 'Membrane water pathway present; AQP is missing from the opposite membrane.'
+        };
+      }
+
+      const event = fluxEventForTransporter(transporter, fluxEvents);
+      if (!event) {
+        let message = 'No modeled driving context is currently available.';
+        if (transporter.id === 'NBCEfflux' && !hasPlacedTransporterFromSet(tList, PROTON_EXTRUDER_TRANSPORTER_IDS)) {
+          message = 'Inactive: requires proton extrusion to establish the elevated intracellular HCO₃⁻ context.';
+        } else if ((transporter.stoich['Na+'] || transporter.id === 'OAT') && !pumpSupportProfile.present) {
+          message = 'Inactive: requires Na⁺/K⁺-ATPase gradient support.';
+        } else if (
+          transporter.id === 'NCX1' &&
+          !hasOppositePlacedTransporter(tList, 'TRPV56', transporter.placement) &&
+          !hasElevatedModeledCalcium(baseline)
+        ) {
+          message = 'Inactive: requires intracellular Ca²⁺ loading, such as TRPV5/6 on the opposite membrane.';
+        }
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'inactive',
+          message
+        };
+      }
+
+      const activeSolutes = (event.solutes || []).filter(solute =>
+        Math.abs(Number(solute.flux || 0)) >= DIRECTIONAL_FLUX_GRAPH_EPSILON
+      );
+      if (!activeSolutes.length) {
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'limited',
+          message: 'Pathway is present, but there is no strong net electrochemical tendency.'
+        };
+      }
+
+      if (event.supportScale < 0.999) {
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'limited',
+          message: 'Active, but limited by shared Na⁺/K⁺-ATPase support capacity.'
+        };
+      }
+
+      const incompleteSolutes = activeSolutes.filter(solute => {
+        const expectedDirection = transepithelialDirectionForMembraneFlux(
+          transporter.placement,
+          solute.coeff || Math.sign(solute.flux)
+        );
+        return expectedDirection * (transepithelialByIon[solute.ion] || 0) < DIRECTIONAL_FLUX_GRAPH_EPSILON;
+      });
+      const basolateralKRecycling = transporter.id === 'ROMK' &&
+        transporter.placement === 'basolateral' &&
+        pumpSupportReport.active;
+      if (incompleteSolutes.length && !basolateralKRecycling) {
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'limited',
+          message: 'Active membrane step; incomplete epithelial pathway for ' +
+            incompleteSolutes.map(solute => ION_LABEL[solute.ion] || solute.ion).join(', ') + '.'
+        };
+      }
+
+      return {
+        uid: transporter.uid,
+        id: transporter.id,
+        name: transporter.name,
+        placement: transporter.placement,
+        status: 'active',
+        message: basolateralKRecycling
+          ? 'Active local K⁺ recycling supports pump cycling and cell balance.'
+          : 'Active membrane step with compatible epithelial pathway completion.'
+      };
+    });
+}
+
 function buildMatchedDisplayFluxes(baseDisplayApicalFlux, baseDisplayBasolateralFlux, transepiFluxDataNoH2O, paraFlux = {}) {
   const displayApicalFlux = { ...baseDisplayApicalFlux };
   const displayBasolateralFlux = { ...baseDisplayBasolateralFlux };
@@ -1544,162 +1745,7 @@ function ConcentrationZoomAxisTick({ x = 0, y = 0, payload }) {
   );
 }
 
-export default function App() {
-  // State
-  const [showAbout, setShowAbout] = useState(false);
-  const [showInfoModal, setShowInfoModal] = useState(false);
-  const [modalTransporterId, setModalTransporterId] = useState(null);
-  const [transporters, setTransporters] = useState([]);
-  const [result, setResult] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [appMode, setAppMode] = useState('explore');
-  const [resultsView, setResultsView] = useState('mechanism');
-  const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
-  const [baseConcentrations, setBaseConcentrations] = useState(() => cloneConcentrations(INITIAL_CONCENTRATIONS));
-  const [concentrationValidation, setConcentrationValidation] = useState({});
-  const [tissuePreset, setTissuePreset] = useState('all');
-  const [backgroundOsmoticPullSetting, setBackgroundOsmoticPullSetting] = useState('tissue');
-
-  // Paracellular pathway state
-  const [paracellularType, setParacellularType] = useState('none'); // 'none' | 'cation' | 'cationOnly' | 'anion'
-  const [paraCationPerm, setParaCationPerm] = useState(1.0); // default value
-  const [paraAnionPerm, setParaAnionPerm] = useState(1.0);   // default value
-  const [showParaInfo, setShowParaInfo] = useState(false);
-  const [activeTransporterTooltip, setActiveTransporterTooltip] = useState(null);
-  const tooltipHideTimerRef = useRef(null);
-  const instructorDemoMode = ENABLE_INSTRUCTOR_DEMO_MODE && appMode === 'demo';
-
-  // --- Automatically run simulation on page load ---
-  useEffect(() => {
-  calculateFluxesAndConcs(transporters);
-  // eslint-disable-next-line
-}, [
-  transporters,
-  paracellularType,
-  paraCationPerm,
-  paraAnionPerm,
-  baseConcentrations,
-  tissuePreset,
-  backgroundOsmoticPullSetting
-]);
-
-
-  useEffect(() => {
-    setTransporters(ts =>
-      ts.some(t => !t.uid)
-        ? ts.map(t => t.uid ? t : { ...t, uid: t.id + '-' + t.placement + '-' + Math.random().toString(36).slice(2) })
-        : ts
-    );
-  }, []);
-
-  useEffect(() => {
-    const handleTooltipEscape = event => {
-      if (event.key === 'Escape') setActiveTransporterTooltip(null);
-    };
-    document.addEventListener('keydown', handleTooltipEscape);
-    return () => {
-      document.removeEventListener('keydown', handleTooltipEscape);
-      if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
-    };
-  }, []);
-
-  const updateTransporter = (uid, field, value) => {
-    setTransporters(ts =>
-      ts.map(t =>
-        t.uid === uid
-          ? (field === 'kinetics'
-              ? { ...t, kinetics: { ...value } }
-              : { ...t, [field]: value })
-          : t
-      )
-    );
-  };
-
-  const addTransporterToMembrane = (id, placement) => {
-    const transporter = createTransporterInstance(id, placement);
-    if (!transporter) return;
-    setTransporters(ts => [...ts, transporter]);
-  };
-
-  const removeTransporter = uid => {
-    setTransporters(ts => ts.filter(t => t.uid !== uid));
-  };
-
-  const updateBaseConcentration = (compartment, ion, value) => {
-    if (!CONCENTRATION_EDIT_COMPARTMENTS.includes(compartment)) return;
-    const requestedNumeric = Math.max(Number(value) || 0, 0);
-    const numeric = clampEditableConcentration(ion, value);
-    const validation = concentrationValidationMessage(ion, requestedNumeric) || concentrationValidationMessage(ion, numeric);
-    const validationKey = compartment + '-' + ion;
-    setConcentrationValidation(current => {
-      const next = { ...current };
-      if (validation) next[validationKey] = validation;
-      else delete next[validationKey];
-      return next;
-    });
-    setBaseConcentrations(current => ({
-      ...current,
-      [compartment]: {
-        ...current[compartment],
-        [ion]: numeric
-      }
-    }));
-  };
-
-  const resetBaseConcentrations = () => {
-    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
-    setConcentrationValidation({});
-  };
-
-  const applyTissueDemoPreset = tissueValue => {
-    const preset = TISSUE_DEMO_PRESETS[tissueValue] || TISSUE_DEMO_PRESETS.all;
-    setTransporters(demoTransportersForTissue(tissueValue));
-    setParacellularType(preset.paracellularType || 'none');
-    setParaCationPerm(1.0);
-    setParaAnionPerm(1.0);
-    setBackgroundOsmoticPullSetting('tissue');
-  };
-
-  const handleAppModeChange = event => {
-    const nextMode = event.target.value;
-    setAppMode(nextMode);
-    if (nextMode === 'demo') {
-      const demoTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(tissuePreset) ? 'all' : tissuePreset;
-      if (demoTissuePreset !== tissuePreset) setTissuePreset(demoTissuePreset);
-      applyTissueDemoPreset(demoTissuePreset);
-    }
-  };
-
-  const handleTissuePresetChange = event => {
-    const requestedTissuePreset = event.target.value;
-    const nextTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(requestedTissuePreset) ? 'all' : requestedTissuePreset;
-    setTissuePreset(nextTissuePreset);
-    if (instructorDemoMode) {
-      applyTissueDemoPreset(nextTissuePreset);
-    }
-  };
-
-  const resetAllSettings = () => {
-    setTransporters([]);
-    setParacellularType('none');
-    setParaCationPerm(1.0);
-    setParaAnionPerm(1.0);
-    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
-    setConcentrationValidation({});
-    setTissuePreset('all');
-    setBackgroundOsmoticPullSetting('tissue');
-    setResultsView('mechanism');
-    setZoomedConcentrationIon(null);
-    setShowInfoModal(false);
-    setModalTransporterId(null);
-    setShowParaInfo(false);
-    setActiveTransporterTooltip(null);
-    setShowResetConfirm(false);
-    setAppMode('explore');
-  };
-
-  // --- Simulation Logic ---
+// --- Simulation Logic ---
 
 // Helper to get placements for a transporter in this simulation step
 function placementsForTick(id, tList) {
@@ -1766,7 +1812,34 @@ function activeStoichForPlacement(transporter) {
   return transporter.stoich;
 }
 
-const calculateFluxesAndConcs = (tList = transporters) => {
+function fluxEventForTransporter(transporter, fluxEvents) {
+  if (transporter.uid) {
+    const uidMatch = fluxEvents.find(event => event.uid === transporter.uid);
+    if (uidMatch) return uidMatch;
+  }
+  return fluxEvents.find(event =>
+    event.id === transporter.id &&
+    event.placement === transporter.placement
+  );
+}
+
+function outwardSoluteCapacity(transporter, fluxEvents, ion) {
+  const event = fluxEventForTransporter(transporter, fluxEvents);
+  if (!event) return 0;
+  return (event.solutes || [])
+    .filter(solute => solute.ion === ion)
+    .reduce((sum, solute) => sum + Math.max(-Number(solute.flux || 0), 0), 0);
+}
+
+export function simulateTransport({
+  tList = [],
+  baseConcentrations = INITIAL_CONCENTRATIONS,
+  paracellularType = 'none',
+  paraCationPerm = 1,
+  paraAnionPerm = 1,
+  tissuePreset = 'all',
+  backgroundOsmoticPullSetting = 'tissue'
+} = {}) {
   // Bulk baths are fixed teaching reservoirs; local surface layers are computed below.
   const effectiveStartingIcf = deriveEffectiveStartingIcf(baseConcentrations, tList);
   const baseline = {
@@ -1786,6 +1859,10 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
   const pumpSupportProfile = naKATPaseSupportProfile(tList);
   const hasNaKATPase = pumpSupportProfile.present;
+  const naEntryDemand = pumpDependentNaEntryDemand(tList, hasNaKATPase, baseline);
+  const naEntrySupportScale = naEntryDemand > DIRECTIONAL_FLUX_GRAPH_EPSILON
+    ? Math.min(1, pumpSupportProfile.naExtrusionCapacity / naEntryDemand)
+    : 1;
   const passiveChannels = [];
   const coupledEvents = [];
   const electrochemicalContextEvents = [];
@@ -1805,30 +1882,28 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     if (t.id === 'OAT' && !hasNaKATPase) return;
     if (effectiveStoich['Na+'] && !hasNaKATPase) return;
 
-    let rate = transporterFluxCapacity(t) *
-      coupledTransporterRateFactor(t, effectiveStoich, hasNaKATPase, tList, baseline);
+    let rate = proposedActiveTransporterRate(t, effectiveStoich, hasNaKATPase, tList, baseline);
+    const pumpCapacityLimited = effectiveStoich['Na+'] > 0 && naEntrySupportScale < 1;
+    if (pumpCapacityLimited) rate *= naEntrySupportScale;
     if (Math.abs(rate) < 0.001) return;
-    if (t.id === 'NHE3') {
-      const h = (baseline.icf['H+']);
-      const pH = -Math.log10(h);
-      const pH50 = 7.2;
-      const sigma = 0.05;
-      rate *= 1 / (1 + Math.exp((pH - pH50) / sigma));
-    }
     if (!COUPLED_MISMATCH_EXCLUSIONS.includes(t.id) && coupledSolutes(effectiveStoich).length > 1) {
       coupledEvents.push({
+        uid: t.uid,
         id: t.id,
         name: t.name,
         placement: t.placement,
         rate,
+        supportScale: pumpCapacityLimited ? naEntrySupportScale : 1,
         stoich: { ...effectiveStoich }
       });
     }
     fluxEvents.push({
+      uid: t.uid,
       id: t.id,
       name: t.name,
       placement: t.placement,
       type: coupledSolutes(effectiveStoich).length > 1 ? 'coupled' : 'active',
+      supportScale: pumpCapacityLimited ? naEntrySupportScale : 1,
       solutes: Object.entries(effectiveStoich)
         .filter(([ion]) => ion !== 'H2O')
         .map(([ion, coeff]) => ({
@@ -1903,6 +1978,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       return { ion, coeff: Math.sign(delta), flux: delta };
     });
     fluxEvents.push({
+      uid: t.uid,
       id: t.id,
       name: t.name,
       placement: t.placement,
@@ -1989,8 +2065,8 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const tracedPumpNaExtrusion = Math.max(tracedNaEntrySupport, pumpNaExtrusionForKSupport(tracedKExitSupport));
   const tracedPumpKLoading = Math.max(pumpKLoadingForNaSupport(tracedNaEntrySupport), tracedKExitSupport);
   const pumpNaExtrusionForKSecretion = pumpNaExtrusionForKSupport(supportedKSecretion);
-  const pumpNaExtrusion = Math.max(supportedNaAbsorption, pumpNaExtrusionForKSecretion);
-  const pumpKLoading = Math.max(pumpKLoadingForNaAbsorption, supportedKSecretion);
+  const pumpNaExtrusion = Math.max(supportedNaAbsorption, pumpNaExtrusionForKSecretion, tracedPumpNaExtrusion);
+  const pumpKLoading = Math.max(pumpKLoadingForNaAbsorption, supportedKSecretion, tracedPumpKLoading);
   const pumpSupportReport = buildPumpSupportReport(
     pumpSupportProfile,
     supportedNaAbsorption,
@@ -2091,6 +2167,13 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   if (hExtruders.length > 0 && hco3ExitTransporters.length > 0) {
     const fluxPairs = [];
     const reactionSources = [];
+    const remainingHCapacity = new Map(
+      hExtruders.map(transporter => [transporter, outwardSoluteCapacity(transporter, fluxEvents, 'H+')])
+    );
+    const remainingHco3Capacity = new Map(
+      hco3ExitTransporters.map(transporter => [transporter, outwardSoluteCapacity(transporter, fluxEvents, 'HCO3-')])
+    );
+    const candidates = [];
     for (let t of hExtruders) {
       for (let hco3Exit of hco3ExitTransporters) {
         const hco3ExitTransporterId = canonicalTransporterId(hco3Exit.id);
@@ -2102,29 +2185,57 @@ const calculateFluxesAndConcs = (tList = transporters) => {
         if (sameMembrane && !sameMembraneAcidBaseSupportPair) continue;
         const pairHasSupport = hasNaKATPase || (t.id !== 'NHE3' && !NBC_TRANSPORTER_IDS.includes(hco3ExitTransporterId));
         if (!pairHasSupport) continue;
-        const extruderRate = (t.kinetics.maxRate / (t.kinetics.Km + 1)) * t.density;
-        const hco3Stoich = Math.abs(hco3Exit.stoich['HCO3-'] || 1);
-        const hco3Rate = (hco3Exit.kinetics.maxRate / (hco3Exit.kinetics.Km + 1)) * hco3Exit.density * hco3Stoich;
-        const limiting = Math.min(Math.abs(extruderRate), Math.abs(hco3Rate));
+        const potentialCapacity = Math.min(
+          remainingHCapacity.get(t) || 0,
+          remainingHco3Capacity.get(hco3Exit) || 0
+        );
+        if (potentialCapacity <= DIRECTIONAL_FLUX_GRAPH_EPSILON) continue;
+        candidates.push({
+          hTransporter: t,
+          hco3Transporter: hco3Exit,
+          hco3ExitTransporterId,
+          sameMembrane,
+          potentialCapacity
+        });
+      }
+    }
+    candidates
+      .sort((a, b) =>
+        Number(a.sameMembrane) - Number(b.sameMembrane) ||
+        b.potentialCapacity - a.potentialCapacity
+      )
+      .forEach(candidate => {
+        const {
+          hTransporter,
+          hco3Transporter,
+          hco3ExitTransporterId,
+          sameMembrane
+        } = candidate;
+        const limiting = Math.min(
+          remainingHCapacity.get(hTransporter) || 0,
+          remainingHco3Capacity.get(hco3Transporter) || 0
+        );
+        if (limiting <= DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
+        remainingHCapacity.set(hTransporter, (remainingHCapacity.get(hTransporter) || 0) - limiting);
+        remainingHco3Capacity.set(hco3Transporter, (remainingHco3Capacity.get(hco3Transporter) || 0) - limiting);
         const reactionSource = {
           kind: sameMembrane ? 'local' : 'transepithelial',
-          hTransporterId: t.id,
+          hTransporterId: hTransporter.id,
           hco3TransporterId: hco3ExitTransporterId,
-          hPlacement: t.placement,
-          hco3Placement: hco3Exit.placement,
+          hPlacement: hTransporter.placement,
+          hco3Placement: hco3Transporter.placement,
           capacity: limiting
         };
         if (sameMembrane) {
           reactionSources.push(reactionSource);
-        } else if (t.placement === 'apical' && hco3Exit.placement === 'basolateral') {
+        } else if (hTransporter.placement === 'apical' && hco3Transporter.placement === 'basolateral') {
           fluxPairs.push({ h: -limiting, hco3: limiting });
           reactionSources.push(reactionSource);
-        } else if (t.placement === 'basolateral' && hco3Exit.placement === 'apical') {
+        } else if (hTransporter.placement === 'basolateral' && hco3Transporter.placement === 'apical') {
           fluxPairs.push({ h: limiting, hco3: -limiting });
           reactionSources.push(reactionSource);
         }
-      }
-    }
+      });
     acidBaseFluxPairs = fluxPairs;
     acidBaseReactionSources = reactionSources
       .filter(source => Number(source.capacity || 0) > DIRECTIONAL_FLUX_GRAPH_EPSILON)
@@ -2285,9 +2396,16 @@ const calculateFluxesAndConcs = (tList = transporters) => {
   const apicalKRecyclingTep = Math.min(apicalKirKExit, apicalKLoadingForRecycling) *
     APICAL_K_RECYCLING_TEP_COUPLING;
   const chargeReport = buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData, apicalKRecyclingTep);
+  const transporterActivityReport = buildTransporterActivityReport({
+    tList,
+    fluxEvents,
+    transepiFluxDataNoH2O,
+    pumpSupportProfile,
+    pumpSupportReport,
+    baseline
+  });
 
-  // Push results
-  setResult({
+  return {
     apicalFlux,
     basolateralFlux,
     netFlux,
@@ -2311,6 +2429,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
     coupledMismatchReport,
     cellImbalanceReport,
     acidBaseReport,
+    transporterActivityReport,
     paracellularElectricalTendency,
     gradientSupportReport: {
       present: pumpSupportProfile.present,
@@ -2319,9 +2438,224 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       normalCapacity: pumpSupportProfile.normalCapacity,
       label: naKATPaseSupportLabel(pumpSupportProfile)
     }
-  });
-};
+  };
+}
 
+export default function App() {
+  const [sharedLayout] = useState(() =>
+    typeof window === 'undefined' ? null : parseLayoutState(window.location.search)
+  );
+  // State
+  const [showAbout, setShowAbout] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [modalTransporterId, setModalTransporterId] = useState(null);
+  const [transporters, setTransporters] = useState(() => transportersFromSharedLayout(sharedLayout));
+  const [result, setResult] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showShareLayout, setShowShareLayout] = useState(false);
+  const [shareLayoutUrl, setShareLayoutUrl] = useState('');
+  const [shareLayoutStatus, setShareLayoutStatus] = useState('');
+  const [appMode, setAppMode] = useState('explore');
+  const [resultsView, setResultsView] = useState(
+    ['mechanism', 'fluxes', 'concentrations', 'details'].includes(sharedLayout?.resultsView)
+      ? sharedLayout.resultsView
+      : 'mechanism'
+  );
+  const [zoomedConcentrationIon, setZoomedConcentrationIon] = useState(null);
+  const [baseConcentrations, setBaseConcentrations] = useState(() => concentrationsFromSharedLayout(sharedLayout));
+  const [concentrationValidation, setConcentrationValidation] = useState({});
+  const [tissuePreset, setTissuePreset] = useState(
+    TISSUE_OPTIONS.some(option => option.value === sharedLayout?.tissuePreset)
+      ? sharedLayout.tissuePreset
+      : 'all'
+  );
+  const [backgroundOsmoticPullSetting, setBackgroundOsmoticPullSetting] = useState(
+    BACKGROUND_OSMOTIC_PULL_OPTIONS.some(option => option.value === sharedLayout?.backgroundOsmoticPullSetting)
+      ? sharedLayout.backgroundOsmoticPullSetting
+      : 'tissue'
+  );
+
+  // Paracellular pathway state
+  const [paracellularType, setParacellularType] = useState(
+    ['none', 'cation', 'cationOnly', 'anion'].includes(sharedLayout?.paracellularType)
+      ? sharedLayout.paracellularType
+      : 'none'
+  );
+  const [paraCationPerm, setParaCationPerm] = useState(
+    Number.isFinite(Number(sharedLayout?.paraCationPerm)) ? Number(sharedLayout.paraCationPerm) : 1.0
+  );
+  const [paraAnionPerm, setParaAnionPerm] = useState(
+    Number.isFinite(Number(sharedLayout?.paraAnionPerm)) ? Number(sharedLayout.paraAnionPerm) : 1.0
+  );
+  const [showParaInfo, setShowParaInfo] = useState(false);
+  const [activeTransporterTooltip, setActiveTransporterTooltip] = useState(null);
+  const tooltipHideTimerRef = useRef(null);
+  const instructorDemoMode = ENABLE_INSTRUCTOR_DEMO_MODE && appMode === 'demo';
+
+  // --- Automatically run simulation on page load ---
+  useEffect(() => {
+    setResult(simulateTransport({
+      tList: transporters,
+      baseConcentrations,
+      paracellularType,
+      paraCationPerm,
+      paraAnionPerm,
+      tissuePreset,
+      backgroundOsmoticPullSetting
+    }));
+  }, [
+    transporters,
+    paracellularType,
+    paraCationPerm,
+    paraAnionPerm,
+    baseConcentrations,
+    tissuePreset,
+    backgroundOsmoticPullSetting
+  ]);
+
+
+  useEffect(() => {
+    setTransporters(ts =>
+      ts.some(t => !t.uid)
+        ? ts.map(t => t.uid ? t : { ...t, uid: t.id + '-' + t.placement + '-' + Math.random().toString(36).slice(2) })
+        : ts
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleTooltipEscape = event => {
+      if (event.key === 'Escape') setActiveTransporterTooltip(null);
+    };
+    document.addEventListener('keydown', handleTooltipEscape);
+    return () => {
+      document.removeEventListener('keydown', handleTooltipEscape);
+      if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
+    };
+  }, []);
+
+  const updateTransporter = (uid, field, value) => {
+    setTransporters(ts =>
+      ts.map(t =>
+        t.uid === uid
+          ? (field === 'kinetics'
+              ? { ...t, kinetics: { ...value } }
+              : { ...t, [field]: value })
+          : t
+      )
+    );
+  };
+
+  const addTransporterToMembrane = (id, placement) => {
+    const transporter = createTransporterInstance(id, placement);
+    if (!transporter) return;
+    setTransporters(ts => [...ts, transporter]);
+  };
+
+  const removeTransporter = uid => {
+    setTransporters(ts => ts.filter(t => t.uid !== uid));
+  };
+
+  const updateBaseConcentration = (compartment, ion, value) => {
+    if (!CONCENTRATION_EDIT_COMPARTMENTS.includes(compartment)) return;
+    const requestedNumeric = Math.max(Number(value) || 0, 0);
+    const numeric = clampEditableConcentration(ion, value);
+    const validation = concentrationValidationMessage(ion, requestedNumeric) || concentrationValidationMessage(ion, numeric);
+    const validationKey = compartment + '-' + ion;
+    setConcentrationValidation(current => {
+      const next = { ...current };
+      if (validation) next[validationKey] = validation;
+      else delete next[validationKey];
+      return next;
+    });
+    setBaseConcentrations(current => ({
+      ...current,
+      [compartment]: {
+        ...current[compartment],
+        [ion]: numeric
+      }
+    }));
+  };
+
+  const resetBaseConcentrations = () => {
+    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+    setConcentrationValidation({});
+  };
+
+  const applyTissueDemoPreset = tissueValue => {
+    const preset = TISSUE_DEMO_PRESETS[tissueValue] || TISSUE_DEMO_PRESETS.all;
+    setTransporters(demoTransportersForTissue(tissueValue));
+    setParacellularType(preset.paracellularType || 'none');
+    setParaCationPerm(1.0);
+    setParaAnionPerm(1.0);
+    setBackgroundOsmoticPullSetting('tissue');
+  };
+
+  const handleAppModeChange = event => {
+    const nextMode = event.target.value;
+    setAppMode(nextMode);
+    if (nextMode === 'demo') {
+      const demoTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(tissuePreset) ? 'all' : tissuePreset;
+      if (demoTissuePreset !== tissuePreset) setTissuePreset(demoTissuePreset);
+      applyTissueDemoPreset(demoTissuePreset);
+    }
+  };
+
+  const handleTissuePresetChange = event => {
+    const requestedTissuePreset = event.target.value;
+    const nextTissuePreset = HIDDEN_TISSUE_OPTION_VALUES.has(requestedTissuePreset) ? 'all' : requestedTissuePreset;
+    setTissuePreset(nextTissuePreset);
+    if (instructorDemoMode) {
+      applyTissueDemoPreset(nextTissuePreset);
+    }
+  };
+
+  const resetAllSettings = () => {
+    setTransporters([]);
+    setParacellularType('none');
+    setParaCationPerm(1.0);
+    setParaAnionPerm(1.0);
+    setBaseConcentrations(cloneConcentrations(INITIAL_CONCENTRATIONS));
+    setConcentrationValidation({});
+    setTissuePreset('all');
+    setBackgroundOsmoticPullSetting('tissue');
+    setResultsView('mechanism');
+    setZoomedConcentrationIon(null);
+    setShowInfoModal(false);
+    setModalTransporterId(null);
+    setShowParaInfo(false);
+    setActiveTransporterTooltip(null);
+    setShowShareLayout(false);
+    setShareLayoutUrl('');
+    setShareLayoutStatus('');
+    setShowResetConfirm(false);
+    setAppMode('explore');
+  };
+
+  const openShareLayout = () => {
+    const url = buildLayoutUrl({
+      transporters,
+      tissuePreset,
+      paracellularType,
+      paraCationPerm,
+      paraAnionPerm,
+      backgroundOsmoticPullSetting,
+      baseConcentrations,
+      resultsView
+    }, window.location.href);
+    setShareLayoutUrl(url);
+    setShareLayoutStatus('');
+    setShowShareLayout(true);
+  };
+
+  const copyShareLayoutUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLayoutUrl);
+      setShareLayoutStatus('Layout link copied.');
+    } catch {
+      setShareLayoutStatus('Select the link and copy it from the field.');
+    }
+  };
 
   // --- Derived Data for Display ---
   const acidBaseReport = result?.acidBaseReport;
@@ -2572,36 +2906,52 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 
     return (
       <div className="space-y-2">
-        {rows.map(t => (
-          <div key={t.uid} className="border rounded p-2 bg-white">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="font-semibold text-sm">{t.name}</div>
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label={'Remove ' + t.name + ' from ' + placementMembraneLabel}
-                onClick={() => removeTransporter(t.uid)}
-              >
-                Remove
-              </Button>
+        {rows.map(t => {
+          const activity = result?.transporterActivityReport?.find(item => item.uid === t.uid);
+          const statusClass = activity?.status === 'active'
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+            : activity?.status === 'limited'
+              ? 'border-amber-300 bg-amber-50 text-amber-900'
+              : 'border-gray-300 bg-gray-100 text-gray-700';
+          return (
+            <div key={t.uid} className="border rounded p-2 bg-white">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="font-semibold text-sm">{t.name}</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={'Remove ' + t.name + ' from ' + placementMembraneLabel}
+                  onClick={() => removeTransporter(t.uid)}
+                >
+                  Remove
+                </Button>
+              </div>
+              {activity && (
+                <div className="mb-2 text-xs">
+                  <span className={'inline-block border rounded px-1.5 py-0.5 font-semibold capitalize ' + statusClass}>
+                    {activity.status}
+                  </span>
+                  <div className="mt-1 text-gray-600">{activity.message}</div>
+                </div>
+              )}
+              <fieldset className="flex items-center gap-2 text-xs">
+                <legend className="text-gray-600 mr-1">Density</legend>
+                {DENSITY_OPTIONS.map(option => (
+                  <label key={option.label} className="inline-flex items-center gap-1">
+                    <input
+                      type="radio"
+                      name={'density-' + t.uid}
+                      value={option.value}
+                      checked={t.density === option.value}
+                      onChange={() => updateTransporter(t.uid, 'density', option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </fieldset>
             </div>
-            <fieldset className="flex items-center gap-2 text-xs">
-              <legend className="text-gray-600 mr-1">Density</legend>
-              {DENSITY_OPTIONS.map(option => (
-                <label key={option.label} className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name={'density-' + t.uid}
-                    value={option.value}
-                    checked={t.density === option.value}
-                    onChange={() => updateTransporter(t.uid, 'density', option.value)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </fieldset>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -3689,6 +4039,26 @@ const calculateFluxesAndConcs = (tList = transporters) => {
               value: 0
             }]}
         />
+        {result.transporterActivityReport?.length > 0 && (
+          <AccessibleTable
+            caption="Transporter Status"
+            captionClassName="text-left font-semibold mt-4 mb-2"
+            columns={[
+              { key: 'transporter', label: 'Transporter' },
+              { key: 'membrane', label: 'Membrane' },
+              { key: 'status', label: 'Status' },
+              { key: 'message', label: 'Interpretation' }
+            ]}
+            rows={result.transporterActivityReport.map(activity => ({
+              transporter: activity.name,
+              membrane: activity.placement === 'apical'
+                ? displayOrientation.apicalMembraneLabel
+                : displayOrientation.basolateralMembraneLabel,
+              status: activity.status.charAt(0).toUpperCase() + activity.status.slice(1),
+              message: activity.message
+            }))}
+          />
+        )}
       </section>
     );
   };
@@ -4016,6 +4386,7 @@ const calculateFluxesAndConcs = (tList = transporters) => {
 >
   Lessons
 </a>
+<Button variant="outline" onClick={openShareLayout}>Share layout</Button>
 <Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
 <Button variant="outline" onClick={() => setShowResetConfirm(true)}>Reset</Button>
 </div>
@@ -4149,6 +4520,42 @@ const calculateFluxesAndConcs = (tList = transporters) => {
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(false)}>Cancel</Button>
         <Button size="sm" onClick={resetAllSettings}>Reset</Button>
+      </div>
+    </div>
+  </div>
+)}
+{showShareLayout && (
+  <div
+    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+    role="presentation"
+    onClick={() => setShowShareLayout(false)}
+  >
+    <div
+      className="bg-white rounded-lg p-6 max-w-2xl w-[92vw] shadow-lg"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="share-layout-title"
+      onClick={event => event.stopPropagation()}
+    >
+      <h2 id="share-layout-title" className="text-xl font-bold mb-2">Share this layout</h2>
+      <p className="text-sm text-gray-700 mb-3">
+        This link restores the current transporter placements, densities, tissue, pathways, concentrations, and results view.
+      </p>
+      <label htmlFor="share-layout-url" className="block text-sm font-semibold mb-1">Layout link</label>
+      <input
+        id="share-layout-url"
+        type="text"
+        readOnly
+        value={shareLayoutUrl}
+        onFocus={event => event.target.select()}
+        className="w-full border rounded p-2 text-sm font-mono"
+      />
+      {shareLayoutStatus && (
+        <div className="mt-2 text-sm text-gray-700" role="status">{shareLayoutStatus}</div>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setShowShareLayout(false)}>Close</Button>
+        <Button size="sm" onClick={copyShareLayoutUrl}>Copy link</Button>
       </div>
     </div>
   </div>

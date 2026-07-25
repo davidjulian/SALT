@@ -155,11 +155,11 @@ Targets:
 
 > [!NOTE]
 > **Solution**:
-> ````
+> ```text
 > Basolateral Na⁺/K⁺-ATPase
 > Apical Kir
 > (Barrier paracellular pathway)
-> ````
+> ```
 > Result: K⁺ secretion (-0.29). Na⁺ depletion (-0.44).
 
 > [!TIP]
@@ -309,12 +309,12 @@ Constraints
 > [!NOTE]
 > **Solution**:
 >
-> ````
+> ```text
 > Apical NaPi 2:1
 > Basolateral Pi facilitator
 > Basolateral Na⁺/K⁺-ATPase
 > (Barrier paracellular pathway)
-> ````
+> ```
 > **Result:** Pi absorption (0.30), Na⁺ absorption (0.60). K⁺ accumulation (0.40).
 
 > [!TIP]
@@ -464,13 +464,13 @@ Your final layout should:
 > [!NOTE]
 > **Solution**:
 >
-> ````
+> ```text
 > Apical SGLT
 > Basolateral GLUT
 > Basolateral Na⁺/K⁺-ATPase
 > Basolateral Kir
 > (Barrier paracellular pathway)
-> ````
+> ```
 > **Result:** Glucose accumulation (6.49).
 >
 > The alternative layout solution with apical Kir also reduces K⁺ accumulation, but it shifts the layout toward K⁺ secretion. That is a useful comparison, but it is not the best answer if the goal is K⁺ recycling while preserving a glucose absorption phenotype.
@@ -785,7 +785,7 @@ This gives the basic epithelial logic of secretion:
 At this point, the layout may still be incomplete because NKCC depends on ion gradients that are normally supported by other transporters.
 
 > [!NOTE]
-> **Result:** Positive apical fluxes for Cl⁻ and HCIO3-, and intracellular accumulation of both are unchanged
+> **Result:** Positive apical fluxes for Cl⁻ and HCO₃⁻ remain, but the layout is still incomplete because NKCC does not yet have Na⁺/K⁺-ATPase gradient support.
 
 > [!TIP]
 > Insight 5B: Basolateral NKCC can load Cl⁻ into the cell but still requires gradient support.
@@ -812,7 +812,7 @@ Observe:
 This is a simplified **secretory epithelial** layout relevant to tissues such as **intestinal crypt epithelium**, **airway surface epithelium**, and some **exocrine ducts**. The exact transporters and regulation differ by tissue, but the common pattern is basolateral Cl⁻ loading plus apical anion exit.
 
 > [!NOTE]
-> **Result:** Net secretion of Cl⁻ (-0.13). Negative basolateral flux for Na⁺ (-0.33) and K⁺ (-0.04), positive apical flux for HCO₃⁻ (0.06). Accumulation of Na⁺ (0.333) and Cl⁻ (0.534). Weak lumen-negative TEP (-0.13).
+> **Result:** Net Cl⁻ secretion appears because basolateral NKCC loading and apical CFTR exit now form a complete pathway. Na⁺/K⁺-ATPase supports the Na⁺ gradient, Kir supports K⁺ recycling, and the TEP is weakly lumen-negative. Use **Cell Balance** to identify any remaining unmatched ion movement.
 
 > [!TIP]
 > Insight 5C: Na⁺/K⁺-ATPase and Kir support NKCC-dependent Cl⁻ secretion by maintaining Na⁺ and K⁺ gradients
@@ -1658,7 +1658,7 @@ Observe:
 This layout combines several Na⁺-linked absorptive pathways in the same epithelial cell.
 
 > [!NOTE]
-> **Result:** Absorption of Na⁺ (0.60), Pi (0.30), glucose (0.35), and AA (0.35). Positive basolateral K⁺ flux (0.40). Accumulation of Na⁺ (0.696) and glucose (6.493). TEP is neutral. Osmotic pull is toward the blood (0.8).
+> **Result:** Na⁺, Pi, glucose, and amino acids are all absorbed, but the three Na⁺-coupled uptake pathways share a finite Na⁺/K⁺-ATPase support capacity. Their transporter-status rows are therefore marked **Limited**, and each coupled event is reduced while preserving its stoichiometry. The combined solute absorption creates osmotic pull toward the blood.
 
 > [!TIP]
 > Insight 9D: Multiple Na⁺-linked nutrient uptake pathways can operate together and increase the importance of Na⁺ gradient support.
@@ -1693,14 +1693,69 @@ The key idea is:
 > Coordinated solute absorption can create or support osmotic pull, but water absorption still requires water permeability.
 
 > [!NOTE]
-> **Result:** Water absorption (0.8) now matches the osmotic pull. Solute fluxes remain as listed for experiment 9D. No effect on TEP.
+> **Result:** Water now moves toward the blood because AQP completes a transcellular water pathway. Its magnitude follows the osmotic pull and AQP capacity. The solute pathways remain active and pump-limited as in Experiment 9D; adding AQP does not directly change TEP.
 
 > [!TIP]
 > Insight 9E: Coordinated nutrient absorption can support osmotic pull, but water flux still requires water permeability.
 
-## Mini-Challenge 9
+## Mini-Challenge 9: Competing Nutrient Pathways
 
-[Placeholder]
+### Challenge
+
+Build an epithelium that absorbs both **phosphate** and **amino acids**, then add water absorption. Do not use SGLT or GLUT.
+
+Use only:
+
+- NaPi 2:1 or NaPi 3:1
+- Pi Facilitator
+- Na⁺-AA
+- AA facilitator
+- Na⁺/K⁺-ATPase
+- Kir
+- AQP
+
+Use **Barrier** as the paracellular pathway and keep all concentrations at their defaults.
+
+Set **Na⁺/K⁺-ATPase density to Low** and leave the other transporter densities at Normal. This makes the shared support limit visible.
+
+### Predict
+
+Before building, predict:
+
+- which transporters belong on the apical membrane,
+- which transporters belong on the basolateral membrane,
+- why the two nutrient pathways must share Na⁺/K⁺-ATPase support,
+- whether adding AQP to only one membrane will produce water absorption.
+
+### Targets
+
+Your final layout should:
+
+- produce net phosphate absorption,
+- produce net amino-acid absorption,
+- produce net water absorption,
+- include K⁺ recycling,
+- identify the Na⁺-coupled transporters reported as limited by shared pump capacity.
+
+> [!NOTE]
+> **Expected solution:**
+>
+> ```text
+> Apical NaPi 2:1
+> Apical Na⁺-AA
+> Apical AQP
+> Basolateral Pi Facilitator
+> Basolateral AA facilitator
+> Basolateral Na⁺/K⁺-ATPase (Low density)
+> Basolateral Kir
+> Basolateral AQP
+> (Barrier paracellular pathway)
+> ```
+>
+> The two Na⁺-coupled uptake pathways share finite Na⁺/K⁺-ATPase support. SALT therefore limits the coupled transporter events together rather than allowing either nutrient flux to exceed the supported Na⁺ flux. AQP on both membranes converts the resulting osmotic pull into water absorption.
+
+> [!TIP]
+> Insight Mini-Challenge 9: Parallel secondary-active pathways compete for a shared primary-active support capacity while preserving each transporter’s stoichiometry.
 
 
 
@@ -2039,7 +2094,7 @@ Your final layout should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> **Result**: Ca²⁺ absorption (0.33). Negative basolateral Na⁺ flux (-1.08) and positive basolateral K⁺ flux (0.15).
+> **Result**: Ca²⁺ is absorbed through apical TRPV5/6 entry and basolateral NCX1 extrusion. NCX1 brings Na⁺ into the cell as it extrudes Ca²⁺ and is marked **Limited** because its proposed Na⁺ demand exceeds the available Na⁺/K⁺-ATPase support. The complete exchanger event is scaled down without changing its 3 Na⁺:1 Ca²⁺ stoichiometry.
 
 > [!TIP]
 > Insight 11B: NCX1 can serve as a basolateral Ca²⁺ extrusion pathway, but it requires an apical Ca²⁺ entry transporter, Na⁺ gradient support, and K⁺ balance.

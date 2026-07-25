@@ -27,6 +27,16 @@ function slugify(value) {
     .toLowerCase();
 }
 
+function createSlugger() {
+  const counts = new Map();
+  return value => {
+    const base = slugify(value);
+    const count = (counts.get(base) || 0) + 1;
+    counts.set(base, count);
+    return count === 1 ? base : `${base}-${count}`;
+  };
+}
+
 function renderInline(text) {
   if (text == null || text === '') return '';
   const tokens = [];
@@ -110,10 +120,10 @@ function parseTable(lines, index) {
 
   const thead = `<thead><tr>${header.map(cell => `<th scope="col" class="px-2 py-1 border">${renderInline(cell)}</th>`).join('')}</tr></thead>`;
   const tbody = `<tbody>${rows.map(row => `<tr class="border-t">${row.map((cell, idx) => `<td${idx === 0 ? ' scope="row" class="px-2 py-1 border font-semibold"' : ' class="px-2 py-1 border"'}>${renderInline(cell)}</td>`).join('')}</tr>`).join('')}</tbody>`;
-  return { html: `<table>${thead}${tbody}</table>`, nextIndex: index };
+  return { html: `<div class="table-wrap"><table>${thead}${tbody}</table></div>`, nextIndex: index };
 }
 
-function parseBlockquote(lines, index) {
+function parseBlockquote(lines, index, slugger) {
   const quoteLines = [];
   while (index < lines.length) {
     const line = lines[index];
@@ -123,6 +133,8 @@ function parseBlockquote(lines, index) {
       continue;
     }
     if (line.trim() === '') {
+      const nextLine = lines[index + 1] || '';
+      if (/^\s*>\s*\[!(NOTE|TIP|WARNING|CAUTION|IMPORTANT)\]/i.test(nextLine)) break;
       quoteLines.push('');
       index += 1;
       continue;
@@ -145,9 +157,17 @@ function parseBlockquote(lines, index) {
     }
   }
 
-  const rendered = parseBlocks(inner);
+  const rendered = parseBlocks(inner, slugger);
   if (calloutType) {
     const title = calloutType.charAt(0).toUpperCase() + calloutType.slice(1);
+    const revealMatch = inner.join('\n').match(/\*\*(Expected solution|Solution|Result)\s*:?\*\*/i);
+    if (revealMatch) {
+      const revealLabel = /solution/i.test(revealMatch[1]) ? 'Show solution' : 'Check result';
+      return {
+        html: `<details class="callout callout-${calloutType} reveal"><summary class="callout-title">${revealLabel}</summary>${rendered.html}</details>`,
+        nextIndex: index
+      };
+    }
     return {
       html: `<aside class="callout callout-${calloutType}"><div class="callout-title">${title}</div>${rendered.html}</aside>`,
       nextIndex: index
@@ -156,7 +176,7 @@ function parseBlockquote(lines, index) {
   return { html: `<blockquote>${rendered.html}</blockquote>`, nextIndex: index };
 }
 
-function parseList(lines, index) {
+function parseList(lines, index, slugger) {
   const first = isListItem(lines[index]);
   const listIndent = first[1].length;
   const ordered = Boolean(first[3]);
@@ -193,7 +213,7 @@ function parseList(lines, index) {
       index += 1;
     }
 
-    const renderedItem = parseBlocks(itemLines).html;
+    const renderedItem = parseBlocks(itemLines, slugger).html;
     items.push(`<li>${renderedItem}</li>`);
   }
 
@@ -220,7 +240,7 @@ function parseParagraph(lines, index) {
   return { html: `<p>${renderInline(parts.join(' '))}</p>`, nextIndex: index };
 }
 
-function parseBlocks(lines) {
+function parseBlocks(lines, slugger = createSlugger()) {
   let html = '';
   let index = 0;
   let skippedDocumentTitle = false;
@@ -241,7 +261,7 @@ function parseBlocks(lines) {
         index += 1;
         continue;
       }
-      const id = slugify(text);
+      const id = slugger(text);
       html += `<h${level} id="${id}">${renderInline(text)}</h${level}>`;
       index += 1;
       continue;
@@ -286,14 +306,14 @@ function parseBlocks(lines) {
     }
 
     if (/^\s*>/.test(line)) {
-      const parsed = parseBlockquote(lines, index);
+      const parsed = parseBlockquote(lines, index, slugger);
       html += parsed.html;
       index = parsed.nextIndex;
       continue;
     }
 
     if (isListItem(line)) {
-      const parsed = parseList(lines, index);
+      const parsed = parseList(lines, index, slugger);
       html += parsed.html;
       index = parsed.nextIndex;
       continue;
@@ -308,11 +328,28 @@ function parseBlocks(lines) {
 }
 
 function buildToc(headings) {
-  const items = headings
-    .filter(h => h.level === 1 || h.level === 2)
-    .map(h => `<li class="toc-level-${h.level}"><a href="#${h.id}">${renderInline(h.text)}</a></li>`)
-    .join('\n');
-  return `<ul>\n${items}\n</ul>`;
+  const relevant = headings.filter(h => h.level === 1 || h.level === 2);
+  const parts = ['<ul class="toc-root">'];
+  let lessonOpen = false;
+  relevant.forEach(heading => {
+    if (heading.level === 1) {
+      if (lessonOpen) parts.push('</ul></details></li>');
+      parts.push(
+        `<li class="toc-lesson"><details><summary>${renderInline(heading.text)}</summary>` +
+        `<ul><li><a href="#${heading.id}">Lesson overview</a></li>`
+      );
+      lessonOpen = true;
+      return;
+    }
+    if (lessonOpen) {
+      parts.push(`<li><a href="#${heading.id}">${renderInline(heading.text)}</a></li>`);
+    } else {
+      parts.push(`<li><a href="#${heading.id}">${renderInline(heading.text)}</a></li>`);
+    }
+  });
+  if (lessonOpen) parts.push('</ul></details></li>');
+  parts.push('</ul>');
+  return parts.join('\n');
 }
 
 async function replaceBetweenMarkers(source, startMarker, endMarker, replacement) {
@@ -330,6 +367,7 @@ async function main() {
 
   const headings = [];
   const originalIsHeading = isHeading;
+  const tocSlugger = createSlugger();
   let skippedDocumentTitle = false;
 
   // Collect headings first so the TOC can be built from the same source pass.
@@ -342,10 +380,10 @@ async function main() {
       skippedDocumentTitle = true;
       continue;
     }
-    headings.push({ level, text, id: slugify(text) });
+    headings.push({ level, text, id: tocSlugger(text) });
   }
 
-  const body = parseBlocks(lines).html;
+  const body = parseBlocks(lines, createSlugger()).html;
   const toc = buildToc(headings);
 
   const htmlTemplate = await fs.readFile(htmlPath, 'utf8');
