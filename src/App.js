@@ -933,6 +933,30 @@ const ION_LABEL = {
   Glucose: 'Glucose',
   H2O: 'H₂O'
 };
+
+function compareDisplayText(left, right) {
+  return String(left || '').localeCompare(String(right || ''), 'en', {
+    sensitivity: 'base',
+    numeric: true
+  });
+}
+
+export function sortPathwayStepsForDisplay(steps) {
+  return [...steps].sort((left, right) =>
+    compareDisplayText(ION_LABEL[left.solute] || left.solute, ION_LABEL[right.solute] || right.solute) ||
+    compareDisplayText(left.transporter, right.transporter) ||
+    compareDisplayText(left.placement, right.placement) ||
+    compareDisplayText(left.role, right.role) ||
+    compareDisplayText(left.id, right.id)
+  );
+}
+
+function compareTransporterStatusRows(left, right) {
+  return compareDisplayText(left.name, right.name) ||
+    compareDisplayText(left.placement, right.placement) ||
+    compareDisplayText(left.uid, right.uid);
+}
+
 const SURFACE_TRANSPORT_SENSITIVITY = 0.5;
 const SURFACE_MIXING_FRACTION = 0.25;
 const SURFACE_MAX_MULTIPLIER = 2;
@@ -1627,23 +1651,42 @@ function buildTransporterActivityReport({
           status: hasOppositeAqp ? 'active' : 'incomplete',
           message: hasOppositeAqp
             ? 'Active as part of a complete transcellular water pathway.'
-            : 'Membrane water pathway present; AQP is missing from the opposite membrane.'
+            : 'Water permeability is present at only one membrane, so the transcellular water pathway is incomplete.'
+        };
+      }
+
+      const gradientDependentChannelIon = transporter.id === 'ENaC'
+        ? 'Na+'
+        : transporter.id === 'ROMK'
+          ? 'K+'
+          : null;
+      if (gradientDependentChannelIon && !pumpSupportProfile.present) {
+        const ionLabel = ION_LABEL[gradientDependentChannelIon] || gradientDependentChannelIon;
+        return {
+          uid: transporter.uid,
+          id: transporter.id,
+          name: transporter.name,
+          placement: transporter.placement,
+          status: 'unsupported',
+          message: 'A sustained transmembrane ' + ionLabel +
+            ' electrochemical gradient is not established. ' + ionLabel +
+            ' also lacks a complete route across the epithelium.'
         };
       }
 
       const event = fluxEventForTransporter(transporter, fluxEvents);
       if (!event) {
-        let message = 'No modeled driving context is currently available.';
+        let message = 'The modeled electrochemical conditions do not currently support transport.';
         if (transporter.id === 'NBCEfflux' && !hasPlacedTransporterFromSet(tList, PROTON_EXTRUDER_TRANSPORTER_IDS)) {
-          message = 'Unsupported: requires proton extrusion to establish the elevated intracellular HCO₃⁻ context.';
+          message = 'The elevated intracellular HCO₃⁻ context needed for NBC efflux is not established.';
         } else if ((transporter.stoich['Na+'] || transporter.id === 'OAT') && !pumpSupportProfile.present) {
-          message = 'Unsupported: requires Na⁺/K⁺-ATPase gradient support.';
+          message = 'The inward Na⁺ gradient needed to support this transport step is not established.';
         } else if (
           transporter.id === 'NCX1' &&
           !hasOppositePlacedTransporter(tList, 'TRPV56', transporter.placement) &&
           !hasElevatedModeledCalcium(baseline)
         ) {
-          message = 'Unsupported: requires intracellular Ca²⁺ loading, such as TRPV5/6 on the opposite membrane.';
+          message = 'The intracellular Ca²⁺ load needed for NCX1 Ca²⁺ extrusion is not present.';
         }
         return {
           uid: transporter.uid,
@@ -1698,8 +1741,9 @@ function buildTransporterActivityReport({
           name: transporter.name,
           placement: transporter.placement,
           status: 'incomplete',
-          message: 'Active membrane step; incomplete epithelial pathway for ' +
-            incompleteSolutes.map(solute => ION_LABEL[solute.ion] || solute.ion).join(', ') + '.'
+          message: 'The membrane step is active, but ' +
+            incompleteSolutes.map(solute => ION_LABEL[solute.ion] || solute.ion).join(', ') +
+            ' does not have a complete route across the epithelium.'
         };
       }
 
@@ -1717,7 +1761,8 @@ function buildTransporterActivityReport({
               ' movement has a local support or balance role.'
             : 'Active membrane step with compatible epithelial pathway completion.'
       };
-    });
+    })
+    .sort(compareTransporterStatusRows);
 }
 
 function buildMatchedDisplayFluxes(baseDisplayApicalFlux, baseDisplayBasolateralFlux, transepiFluxDataNoH2O, paraFlux = {}) {
@@ -3138,13 +3183,16 @@ export default function App() {
       <div className="space-y-2">
         {rows.map(t => {
           const activity = result?.transporterActivityReport?.find(item => item.uid === t.uid);
-          const statusClass = activity?.status === 'active'
-            ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-            : activity?.status === 'incomplete' || activity?.status === 'constrained'
+          const cardStatus = activity?.status === 'incomplete' || activity?.status === 'unsupported'
+            ? 'problem'
+            : activity?.status === 'active'
+              ? null
+              : activity?.status;
+          const statusClass = cardStatus === 'problem'
+            ? 'border-rose-300 bg-rose-50 text-rose-800'
+            : cardStatus === 'constrained'
               ? 'border-amber-300 bg-amber-50 text-amber-900'
-              : activity?.status === 'unsupported'
-                ? 'border-rose-300 bg-rose-50 text-rose-800'
-                : 'border-gray-300 bg-gray-100 text-gray-700';
+              : 'border-gray-300 bg-gray-100 text-gray-700';
           return (
             <div key={t.uid} className="border rounded p-2 bg-white">
               <div className="flex items-center justify-between gap-2 mb-1">
@@ -3158,12 +3206,11 @@ export default function App() {
                   Remove
                 </Button>
               </div>
-              {activity && (
+              {cardStatus && (
                 <div className="mb-2 text-xs">
                   <span className={'inline-block border rounded px-1.5 py-0.5 font-semibold capitalize ' + statusClass}>
-                    {activity.status}
+                    {cardStatus}
                   </span>
-                  <div className="mt-1 text-gray-600">{activity.message}</div>
                 </div>
               )}
               <fieldset className="flex items-center gap-2 text-xs">
@@ -3796,7 +3843,7 @@ export default function App() {
         value: Number(value || 0)
       });
     });
-    return steps;
+    return sortPathwayStepsForDisplay(steps);
   })();
   const mechanismTransporterSlots = placement => {
     const placed = membraneTransporters(placement);

@@ -1,7 +1,8 @@
 import {
   createTransporterInstance,
   hydrogenMmolToPH,
-  simulateTransport
+  simulateTransport,
+  sortPathwayStepsForDisplay
 } from './App';
 import {
   buildLayoutUrl,
@@ -19,6 +20,44 @@ function epithelialFlux(result, ion) {
 }
 
 describe('SALT simulation scenarios', () => {
+  test('sorts pathway steps by displayed solute and then pathway name', () => {
+    const sorted = sortPathwayStepsForDisplay([
+      { id: 'kir-k', solute: 'K+', transporter: 'Kir', placement: 'basolateral' },
+      { id: 'pump-na', solute: 'Na+', transporter: 'Na⁺/K⁺-ATPase', placement: 'basolateral' },
+      { id: 'sglt-glucose', solute: 'Glucose', transporter: 'SGLT', placement: 'apical' },
+      { id: 'enac-na', solute: 'Na+', transporter: 'ENaC', placement: 'apical' },
+      { id: 'glut-glucose', solute: 'Glucose', transporter: 'GLUT', placement: 'basolateral' },
+      { id: 'aqp-water', solute: 'H2O', transporter: 'AQP', placement: 'apical' }
+    ]);
+
+    expect(sorted.map(step => step.id)).toEqual([
+      'glut-glucose',
+      'sglt-glucose',
+      'aqp-water',
+      'kir-k',
+      'enac-na',
+      'pump-na'
+    ]);
+  });
+
+  test('sorts transporter status rows alphabetically regardless of placement order', () => {
+    const result = simulateTransport({
+      tList: layout([
+        ['NaKATPase', 'basolateral'],
+        ['SGLT', 'apical'],
+        ['AQP', 'apical'],
+        ['GLUT2', 'basolateral']
+      ])
+    });
+
+    expect(result.transporterActivityReport.map(row => row.name)).toEqual([
+      'AQP',
+      'GLUT',
+      'Na⁺/K⁺-ATPase',
+      'SGLT'
+    ]);
+  });
+
   test('converts hydrogen concentration from mmol/L before calculating pH', () => {
     expect(hydrogenMmolToPH(0.00004)).toBeCloseTo(7.398, 3);
     expect(hydrogenMmolToPH(0.000063)).toBeCloseTo(7.201, 3);
@@ -35,6 +74,28 @@ describe('SALT simulation scenarios', () => {
     expect(result.concentrations.icf['K+']).toBeCloseTo(140, 6);
   });
 
+  test('ENaC alone reports both unsupported gradient and incomplete epithelial route', () => {
+    const enac = createTransporterInstance('ENaC', 'apical');
+    const result = simulateTransport({ tList: [enac] });
+    const activity = result.transporterActivityReport.find(item => item.uid === enac.uid);
+
+    expect(epithelialFlux(result, 'Na+')).toBeCloseTo(0, 6);
+    expect(activity.status).toBe('unsupported');
+    expect(activity.message).toMatch(/transmembrane Na⁺ electrochemical gradient/i);
+    expect(activity.message).toMatch(/complete route across the epithelium/i);
+  });
+
+  test('Kir alone reports both unsupported gradient and incomplete epithelial route', () => {
+    const kir = createTransporterInstance('ROMK', 'basolateral');
+    const result = simulateTransport({ tList: [kir] });
+    const activity = result.transporterActivityReport.find(item => item.uid === kir.uid);
+
+    expect(epithelialFlux(result, 'K+')).toBeCloseTo(0, 6);
+    expect(activity.status).toBe('unsupported');
+    expect(activity.message).toMatch(/transmembrane K⁺ electrochemical gradient/i);
+    expect(activity.message).toMatch(/complete route across the epithelium/i);
+  });
+
   test('same-membrane ENaC and pump do not create epithelial sodium absorption', () => {
     const result = simulateTransport({
       tList: layout([
@@ -44,6 +105,7 @@ describe('SALT simulation scenarios', () => {
     });
 
     expect(epithelialFlux(result, 'Na+')).toBeCloseTo(0, 6);
+    expect(result.transporterActivityReport.find(item => item.id === 'ENaC').status).toBe('incomplete');
   });
 
   test('opposite-membrane ENaC and pump complete sodium absorption', () => {
@@ -55,9 +117,10 @@ describe('SALT simulation scenarios', () => {
     });
 
     expect(epithelialFlux(result, 'Na+')).toBeGreaterThan(0);
+    expect(result.transporterActivityReport.find(item => item.id === 'ENaC').status).toBe('active');
   });
 
-  test('NBC Efflux reports why it is unsupported without proton extrusion', () => {
+  test('NBC Efflux reports the unmet bicarbonate context without prescribing a transporter', () => {
     const nbc = createTransporterInstance('NBCEfflux', 'basolateral');
     const result = simulateTransport({
       tList: [nbc, createTransporterInstance('NaKATPase', 'basolateral')]
@@ -66,7 +129,40 @@ describe('SALT simulation scenarios', () => {
 
     expect(epithelialFlux(result, 'HCO3-')).toBeCloseTo(0, 6);
     expect(activity.status).toBe('unsupported');
-    expect(activity.message).toMatch(/requires proton extrusion/i);
+    expect(activity.message).toMatch(/intracellular HCO₃⁻ context/i);
+    expect(activity.message).not.toMatch(/proton extrusion|H⁺-ATPase|NHE3/i);
+  });
+
+  test('unsupported Na-coupled transport reports the missing gradient without naming the pump', () => {
+    const sglt = createTransporterInstance('SGLT', 'apical');
+    const result = simulateTransport({ tList: [sglt] });
+    const activity = result.transporterActivityReport.find(item => item.uid === sglt.uid);
+
+    expect(activity.status).toBe('unsupported');
+    expect(activity.message).toMatch(/inward Na⁺ gradient/i);
+    expect(activity.message).not.toMatch(/ATPase|pump/i);
+  });
+
+  test('incomplete AQP reports the missing permeability function without prescribing placement', () => {
+    const aqp = createTransporterInstance('AQP', 'apical');
+    const result = simulateTransport({ tList: [aqp] });
+    const activity = result.transporterActivityReport.find(item => item.uid === aqp.uid);
+
+    expect(activity.status).toBe('incomplete');
+    expect(activity.message).toMatch(/water permeability is present at only one membrane/i);
+    expect(activity.message).not.toMatch(/add|place|opposite membrane/i);
+  });
+
+  test('unsupported NCX1 reports the missing calcium load without naming an entry transporter', () => {
+    const ncx = createTransporterInstance('NCX1', 'basolateral');
+    const result = simulateTransport({
+      tList: [ncx, createTransporterInstance('NaKATPase', 'basolateral')]
+    });
+    const activity = result.transporterActivityReport.find(item => item.uid === ncx.uid);
+
+    expect(activity.status).toBe('unsupported');
+    expect(activity.message).toMatch(/intracellular Ca²⁺ load/i);
+    expect(activity.message).not.toMatch(/TRPV|opposite membrane/i);
   });
 
   test('fixed low pump activity constrains the entire SGLT event and preserves sodium coupling', () => {
