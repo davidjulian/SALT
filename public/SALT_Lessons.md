@@ -8,7 +8,7 @@ Before starting these lessons, you should be familiar with basic cell biology an
 
 ## Minimal Starting Conventions
 
-You need four conventions to begin:
+You need five conventions to begin:
 
 1. An epithelial cell has two different membrane surfaces.
    - The **apical membrane** faces the **lumen**.
@@ -18,6 +18,7 @@ You need four conventions to begin:
 4. In the Results frame, the **Pathways** tab is the main place to look for transporter actions and pathway roles. The **Fluxes** and **Concentrations** tabs remain available for movement, gradient, and quantitative checks.
    - **Positive flux = absorption = movement toward blood**
    - **Negative flux = secretion = movement toward lumen**
+5. Transporter **Activity** begins at **Auto**. Auto adjusts the activity of compatible transporters that you place so permitted pathway steps can carry consistent flux. It does not add missing transporters, change their membrane location, or override driving-force requirements. **Low**, **Medium**, and **High** apply fixed qualitative activity levels when an experiment asks you to compare them.
 
 You will learn other conventions as experiments require them.
 
@@ -187,7 +188,7 @@ By the end of this lesson, you should be able to:
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 2A: Inspect the Glucose Gradient
 
@@ -354,7 +355,7 @@ By the end of this lesson, you should be able to:
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 3A: Rebuild Simple Na⁺ Absorption
 
@@ -441,7 +442,7 @@ Build the glucose absorption layout from Lesson 2, then add one transporter to r
 
 **Constraints**
 
-- Keep default settings for **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+- Keep default settings for **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 - Begin with:
 
 ```
@@ -508,7 +509,7 @@ Solute movement can create or support the osmotic tendency. However, cell membra
 
 ## Setup
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 4A: Requirements for Water Movement
 
@@ -635,13 +636,13 @@ Background osmotic pull: Moderate toward blood
 
 In the Water Flux card, note the change in osmotic pull and water flux, and that the card now indicates that a background pull is present.
 
-The hormone AVP (ADH) increases water permeability mainly by increasing apical AQP2 in collecting duct principal cells. Test this by altering the density of AQP on the apical membrane.  
+The hormone AVP (ADH) increases water permeability mainly by increasing apical AQP2 in collecting duct principal cells. Test the effect of this change by setting apical AQP **Activity** to Low, Medium, and High.
 
 > [!NOTE]
-> **Result:** Net water flux 0.9 with moderate background osmotic pull and default AQP density. Decreases to 0.6 with low AQP density, and increases to 1.2 with high AQP density.
+> **Result:** Net water flux is 0.9 with moderate background osmotic pull and apical AQP Activity at Medium. It decreases to 0.6 at Low and increases to 1.2 at High.
 
 > [!TIP]
-> Insight 4E: Collecting duct water reabsorption requires both AQP-mediated water permeability and a background osmotic pull toward blood; increasing AQP density changes permeability, not the driving force.
+> Insight 4E: Collecting duct water reabsorption requires both AQP-mediated water permeability and a background osmotic pull toward blood; increasing AQP activity changes permeability, not the driving force.
 
 
 
@@ -726,7 +727,7 @@ This is the same entry-exit logic you used for absorption, but the direction acr
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 5A: CFTR
 
@@ -921,7 +922,7 @@ In the next lesson, TEP will become especially important because charged solutes
 
 ## Setup
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 6A: Create TEP With Na⁺ Absorption
 
@@ -1145,7 +1146,7 @@ Use **Cation + Water Pore** when you want a cation-selective paracellular route 
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 7A: Barrier Pathway
 
@@ -1330,7 +1331,7 @@ A simple mistake is to assume that if Na⁺ is absorbed, then NaCl is absorbed. 
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ------
 
@@ -1525,7 +1526,7 @@ Many absorptive epithelia, such as small intestinal absorptive cells and renal p
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 9A: Glucose Absorption
 
@@ -1658,7 +1659,7 @@ Observe:
 This layout combines several Na⁺-linked absorptive pathways in the same epithelial cell.
 
 > [!NOTE]
-> **Result:** Na⁺, Pi, glucose, and amino acids are all absorbed, but the three Na⁺-coupled uptake pathways share a finite Na⁺/K⁺-ATPase support capacity. Their transporter-status rows are therefore marked **Limited**, and each coupled event is reduced while preserving its stoichiometry. The combined solute absorption creates osmotic pull toward the blood.
+> **Result:** Na⁺, Pi, glucose, and amino acids are all absorbed. With Activity at Auto, compatible uptake, exit, recycling, and pump-support steps are matched without treating arbitrary default activities as physiological capacity limits. Each coupled transporter retains its stoichiometry. The combined solute absorption creates osmotic pull toward the blood.
 
 > [!TIP]
 > Insight 9D: Multiple Na⁺-linked nutrient uptake pathways can operate together and increase the importance of Na⁺ gradient support.
@@ -1693,12 +1694,12 @@ The key idea is:
 > Coordinated solute absorption can create or support osmotic pull, but water absorption still requires water permeability.
 
 > [!NOTE]
-> **Result:** Water now moves toward the blood because AQP completes a transcellular water pathway. Its magnitude follows the osmotic pull and AQP capacity. The solute pathways remain active and pump-limited as in Experiment 9D; adding AQP does not directly change TEP.
+> **Result:** Water now moves toward the blood because AQP completes a transcellular water pathway. Its magnitude follows the osmotic pull and AQP activity. The solute pathways remain active and automatically matched as in Experiment 9D; adding AQP does not directly change TEP.
 
 > [!TIP]
 > Insight 9E: Coordinated nutrient absorption can support osmotic pull, but water flux still requires water permeability.
 
-## Mini-Challenge 9: Competing Nutrient Pathways
+## Mini-Challenge 9: Parallel Nutrient Pathways
 
 ### Challenge
 
@@ -1715,8 +1716,6 @@ Use only:
 - AQP
 
 Use **Barrier** as the paracellular pathway and keep all concentrations at their defaults.
-
-Set **Na⁺/K⁺-ATPase density to Low** and leave the other transporter densities at Normal. This makes the shared support limit visible.
 
 ### Predict
 
@@ -1735,7 +1734,7 @@ Your final layout should:
 - produce net amino-acid absorption,
 - produce net water absorption,
 - include K⁺ recycling,
-- identify the Na⁺-coupled transporters reported as limited by shared pump capacity.
+- confirm that both Na⁺-coupled pathways use the same pump-supported Na⁺ gradient.
 
 > [!NOTE]
 > **Expected solution:**
@@ -1746,16 +1745,16 @@ Your final layout should:
 > Apical AQP
 > Basolateral Pi Facilitator
 > Basolateral AA facilitator
-> Basolateral Na⁺/K⁺-ATPase (Low density)
+> Basolateral Na⁺/K⁺-ATPase
 > Basolateral Kir
 > Basolateral AQP
 > (Barrier paracellular pathway)
 > ```
 >
-> The two Na⁺-coupled uptake pathways share finite Na⁺/K⁺-ATPase support. SALT therefore limits the coupled transporter events together rather than allowing either nutrient flux to exceed the supported Na⁺ flux. AQP on both membranes converts the resulting osmotic pull into water absorption.
+> The two Na⁺-coupled uptake pathways use the Na⁺ gradient maintained by the same Na⁺/K⁺-ATPase. With Activity at Auto, SALT matches the activity of the placed pathway steps while preserving each coupled transporter's stoichiometry. AQP on both membranes converts the resulting osmotic pull into water absorption.
 
 > [!TIP]
-> Insight Mini-Challenge 9: Parallel secondary-active pathways compete for a shared primary-active support capacity while preserving each transporter’s stoichiometry.
+> Insight Mini-Challenge 9: Parallel secondary-active pathways can use common primary-active gradient support while preserving each transporter’s stoichiometry.
 
 
 
@@ -1829,7 +1828,7 @@ Use the CO₂ cue together with:
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 ## Experiment 10A: NHE3
 
@@ -2030,7 +2029,7 @@ In this lesson, you will build two different Ca²⁺ absorption layouts. Both us
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 
 
@@ -2094,7 +2093,7 @@ Your final layout should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> **Result**: Ca²⁺ is absorbed through apical TRPV5/6 entry and basolateral NCX1 extrusion. NCX1 brings Na⁺ into the cell as it extrudes Ca²⁺ and is marked **Limited** because its proposed Na⁺ demand exceeds the available Na⁺/K⁺-ATPase support. The complete exchanger event is scaled down without changing its 3 Na⁺:1 Ca²⁺ stoichiometry.
+> **Result**: Ca²⁺ is absorbed through apical TRPV5/6 entry and basolateral NCX1 extrusion. NCX1 brings Na⁺ into the cell as it extrudes Ca²⁺, and the Na⁺/K⁺-ATPase supports the Na⁺ gradient. With Activity at Auto, the placed Ca²⁺ entry, extrusion, and gradient-support steps operate together without treating arbitrary default activities as a kinetic bottleneck. NCX1 retains its 3 Na⁺:1 Ca²⁺ stoichiometry.
 
 > [!TIP]
 > Insight 11B: NCX1 can serve as a basolateral Ca²⁺ extrusion pathway, but it requires an apical Ca²⁺ entry transporter, Na⁺ gradient support, and K⁺ balance.
@@ -2134,7 +2133,7 @@ In this lesson, you will work with four transporter classes that produce organic
 
 Press the **Reset** button to remove any placed transporters.
 
-Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter densities (Normal).
+Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway** (Barrier), **Settings** (default ECF concentrations), and transporter activity (Auto).
 
 Note that organic solute fluxes appear in a separate **Organic Ions** graph in the **Fluxes** tab. Use the **Pathways** tab as your main evidence of transport, and use the **Fluxes** tab when you want a more quantitative check.
 

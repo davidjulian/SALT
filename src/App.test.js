@@ -9,8 +9,8 @@ import {
 } from './layoutState';
 
 function layout(entries) {
-  return entries.map(([id, placement, density = 1]) =>
-    createTransporterInstance(id, placement, density)
+  return entries.map(([id, placement, activity = 'auto']) =>
+    createTransporterInstance(id, placement, activity)
   );
 }
 
@@ -57,7 +57,7 @@ describe('SALT simulation scenarios', () => {
     expect(epithelialFlux(result, 'Na+')).toBeGreaterThan(0);
   });
 
-  test('NBC Efflux reports why it is inactive without proton extrusion', () => {
+  test('NBC Efflux reports why it is unsupported without proton extrusion', () => {
     const nbc = createTransporterInstance('NBCEfflux', 'basolateral');
     const result = simulateTransport({
       tList: [nbc, createTransporterInstance('NaKATPase', 'basolateral')]
@@ -65,11 +65,11 @@ describe('SALT simulation scenarios', () => {
     const activity = result.transporterActivityReport.find(item => item.uid === nbc.uid);
 
     expect(epithelialFlux(result, 'HCO3-')).toBeCloseTo(0, 6);
-    expect(activity.status).toBe('inactive');
+    expect(activity.status).toBe('unsupported');
     expect(activity.message).toMatch(/requires proton extrusion/i);
   });
 
-  test('pump capacity limits the entire SGLT event and preserves sodium coupling', () => {
+  test('fixed low pump activity constrains the entire SGLT event and preserves sodium coupling', () => {
     const result = simulateTransport({
       tList: layout([
         ['SGLT', 'apical', 2],
@@ -83,25 +83,25 @@ describe('SALT simulation scenarios', () => {
     expect(result.fluxEvents.find(event => event.id === 'SGLT').supportScale).toBeLessThan(1);
   });
 
-  test('parallel nutrient pathways report their shared low-capacity pump limit', () => {
+  test('Auto pump activity supports parallel nutrient pathways without competition', () => {
     const transporters = layout([
       ['NaPi2', 'apical'],
       ['PiFacilitator', 'basolateral'],
       ['NaAA', 'apical'],
       ['AAFacilitator', 'basolateral'],
-      ['NaKATPase', 'basolateral', 0.5]
+      ['NaKATPase', 'basolateral']
     ]);
     const result = simulateTransport({ tList: transporters });
-    const limitedIds = result.transporterActivityReport
-      .filter(item => item.status === 'limited')
+    const constrainedIds = result.transporterActivityReport
+      .filter(item => item.status === 'constrained')
       .map(item => item.id);
 
-    expect(limitedIds).toEqual(expect.arrayContaining(['NaPi2', 'NaAA']));
+    expect(constrainedIds).toEqual([]);
     expect(epithelialFlux(result, 'Phosphate')).toBeGreaterThan(0);
     expect(epithelialFlux(result, 'AA')).toBeGreaterThan(0);
   });
 
-  test('NCX1 scales its complete exchange event to available pump support', () => {
+  test('Auto activity preserves the complete NCX1 exchange event stoichiometry', () => {
     const ncx = createTransporterInstance('NCX1', 'basolateral');
     const result = simulateTransport({
       tList: [
@@ -116,9 +116,47 @@ describe('SALT simulation scenarios', () => {
     const sodiumFlux = Math.abs(event.solutes.find(solute => solute.ion === 'Na+').flux);
     const calciumFlux = Math.abs(event.solutes.find(solute => solute.ion === 'Ca2+').flux);
 
-    expect(activity.status).toBe('limited');
+    expect(activity.status).toBe('active');
     expect(epithelialFlux(result, 'Ca2+')).toBeGreaterThan(0);
     expect(sodiumFlux).toBeCloseTo(calciumFlux * 3, 6);
+  });
+
+  test('Auto Kir balances pump-associated potassium loading only when Kir is placed', () => {
+    const withoutKir = simulateTransport({
+      tList: layout([
+        ['ENaC', 'apical'],
+        ['NaKATPase', 'basolateral']
+      ])
+    });
+    const withKir = simulateTransport({
+      tList: layout([
+        ['ENaC', 'apical'],
+        ['NaKATPase', 'basolateral'],
+        ['ROMK', 'basolateral']
+      ])
+    });
+
+    expect(withoutKir.cellImbalanceReport.find(row => row.ion === 'K+')).toBeDefined();
+    expect(withKir.cellImbalanceReport.find(row => row.ion === 'K+')).toBeUndefined();
+  });
+
+  test('Auto activity matches placed SGLT and GLUT glucose fluxes', () => {
+    const result = simulateTransport({
+      tList: layout([
+        ['SGLT', 'apical'],
+        ['GLUT2', 'basolateral'],
+        ['NaKATPase', 'basolateral']
+      ])
+    });
+    const sgltGlucose = result.fluxEvents
+      .find(event => event.id === 'SGLT')
+      .solutes.find(solute => solute.ion === 'Glucose').flux;
+    const glutGlucose = result.fluxEvents
+      .find(event => event.id === 'GLUT2')
+      .solutes.find(solute => solute.ion === 'Glucose').flux;
+
+    expect(sgltGlucose).toBeCloseTo(-glutGlucose, 6);
+    expect(result.cellImbalanceReport.find(row => row.ion === 'Glucose')).toBeUndefined();
   });
 
   test('acid-base pairing cannot reuse NBC capacity across multiple proton extruders', () => {
@@ -227,12 +265,12 @@ describe('SALT simulation scenarios', () => {
 });
 
 describe('shareable layout state', () => {
-  test('round-trips transporter placement, density, and settings through the URL', () => {
+  test('round-trips transporter placement, activity, and settings through the URL', () => {
     const state = {
       transporters: layout([
         ['NHE3', 'apical'],
         ['NBCEfflux', 'basolateral', 2],
-        ['NaKATPase', 'basolateral']
+        ['NaKATPase', 'basolateral', 0.5]
       ]),
       tissuePreset: 'proximal-tubule',
       paracellularType: 'anion',
@@ -253,9 +291,9 @@ describe('shareable layout state', () => {
     expect(restored.tissuePreset).toBe('proximal-tubule');
     expect(restored.resultsView).toBe('details');
     expect(restored.transporters).toEqual([
-      { id: 'NHE3', placement: 'apical', density: 1 },
-      { id: 'NBCEfflux', placement: 'basolateral', density: 2 },
-      { id: 'NaKATPase', placement: 'basolateral', density: 1 }
+      { id: 'NHE3', placement: 'apical', activity: 'auto' },
+      { id: 'NBCEfflux', placement: 'basolateral', activity: 2 },
+      { id: 'NaKATPase', placement: 'basolateral', activity: 0.5 }
     ]);
   });
 });

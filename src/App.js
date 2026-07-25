@@ -293,28 +293,28 @@ function buildChargeReport(apicalFlux, basolateralFlux, transepiFluxData, localT
   };
 }
 
-function aqpDensityForPlacement(tList, placement) {
+function aqpActivityForPlacement(tList, placement) {
   return tList
     .filter(t => t.id === 'AQP' && t.placement === placement)
-    .reduce((sum, t) => sum + Math.max(Number(t.density) || 0, 0), 0);
+    .reduce((sum, t) => sum + transporterActivityFactor(t), 0);
 }
 
-function serialAqpDensityScale(apicalDensity, basolateralDensity) {
-  if (apicalDensity <= 0 || basolateralDensity <= 0) return 0;
-  return (2 * apicalDensity * basolateralDensity) / (apicalDensity + basolateralDensity);
+function serialAqpActivityScale(apicalActivity, basolateralActivity) {
+  if (apicalActivity <= 0 || basolateralActivity <= 0) return 0;
+  return (2 * apicalActivity * basolateralActivity) / (apicalActivity + basolateralActivity);
 }
 
 function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgroundOsmoticPull) {
-  const apicalAqpDensity = aqpDensityForPlacement(tList, 'apical');
-  const basolateralAqpDensity = aqpDensityForPlacement(tList, 'basolateral');
-  const aqpDensityScale = serialAqpDensityScale(apicalAqpDensity, basolateralAqpDensity);
-  const apicalWaterPath = apicalAqpDensity > 0;
-  const basolateralWaterPath = basolateralAqpDensity > 0;
+  const apicalAqpActivity = aqpActivityForPlacement(tList, 'apical');
+  const basolateralAqpActivity = aqpActivityForPlacement(tList, 'basolateral');
+  const aqpActivityScale = serialAqpActivityScale(apicalAqpActivity, basolateralAqpActivity);
+  const apicalWaterPath = apicalAqpActivity > 0;
+  const basolateralWaterPath = basolateralAqpActivity > 0;
   const hasTranscellularPath = apicalWaterPath && basolateralWaterPath;
   const hasParacellularWaterPath = paracellularHasWaterPath(paracellularType);
   const hasParacellularIonPath = paracellularHasCationPath(paracellularType) || paracellularType === 'anion';
   const transcellularPathStatus = hasTranscellularPath
-    ? 'complete AQP path; AQP density scale ' + aqpDensityScale.toFixed(2)
+    ? 'complete AQP path; AQP activity scale ' + aqpActivityScale.toFixed(2)
     : apicalWaterPath || basolateralWaterPath
       ? 'incomplete AQP path'
       : 'none';
@@ -328,7 +328,7 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
   const osmoticPullValue = soluteDrive.value + backgroundValue;
   const expressedPathwayCount = (hasTranscellularPath ? 1 : 0) + (hasParacellularWaterPath ? 1 : 0);
   const pathwayShare = expressedPathwayCount > 0 ? 1 / expressedPathwayCount : 0;
-  const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare * aqpDensityScale : 0;
+  const transcellularValue = hasTranscellularPath ? osmoticPullValue * pathwayShare * aqpActivityScale : 0;
   const paracellularValue = hasParacellularWaterPath ? osmoticPullValue * pathwayShare : 0;
   const netTransepithelialValue = transcellularValue + paracellularValue;
 
@@ -355,11 +355,11 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
     transcellularPath: {
       label: 'Transcellular water pathway',
       status: transcellularPathStatus,
-      apicalDensity: apicalAqpDensity,
-      basolateralDensity: basolateralAqpDensity,
-      densityScale: aqpDensityScale,
+      apicalActivity: apicalAqpActivity,
+      basolateralActivity: basolateralAqpActivity,
+      activityScale: aqpActivityScale,
       note: hasTranscellularPath
-        ? 'AQP is present on both apical and basolateral membranes; apical density ' + apicalAqpDensity.toFixed(1) + ', basolateral density ' + basolateralAqpDensity.toFixed(1)
+        ? 'AQP is present on both apical and basolateral membranes; apical activity ' + apicalAqpActivity.toFixed(1) + ', basolateral activity ' + basolateralAqpActivity.toFixed(1)
         : apicalWaterPath || basolateralWaterPath
           ? 'AQP is present on only one membrane'
           : 'No AQP water pathway is placed'
@@ -380,35 +380,35 @@ function buildWaterReport(tList, paracellularType, transepiFluxDataNoH2O, backgr
 }
 
 const INITIAL_TRANSPORTERS = [
-  { id: 'AQP',      name: 'AQP',        type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AE1',      name: 'CBE',        type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'PiFacilitator', name: 'Pi Facilitator', type: 'carrier', stoich: { Phosphate: -1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'CFTR',     name: 'CFTR',       type: 'channel',    stoich: { 'Cl-': -1, 'HCO3-': -0.5 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ClCKb',    name: 'ClC',        type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'GLUT2',    name: 'GLUT',       type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', density: 1 },
-  { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaPi2',    name: 'NaPi 2:1',   type: 'symporter',  stoich: { 'Na+': 2, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaPi',     name: 'NaPi 3:1',   type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NBCEfflux', name: 'NBC Efflux', type: 'symporter',  stoich: { 'Na+': -1, 'HCO3-': -3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
-  { id: 'NBCInflux', name: 'NBC Influx', type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 2 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', density: 1 },
-  { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', density: 1 },
-  { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NKCC',     name: 'NKCC',       type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'NaAA',     name: 'Na⁺-AA',     type: 'symporter',  stoich: { 'Na+': 1, AA: 1 },    kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'OAT',      name: 'OAT',        type: 'carrier',    stoich: { 'OA-': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'OCT',      name: 'OCT',        type: 'carrier',    stoich: { 'OC+': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', density: 1 },
-  { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', density: 1 },
-  { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', density: 1 }
+  { id: 'AQP',      name: 'AQP',        type: 'channel',    stoich: { 'H2O': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'AE1',      name: 'CBE',        type: 'antiporter', stoich: { 'Cl-': 1, 'HCO3-': -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'AAFacilitator', name: 'AA facilitator', type: 'carrier', stoich: { AA: -1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'PiFacilitator', name: 'Pi Facilitator', type: 'carrier', stoich: { Phosphate: -1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'CFTR',     name: 'CFTR',       type: 'channel',    stoich: { 'Cl-': -1, 'HCO3-': -0.5 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'ClCKb',    name: 'ClC',        type: 'channel',    stoich: { 'Cl-': -1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'ENaC',     name: 'ENaC',       type: 'channel',    stoich: { 'Na+': 1 },            kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'GLUT2',    name: 'GLUT',       type: 'channel',    stoich: { 'Glucose': -1 },      kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'TRPV56',   name: 'TRPV5/6',    type: 'channel',    stoich: { 'Ca2+': 1 },          kinetics: { maxRate: 0.6, Km: 0.8 }, placement: 'none', activity: 'auto' },
+  { id: 'HATPase',  name: 'H⁺-ATPase',  type: 'pump',       stoich: { 'H+': -1 },           kinetics: { maxRate: 0.9, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'HKATPase', name: 'H⁺/K⁺-ATPase', type: 'pump', stoich: { 'H+': -1, 'K+': 1 }, kinetics: { maxRate: 0.8, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NaPi2',    name: 'NaPi 2:1',   type: 'symporter',  stoich: { 'Na+': 2, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NaPi',     name: 'NaPi 3:1',   type: 'symporter',  stoich: { 'Na+': 3, 'Phosphate': 1 }, kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NBCEfflux', name: 'NBC Efflux', type: 'symporter',  stoich: { 'Na+': -1, 'HCO3-': -3 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NBCInflux', name: 'NBC Influx', type: 'symporter',  stoich: { 'Na+': 1, 'HCO3-': 2 }, kinetics: { maxRate: 0.7, Km: 2.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NCC',      name: 'NCC',        type: 'symporter',  stoich: { 'Na+': 1, 'Cl-': 1 },  kinetics: { maxRate: 0.6, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NCX1',     name: 'NCX1',       type: 'exchanger',  stoich: { 'Na+': 3, 'Ca2+': -1 }, kinetics: { maxRate: 0.4, Km: 0.2 }, placement: 'none', activity: 'auto' },
+  { id: 'NHE3',     name: 'NHE3',       type: 'antiporter', stoich: { 'Na+': 1, 'H+': -1 },  kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NKCC',     name: 'NKCC',       type: 'symporter',  stoich: { 'Na+': 1, 'K+': 1, 'Cl-': 2 }, kinetics: { maxRate: 0.5, Km: 0.5 }, placement: 'none', activity: 'auto' },
+  { id: 'NaKATPase',name: 'Na⁺/K⁺-ATPase',type: 'pump',       stoich: { 'Na+': -3, 'K+': 2 }, kinetics: { maxRate: 1.2, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'NaAA',     name: 'Na⁺-AA',     type: 'symporter',  stoich: { 'Na+': 1, AA: 1 },    kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'OAT',      name: 'OAT',        type: 'carrier',    stoich: { 'OA-': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'OCT',      name: 'OCT',        type: 'carrier',    stoich: { 'OC+': 1 },           kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'PMCA',     name: 'PMCA',       type: 'pump',       stoich: { 'Ca2+': -1 },         kinetics: { maxRate: 0.3, Km: 0.5 }, placement: 'none', activity: 'auto' },
+  { id: 'MATE',     name: 'MATE',       type: 'antiporter', stoich: { 'OC+': -1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
+  { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', activity: 'auto' }
 ];
 
 const TRANSPORTER_ID_ALIASES = {
@@ -650,7 +650,7 @@ const TISSUE_DEMO_PRESETS = {
   'small-intestine-crypt': {
     paracellularType: 'cation',
     placements: {
-      apical: ['AQP', { id: 'CFTR', density: 2 }],
+      apical: ['AQP', { id: 'CFTR', activity: 2 }],
       basolateral: ['AQP', 'NKCC', 'ROMK', 'NaKATPase', 'ClCKb']
     }
   },
@@ -671,8 +671,8 @@ const TISSUE_DEMO_PRESETS = {
   'pancreatic-duct': {
     paracellularType: 'cation',
     placements: {
-      apical: ['AQP', { id: 'CFTR', density: 2 }, 'AE1', { id: 'NHE3', density: 0.5 }],
-      basolateral: ['AQP', 'NBCInflux', { id: 'ClCKb', density: 2 }, 'NaKATPase', 'HATPase']
+      apical: ['AQP', { id: 'CFTR', activity: 2 }, 'AE1', { id: 'NHE3', activity: 0.5 }],
+      basolateral: ['AQP', 'NBCInflux', { id: 'ClCKb', activity: 2 }, 'NaKATPase', 'HATPase']
     }
   },
   'salivary-duct': {
@@ -801,17 +801,36 @@ function resolveBackgroundOsmoticPull(tissuePreset, setting) {
   };
 }
 
-const DENSITY_OPTIONS = [
+const ACTIVITY_OPTIONS = [
+  { label: 'Auto', value: 'auto' },
   { label: 'Low', value: 0.5 },
-  { label: 'Normal', value: 1 },
+  { label: 'Medium', value: 1 },
   { label: 'High', value: 2 }
 ];
+
+function isAutoActivity(transporter) {
+  return transporter?.activity === 'auto';
+}
+
+function transporterActivityFactor(transporter) {
+  return isAutoActivity(transporter)
+    ? 1
+    : Math.max(Number(transporter?.activity) || 0, 0);
+}
+
+function normalizeTransporterActivity(value, legacyDensity) {
+  if (value === 'auto') return 'auto';
+  const requested = Number(value ?? legacyDensity);
+  return ACTIVITY_OPTIONS.some(option => option.value === requested)
+    ? requested
+    : 'auto';
+}
 
 function createTransporterUid(id, placement) {
   return id + '-' + placement + '-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 }
 
-export function createTransporterInstance(id, placement, density = 1) {
+export function createTransporterInstance(id, placement, activity = 'auto') {
   const canonicalId = canonicalTransporterId(id);
   const template = INITIAL_TRANSPORTERS.find(t => t.id === canonicalId);
   if (!template) return null;
@@ -819,7 +838,7 @@ export function createTransporterInstance(id, placement, density = 1) {
     ...template,
     kinetics: { ...template.kinetics },
     placement,
-    density,
+    activity: normalizeTransporterActivity(activity),
     uid: createTransporterUid(canonicalId, placement)
   };
 }
@@ -828,11 +847,8 @@ function transportersFromSharedLayout(layout) {
   return (layout?.transporters || [])
     .filter(item => item && ['apical', 'basolateral'].includes(item.placement))
     .map(item => {
-      const requestedDensity = Number(item.density);
-      const density = DENSITY_OPTIONS.some(option => option.value === requestedDensity)
-        ? requestedDensity
-        : 1;
-      return createTransporterInstance(item.id, item.placement, density);
+      const activity = normalizeTransporterActivity(item.activity, item.density);
+      return createTransporterInstance(item.id, item.placement, activity);
     })
     .filter(Boolean);
 }
@@ -857,7 +873,7 @@ function demoTransportersForTissue(tissuePreset) {
     .flatMap(([placement, ids]) =>
       ids
         .map(normalizeDemoTransporterEntry)
-        .map(entry => createTransporterInstance(entry.id, placement, entry.density ?? 1))
+        .map(entry => createTransporterInstance(entry.id, placement, entry.activity ?? entry.density ?? 'auto'))
         .filter(Boolean)
     );
 }
@@ -1000,7 +1016,6 @@ const SUPPORT_PUMP_ID = 'NaKATPase';
 const PROTON_EXTRUSION_ICF_HCO3_TARGET = 18;
 const PUMP_K_LOADING_PER_NA_SUPPORT = 2 / 3;
 const PUMP_NA_EXTRUSION_PER_K_SUPPORT = 3 / 2;
-const KIR_PUMP_RECYCLING_CAPACITY_SCALE = 1;
 const APICAL_K_RECYCLING_TEP_COUPLING = 1;
 const CELL_IMBALANCE_EPSILON = 0.1;
 const ELECTROCHEMICAL_CONTEXT_EPSILON = 0.05;
@@ -1020,7 +1035,8 @@ function cloneConcentrations(source) {
 }
 
 function transporterFluxCapacity(transporter) {
-  return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * (Number(transporter.density) || 0);
+  return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) *
+    transporterActivityFactor(transporter);
 }
 
 export function hydrogenMmolToPH(hydrogenMmol) {
@@ -1063,19 +1079,23 @@ function naKATPaseSupportProfile(tList) {
   const template = INITIAL_TRANSPORTERS.find(t => t.id === SUPPORT_PUMP_ID);
   const normalCapacity = template ? transporterFluxCapacity(template) : 1;
   const supportCapacity = pumps.reduce((sum, pump) => sum + transporterFluxCapacity(pump), 0);
+  const autoActivity = pumps.some(isAutoActivity);
   const placements = Array.from(new Set(pumps.map(pump => pump.placement)));
   const pumpDetails = pumps.map(pump => ({
     placement: pump.placement,
-    capacity: transporterFluxCapacity(pump)
+    autoActivity: isAutoActivity(pump),
+    capacity: transporterFluxCapacity(pump),
+    distributionWeight: transporterActivityFactor(pump)
   }));
 
   return {
     present: pumps.length > 0,
     pumps: pumpDetails,
     placements,
+    autoActivity,
     gradientStrength: pumps.length > 0 ? 1 : 0,
-    naExtrusionCapacity: supportCapacity,
-    kLoadingCapacity: supportCapacity,
+    naExtrusionCapacity: autoActivity ? Infinity : supportCapacity,
+    kLoadingCapacity: autoActivity ? Infinity : supportCapacity,
     normalCapacity
   };
 }
@@ -1106,15 +1126,16 @@ function deriveEffectiveStartingIcf(baseConcentrations, tList) {
 
 function naKATPaseSupportLabel(profile) {
   if (!profile.present) return 'none';
+  if (profile.autoActivity) return 'automatic activity';
   if (profile.naExtrusionCapacity < profile.normalCapacity - 0.001) return 'low capacity';
   if (profile.naExtrusionCapacity > profile.normalCapacity + 0.001) return 'high capacity';
-  return 'normal capacity';
+  return 'medium capacity';
 }
 
 function pumpSupportCapacityAt(profile, placement) {
-  return (profile.pumps || [])
-    .filter(pump => pump.placement === placement)
-    .reduce((sum, pump) => sum + Math.max(Number(pump.capacity) || 0, 0), 0);
+  const pumps = (profile.pumps || []).filter(pump => pump.placement === placement);
+  if (pumps.some(pump => pump.autoActivity)) return Infinity;
+  return pumps.reduce((sum, pump) => sum + Math.max(Number(pump.capacity) || 0, 0), 0);
 }
 
 function apicalNaEntryCapacity(apicalFlux) {
@@ -1151,11 +1172,14 @@ function emptyPumpFluxByMembrane() {
 }
 
 function addDistributedPumpFlux(target, pumpDetails, ion, flux) {
-  const totalCapacity = pumpDetails.reduce((sum, pump) => sum + Math.max(Number(pump.capacity) || 0, 0), 0);
-  if (Math.abs(flux) < DIRECTIONAL_FLUX_GRAPH_EPSILON || totalCapacity < DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
+  const totalWeight = pumpDetails.reduce(
+    (sum, pump) => sum + Math.max(Number(pump.distributionWeight) || 0, 0),
+    0
+  );
+  if (Math.abs(flux) < DIRECTIONAL_FLUX_GRAPH_EPSILON || totalWeight < DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
   pumpDetails.forEach(pump => {
     if (!target[pump.placement]) return;
-    const share = Math.max(Number(pump.capacity) || 0, 0) / totalCapacity;
+    const share = Math.max(Number(pump.distributionWeight) || 0, 0) / totalWeight;
     target[pump.placement][ion] = (target[pump.placement][ion] || 0) + flux * share;
   });
 }
@@ -1427,7 +1451,9 @@ function raiseTowardMinimum(modeledIcf, ion, target) {
 
 function concentrationGradientFlux(transporter, outsideConcentration, cellConcentration) {
   const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
-  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale;
+  const maxFlux = (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) *
+    transporterActivityFactor(transporter) *
+    conductanceScale;
   const effectiveCellConcentration = Math.max(cellConcentration, 0);
   const denominator = Math.abs(outsideConcentration) + Math.abs(effectiveCellConcentration) + 1;
   const gradientSignal = (outsideConcentration - effectiveCellConcentration) / denominator;
@@ -1451,7 +1477,10 @@ function electrochemicalChannelSignals(ion, outsideConcentration, cellConcentrat
 function electrochemicalChannelMaxFlux(transporter, ion) {
   const conductanceScale = PASSIVE_CONDUCTANCE_SCALE[transporter.id] || 1;
   const stoichScale = Math.abs(transporter.stoich[ion] ?? 1);
-  return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) * transporter.density * conductanceScale * stoichScale;
+  return (transporter.kinetics.maxRate / (transporter.kinetics.Km + 1)) *
+    transporterActivityFactor(transporter) *
+    conductanceScale *
+    stoichScale;
 }
 
 function concentrationValidationMessage(ion, value) {
@@ -1583,7 +1612,7 @@ function buildTransporterActivityReport({
           status: 'active',
           message: pumpSupportReport.active
             ? 'Active pump cycling supports the displayed Na⁺ and K⁺ pathways.'
-            : 'Active gradient support; no Na⁺ entry or K⁺ exit pathway is currently using pump capacity.'
+            : 'Active gradient support; no Na⁺ entry or K⁺ exit pathway currently calls for pump cycling.'
         };
       }
 
@@ -1595,7 +1624,7 @@ function buildTransporterActivityReport({
           id: transporter.id,
           name: transporter.name,
           placement: transporter.placement,
-          status: hasOppositeAqp ? 'active' : 'limited',
+          status: hasOppositeAqp ? 'active' : 'incomplete',
           message: hasOppositeAqp
             ? 'Active as part of a complete transcellular water pathway.'
             : 'Membrane water pathway present; AQP is missing from the opposite membrane.'
@@ -1606,22 +1635,22 @@ function buildTransporterActivityReport({
       if (!event) {
         let message = 'No modeled driving context is currently available.';
         if (transporter.id === 'NBCEfflux' && !hasPlacedTransporterFromSet(tList, PROTON_EXTRUDER_TRANSPORTER_IDS)) {
-          message = 'Inactive: requires proton extrusion to establish the elevated intracellular HCO₃⁻ context.';
+          message = 'Unsupported: requires proton extrusion to establish the elevated intracellular HCO₃⁻ context.';
         } else if ((transporter.stoich['Na+'] || transporter.id === 'OAT') && !pumpSupportProfile.present) {
-          message = 'Inactive: requires Na⁺/K⁺-ATPase gradient support.';
+          message = 'Unsupported: requires Na⁺/K⁺-ATPase gradient support.';
         } else if (
           transporter.id === 'NCX1' &&
           !hasOppositePlacedTransporter(tList, 'TRPV56', transporter.placement) &&
           !hasElevatedModeledCalcium(baseline)
         ) {
-          message = 'Inactive: requires intracellular Ca²⁺ loading, such as TRPV5/6 on the opposite membrane.';
+          message = 'Unsupported: requires intracellular Ca²⁺ loading, such as TRPV5/6 on the opposite membrane.';
         }
         return {
           uid: transporter.uid,
           id: transporter.id,
           name: transporter.name,
           placement: transporter.placement,
-          status: 'inactive',
+          status: 'unsupported',
           message
         };
       }
@@ -1635,8 +1664,8 @@ function buildTransporterActivityReport({
           id: transporter.id,
           name: transporter.name,
           placement: transporter.placement,
-          status: 'limited',
-          message: 'Pathway is present, but there is no strong net electrochemical tendency.'
+          status: 'no net tendency',
+          message: 'Pathway is present; there is no strong net electrochemical tendency.'
         };
       }
 
@@ -1646,8 +1675,8 @@ function buildTransporterActivityReport({
           id: transporter.id,
           name: transporter.name,
           placement: transporter.placement,
-          status: 'limited',
-          message: 'Active, but limited by shared Na⁺/K⁺-ATPase support capacity.'
+          status: 'constrained',
+          message: 'Active; constrained by the selected fixed Na⁺/K⁺-ATPase activity.'
         };
       }
 
@@ -1661,13 +1690,14 @@ function buildTransporterActivityReport({
       const basolateralKRecycling = transporter.id === 'ROMK' &&
         transporter.placement === 'basolateral' &&
         pumpSupportReport.active;
-      if (incompleteSolutes.length && !basolateralKRecycling) {
+      const completedSolutes = activeSolutes.filter(solute => !incompleteSolutes.includes(solute));
+      if (!completedSolutes.length && !basolateralKRecycling) {
         return {
           uid: transporter.uid,
           id: transporter.id,
           name: transporter.name,
           placement: transporter.placement,
-          status: 'limited',
+          status: 'incomplete',
           message: 'Active membrane step; incomplete epithelial pathway for ' +
             incompleteSolutes.map(solute => ION_LABEL[solute.ion] || solute.ion).join(', ') + '.'
         };
@@ -1681,7 +1711,11 @@ function buildTransporterActivityReport({
         status: 'active',
         message: basolateralKRecycling
           ? 'Active local K⁺ recycling supports pump cycling and cell balance.'
-          : 'Active membrane step with compatible epithelial pathway completion.'
+          : incompleteSolutes.length
+            ? 'Active epithelial pathway step; coupled ' +
+              incompleteSolutes.map(solute => ION_LABEL[solute.ion] || solute.ion).join(', ') +
+              ' movement has a local support or balance role.'
+            : 'Active membrane step with compatible epithelial pathway completion.'
       };
     });
 }
@@ -1823,6 +1857,160 @@ function fluxEventForTransporter(transporter, fluxEvents) {
   );
 }
 
+const AUTO_MATCHED_CELL_SOLUTES = [
+  'Glucose',
+  'AA',
+  'Peptide',
+  'Phosphate',
+  'Cl-',
+  'Ca2+',
+  'OA-',
+  'OC+'
+];
+const AUTO_ACTIVITY_MAX_SCALE = 12;
+
+function eventSolute(event, ion) {
+  return (event.solutes || []).find(solute => solute.ion === ion);
+}
+
+function eventSoluteMagnitude(event, ion) {
+  return Math.abs(Number(eventSolute(event, ion)?.flux || 0));
+}
+
+function isAutoAdjustableFluxEvent(event) {
+  return event.activity === 'auto';
+}
+
+function scaleFluxEvent(event, factor, context) {
+  const boundedFactor = Math.max(Number(factor) || 0, 0);
+  if (Math.abs(boundedFactor - 1) < 1e-6) return;
+
+  (event.solutes || []).forEach(solute => {
+    const priorFlux = Number(solute.flux || 0);
+    const nextFlux = priorFlux * boundedFactor;
+    const delta = nextFlux - priorFlux;
+    solute.flux = nextFlux;
+    const membraneFlux = event.placement === 'apical'
+      ? context.apicalFlux
+      : context.basolateralFlux;
+    membraneFlux[solute.ion] = (membraneFlux[solute.ion] || 0) + delta;
+
+    if (event.type === 'passive') {
+      context.passiveNetFlux[solute.ion] = (context.passiveNetFlux[solute.ion] || 0) + delta;
+    } else {
+      context.activeMembraneFlux[solute.ion] = (context.activeMembraneFlux[solute.ion] || 0) + delta;
+      if (event.placement === 'apical') {
+        context.activeApicalFlux[solute.ion] = (context.activeApicalFlux[solute.ion] || 0) + delta;
+      }
+    }
+  });
+
+  event.autoScale = Number(event.autoScale || 1) * boundedFactor;
+  const coupledEvent = context.coupledEvents.find(item => item.uid === event.uid);
+  if (coupledEvent) {
+    coupledEvent.rate *= boundedFactor;
+    coupledEvent.autoScale = Number(coupledEvent.autoScale || 1) * boundedFactor;
+  }
+  context.electrochemicalContextEvents
+    .filter(item => item.uid === event.uid)
+    .forEach(item => {
+      item.flux *= boundedFactor;
+    });
+}
+
+function scaleAutoEventsToTarget(events, ion, targetMagnitude, context) {
+  const autoEvents = events.filter(isAutoAdjustableFluxEvent);
+  if (!autoEvents.length) return false;
+
+  const fixedMagnitude = events
+    .filter(event => !isAutoAdjustableFluxEvent(event))
+    .reduce((sum, event) => sum + eventSoluteMagnitude(event, ion), 0);
+  const autoMagnitude = autoEvents.reduce(
+    (sum, event) => sum + eventSoluteMagnitude(event, ion),
+    0
+  );
+  if (autoMagnitude < DIRECTIONAL_FLUX_GRAPH_EPSILON) return false;
+
+  const desiredAutoMagnitude = Math.max(Number(targetMagnitude) - fixedMagnitude, 0);
+  let factor = desiredAutoMagnitude / autoMagnitude;
+  const maximumFactor = autoEvents.reduce((limit, event) => {
+    const supportLimited = Number(event.supportScale ?? 1) < 0.999;
+    const currentScale = Math.max(Number(event.autoScale || 1), 1e-6);
+    const eventLimit = supportLimited ? 1 / currentScale : AUTO_ACTIVITY_MAX_SCALE / currentScale;
+    return Math.min(limit, eventLimit);
+  }, Infinity);
+  factor = Math.min(Math.max(factor, 0), maximumFactor);
+  if (!Number.isFinite(factor) || Math.abs(factor - 1) < 1e-4) return false;
+
+  autoEvents.forEach(event => scaleFluxEvent(event, factor, context));
+  return true;
+}
+
+function autoMatchPlacedTransporterActivities(context) {
+  for (let pass = 0; pass < 6; pass += 1) {
+    let changed = false;
+    AUTO_MATCHED_CELL_SOLUTES.forEach(ion => {
+      const candidates = context.fluxEvents.filter(event =>
+        eventSoluteMagnitude(event, ion) >= DIRECTIONAL_FLUX_GRAPH_EPSILON
+      );
+      const inward = candidates.filter(event => Number(eventSolute(event, ion)?.flux || 0) > 0);
+      const outward = candidates.filter(event => Number(eventSolute(event, ion)?.flux || 0) < 0);
+      const inwardPathEvents = inward.filter(event =>
+        outward.some(other => other.placement !== event.placement)
+      );
+      const outwardPathEvents = outward.filter(event =>
+        inward.some(other => other.placement !== event.placement)
+      );
+      if (!inwardPathEvents.length || !outwardPathEvents.length) return;
+
+      const inwardMagnitude = inwardPathEvents.reduce(
+        (sum, event) => sum + eventSoluteMagnitude(event, ion),
+        0
+      );
+      const outwardMagnitude = outwardPathEvents.reduce(
+        (sum, event) => sum + eventSoluteMagnitude(event, ion),
+        0
+      );
+      if (Math.abs(inwardMagnitude - outwardMagnitude) < DIRECTIONAL_FLUX_GRAPH_EPSILON) return;
+
+      if (inwardMagnitude < outwardMagnitude) {
+        let adjusted = scaleAutoEventsToTarget(
+          inwardPathEvents,
+          ion,
+          outwardMagnitude,
+          context
+        );
+        if (!adjusted) {
+          adjusted = scaleAutoEventsToTarget(
+            outwardPathEvents,
+            ion,
+            inwardMagnitude,
+            context
+          );
+        }
+        changed = adjusted || changed;
+      } else {
+        let adjusted = scaleAutoEventsToTarget(
+          outwardPathEvents,
+          ion,
+          inwardMagnitude,
+          context
+        );
+        if (!adjusted) {
+          adjusted = scaleAutoEventsToTarget(
+            inwardPathEvents,
+            ion,
+            outwardMagnitude,
+            context
+          );
+        }
+        changed = adjusted || changed;
+      }
+    });
+    if (!changed) break;
+  }
+}
+
 function outwardSoluteCapacity(transporter, fluxEvents, ion) {
   const event = fluxEventForTransporter(transporter, fluxEvents);
   if (!event) return 0;
@@ -1893,6 +2081,7 @@ export function simulateTransport({
         name: t.name,
         placement: t.placement,
         rate,
+        activity: t.activity,
         supportScale: pumpCapacityLimited ? naEntrySupportScale : 1,
         stoich: { ...effectiveStoich }
       });
@@ -1903,6 +2092,7 @@ export function simulateTransport({
       name: t.name,
       placement: t.placement,
       type: coupledSolutes(effectiveStoich).length > 1 ? 'coupled' : 'active',
+      activity: t.activity,
       supportScale: pumpCapacityLimited ? naEntrySupportScale : 1,
       solutes: Object.entries(effectiveStoich)
         .filter(([ion]) => ion !== 'H2O')
@@ -1955,13 +2145,16 @@ export function simulateTransport({
       passiveNetFlux[ion] += delta;
       if (t.id === 'ROMK' && ion === 'K+') {
         kirPassiveEvents.push({
+          uid: t.uid,
           placement: t.placement,
           flux: delta,
-          capacity: maxChannelFlux || 0
+          capacity: maxChannelFlux || 0,
+          activity: t.activity
         });
       }
       if (signals) {
         electrochemicalContextEvents.push({
+          uid: t.uid,
           id: t.id,
           name: t.name,
           placement: t.placement,
@@ -1983,6 +2176,7 @@ export function simulateTransport({
       name: t.name,
       placement: t.placement,
       type: 'passive',
+      activity: t.activity,
       solutes: soluteEvents
     });
   });
@@ -2026,6 +2220,17 @@ export function simulateTransport({
     });
   }
 
+  autoMatchPlacedTransporterActivities({
+    fluxEvents,
+    coupledEvents,
+    electrochemicalContextEvents,
+    apicalFlux,
+    basolateralFlux,
+    activeMembraneFlux,
+    activeApicalFlux,
+    passiveNetFlux
+  });
+
   // Na+/K+-ATPase support is traced so students can see which displayed fluxes depend on pump activity.
   const supportedNaAbsorption = pumpSupportedNaCompletion(apicalFlux, pumpSupportProfile);
   const pumpKLoadingForNaAbsorption = pumpKLoadingForNaSupport(supportedNaAbsorption);
@@ -2034,19 +2239,34 @@ export function simulateTransport({
       event.placement === 'basolateral' &&
       event.flux < -DIRECTIONAL_FLUX_GRAPH_EPSILON
     );
-    const basolateralKirExit = basolateralKirExitEvents.reduce(
+    const fixedKirExit = basolateralKirExitEvents
+      .filter(event => event.activity !== 'auto')
+      .reduce(
       (sum, event) => sum + Math.max(-event.flux, 0),
       0
     );
-    const basolateralKirCapacity = basolateralKirExitEvents.reduce(
-      (sum, event) => sum + Math.max(event.capacity, 0) * KIR_PUMP_RECYCLING_CAPACITY_SCALE,
+    const autoKirExitEvents = basolateralKirExitEvents.filter(event => event.activity === 'auto');
+    const autoKirExit = autoKirExitEvents.reduce(
+      (sum, event) => sum + Math.max(-event.flux, 0),
       0
     );
-    const targetKirRecycling = Math.min(pumpKLoadingForNaAbsorption, basolateralKirCapacity);
-    const additionalKirRecycling = Math.max(0, targetKirRecycling - basolateralKirExit);
-    if (additionalKirRecycling > 0) {
-      basolateralFlux['K+'] = (basolateralFlux['K+'] || 0) - additionalKirRecycling;
-      passiveNetFlux['K+'] = (passiveNetFlux['K+'] || 0) - additionalKirRecycling;
+    if (autoKirExit > DIRECTIONAL_FLUX_GRAPH_EPSILON) {
+      const desiredAutoExit = Math.max(pumpKLoadingForNaAbsorption - fixedKirExit, 0);
+      const kirActivityFactor = desiredAutoExit / autoKirExit;
+      autoKirExitEvents.forEach(kirEvent => {
+        const fluxEvent = fluxEvents.find(event => event.uid === kirEvent.uid);
+        if (!fluxEvent) return;
+        scaleFluxEvent(fluxEvent, kirActivityFactor, {
+          apicalFlux,
+          basolateralFlux,
+          passiveNetFlux,
+          activeMembraneFlux,
+          activeApicalFlux,
+          coupledEvents,
+          electrochemicalContextEvents
+        });
+        kirEvent.flux *= kirActivityFactor;
+      });
     }
   }
   const supportedKSecretion = pumpSupportedKCompletion(apicalFlux, pumpSupportProfile);
@@ -2119,8 +2339,8 @@ export function simulateTransport({
       const pepT = tList.find(t => t.id === 'PepT' && t.placement !== 'none');
       const aaExit = tList.find(t => t.id === 'AAFacilitator' && t.placement !== 'none' && t.placement !== pepT.placement);
       if (pepT && aaExit) {
-        const pepRate = Math.abs(pepT.kinetics.maxRate / (pepT.kinetics.Km + 1) * pepT.density);
-        const aaRate = Math.abs(aaExit.kinetics.maxRate / (aaExit.kinetics.Km + 1) * aaExit.density);
+        const pepRate = Math.abs(pepT.kinetics.maxRate / (pepT.kinetics.Km + 1) * transporterActivityFactor(pepT));
+        const aaRate = Math.abs(aaExit.kinetics.maxRate / (aaExit.kinetics.Km + 1) * transporterActivityFactor(aaExit));
         const limiting = Math.min(pepRate, aaRate);
         peptideTransEpiFlux = pepT.placement === 'apical' ? limiting : -limiting;
       }
@@ -2300,7 +2520,17 @@ export function simulateTransport({
       Number(acidBaseCellSupport.hco3ReferenceTarget || 0)
     );
   }
-  const cellImbalanceReport = buildCellImbalanceReport(cellImbalanceBaselineIcf, newICF);
+  const cellBalanceModeledIcf = { ...newICF };
+  Object.keys(ACTIVE_CELL_CONCENTRATION_GAIN).forEach(ion => {
+    cellBalanceModeledIcf[ion] =
+      Number(cellImbalanceBaselineIcf[ion] || 0) +
+      Number(netFlux[ion] || 0) +
+      Number(hiddenPumpCellFlux[ion] || 0);
+  });
+  const cellImbalanceReport = buildCellImbalanceReport(
+    cellImbalanceBaselineIcf,
+    cellBalanceModeledIcf
+  );
 
   // Compose transepiFluxDataNoH2O
   const transepiFluxDataNoH2O = Object.keys(netFlux).filter(ion => ion !== 'H2O').map(ion => {
@@ -2910,9 +3140,11 @@ export default function App() {
           const activity = result?.transporterActivityReport?.find(item => item.uid === t.uid);
           const statusClass = activity?.status === 'active'
             ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-            : activity?.status === 'limited'
+            : activity?.status === 'incomplete' || activity?.status === 'constrained'
               ? 'border-amber-300 bg-amber-50 text-amber-900'
-              : 'border-gray-300 bg-gray-100 text-gray-700';
+              : activity?.status === 'unsupported'
+                ? 'border-rose-300 bg-rose-50 text-rose-800'
+                : 'border-gray-300 bg-gray-100 text-gray-700';
           return (
             <div key={t.uid} className="border rounded p-2 bg-white">
               <div className="flex items-center justify-between gap-2 mb-1">
@@ -2935,15 +3167,15 @@ export default function App() {
                 </div>
               )}
               <fieldset className="flex items-center gap-2 text-xs">
-                <legend className="text-gray-600 mr-1">Density</legend>
-                {DENSITY_OPTIONS.map(option => (
+                <legend className="text-gray-600 mr-1">Activity</legend>
+                {ACTIVITY_OPTIONS.map(option => (
                   <label key={option.label} className="inline-flex items-center gap-1">
                     <input
                       type="radio"
-                      name={'density-' + t.uid}
+                      name={'activity-' + t.uid}
                       value={option.value}
-                      checked={t.density === option.value}
-                      onChange={() => updateTransporter(t.uid, 'density', option.value)}
+                      checked={t.activity === option.value}
+                      onChange={() => updateTransporter(t.uid, 'activity', option.value)}
                     />
                     {option.label}
                   </label>
@@ -4137,7 +4369,7 @@ export default function App() {
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
         <li><b>Class-level transporters:</b> AQP, GLUT, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NBC Efflux, NBC Influx, NKCC, TRPV5/6, CBE, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
         <li><b>Organic ion transport:</b> Organic ion transport is simplified in SALT. OAT represents tertiary-active organic anion uptake used in secretion pathways. In real proximal tubule cells, OAT exchange is supported indirectly by the Na⁺ gradient and intracellular dicarboxylates, but SALT does not model those exchanged solutes. Therefore, OAT requires Na⁺/K⁺-ATPase support in the model. MRP/BCRP represents simplified organic anion efflux, while OCT and MATE provide a simplified organic cation secretion pathway.</li>
-        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. The Pathways view shows Na⁺ extrusion and K⁺ loading arrows when any modeled Na⁺ entry or K⁺ exit pathway gives the pump a pathway to cycle; pump-only layouts establish gradients without showing Na⁺ or K⁺ flux arrows. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. Apical Kir-mediated K⁺ recycling can add a lumen-positive TEP tendency when paired with apical K⁺ loading. NBC Efflux requires a proton extrusion context, modeled as raising ICF HCO₃⁻ toward 18 mM, so Na⁺/K⁺-ATPase alone does not create standalone Na⁺/HCO₃⁻ efflux. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 uses a reduced teaching conductance so Ca²⁺ absorption remains smaller than bulk NaCl transport; dynamic inhibition by intracellular Ca²⁺ is not modeled.</li>
+        <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. At Auto activity, pump cycling matches the supported Na⁺ and K⁺ load created by transporters the student has placed; fixed Low, Medium, or High activity can constrain that support. The Pathways view shows Na⁺ extrusion and K⁺ loading arrows when any modeled Na⁺ entry or K⁺ exit pathway gives the pump a pathway to cycle; pump-only layouts establish gradients without showing Na⁺ or K⁺ flux arrows. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. Apical Kir-mediated K⁺ recycling can add a lumen-positive TEP tendency when paired with apical K⁺ loading. NBC Efflux requires a proton extrusion context, modeled as raising ICF HCO₃⁻ toward 18 mM, so Na⁺/K⁺-ATPase alone does not create standalone Na⁺/HCO₃⁻ efflux. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 uses a reduced teaching conductance so Ca²⁺ absorption remains smaller than bulk NaCl transport; dynamic inhibition by intracellular Ca²⁺ is not modeled.</li>
       </ul>
       <h3 className="text-lg font-semibold mt-4 mb-1">NBC Stoichiometry Rule</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
@@ -4166,7 +4398,7 @@ export default function App() {
       <h3 className="text-lg font-semibold mt-4 mb-1">General Flux Rules</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Placement:</b> Transporters are active only when placed on the apical or basolateral membrane.</li>
-        <li><b>Density:</b> Low, normal, and high density change transporter abundance and therefore scale the modeled flux tendency.</li>
+        <li><b>Activity:</b> Auto adjusts the effective activity of compatible transporters the student has placed so permitted pathway steps can carry consistent flux. Auto does not add transporters, change their membrane location, or override driving-force requirements. Low, Medium, and High apply fixed qualitative activity levels rather than measured transporter abundance or kinetic constants.</li>
         <li><b>Passive membrane pathways:</b> ENaC, Kir, ClC, CFTR, and TRPV5/6 use simplified electrochemical direction rules when Na⁺/K⁺-ATPase is present and primarily follow chemical concentration tendency when it is absent. GLUT remains non-voltage-sensitive and follows the glucose gradient.</li>
         <li><b>Coupled transport and exchangers:</b> Na⁺-coupled cotransporters and exchangers remain governed primarily by pump-supported Na⁺ gradient logic, stoichiometric coupling, and pathway completion. Selected electrogenic coupled pathways receive only small bounded implicit-Vm support and are not allowed to reverse routine teaching layouts.</li>
         <li><b>Regulated or supported pathways:</b> CFTR is treated as a regulated anion pathway whose direction follows the simplified electrochemical rule. NBC Efflux requires proton extrusion support for its intracellular HCO₃⁻ context; NBC Influx, NCC, NKCC, NHE3, and CBE remain placement- and coupling-based teaching pathways rather than voltage-driven reversal mechanisms.</li>
@@ -4191,7 +4423,7 @@ export default function App() {
         <li>
           <b>AQP:</b> aquaporin class; representative members include AQP2, AQP3, and AQP4<br/>
           <i>Action:</i> Water channel; enables rapid H₂O movement.<br/>
-          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows the combined osmotic pull and is scaled by the combined apical/basolateral AQP density.
+          <i>Rule:</i> Net transcellular H₂O flux requires AQP on both apical and basolateral membranes. When that complete pathway is present, water tendency follows the combined osmotic pull and is scaled by the combined apical/basolateral AQP activity.
         </li>
         <li>
           <b>CFTR:</b> cystic fibrosis transmembrane conductance regulator<br/>
@@ -4206,7 +4438,7 @@ export default function App() {
         <li>
           <b>ENaC:</b> epithelial sodium channel<br/>
           <i>Action:</i> Sodium channel; passive Na⁺ flux follows chemical tendency and the fixed implicit membrane-potential tendency when pump support is present.<br/>
-          <i>Rule:</i> Can provide Na⁺ entry when placed on a membrane. Completed transepithelial Na⁺ absorption is limited by available apical Na⁺ entry and Na⁺/K⁺-ATPase extrusion support.
+          <i>Rule:</i> Can provide Na⁺ entry when placed on a membrane. At Auto activity, compatible Na⁺ entry and Na⁺/K⁺-ATPase extrusion are matched. Fixed activity settings can constrain the completed transepithelial Na⁺ flux.
         </li>
         <li>
           <b>GLUT:</b> glucose transporter class<br/>
@@ -4226,7 +4458,7 @@ export default function App() {
         <li>
           <b>Kir:</b> inward-rectifier potassium channel class<br/>
           <i>Action:</i> Potassium channel; passive K⁺ flux follows the simplified electrochemical tendency. ROMK is a member of the Kir ion channel class.<br/>
-          <i>Rule:</i> Can provide K⁺ exit or entry on either membrane depending on K⁺ electrochemical tendency. With Na⁺/K⁺-ATPase present, completed apical K⁺ secretion is limited by available pump K⁺ loading support and Kir exit capacity.
+          <i>Rule:</i> Can provide K⁺ exit or entry on either membrane depending on K⁺ electrochemical tendency. At Auto activity, placed Kir can match Na⁺/K⁺-ATPase-associated K⁺ recycling or secretion. Fixed activity settings can constrain the completed K⁺ flux.
         </li>
         <li>
           <b>MATE:</b> multidrug and toxin extrusion transporter class; representative members include MATE1 and MATE2-K<br/>
@@ -4286,7 +4518,7 @@ export default function App() {
         <li>
           <b>Na⁺/K⁺ ATPase:</b> sodium-potassium ATPase<br/>
           <i>Biological action:</i> Active pump; moves 3 Na⁺ out and 2 K⁺ in per ATP.<br/>
-          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Density limits how much Na⁺ extrusion or K⁺ loading support it can provide, but it does not create larger-than-normal gradients. The Pathways view shows pump Na⁺ extrusion and K⁺ loading arrows when a modeled Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts show gradient support without net Na⁺ or K⁺ flux. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
+          <i>Rule:</i> In this teaching layer, it establishes steady-state low Na⁺ and high K⁺ cell gradients when present. Auto activity matches pump cycling to the supported load from placed transporters; fixed Low, Medium, or High activity can constrain support but does not create larger-than-normal gradients. The Pathways view shows pump Na⁺ extrusion and K⁺ loading arrows when a modeled Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts show gradient support without net Na⁺ or K⁺ flux. Without a K⁺ exit or recycling pathway, pump-supported Na⁺ absorption reports intracellular K⁺ accumulation; without Na⁺ entry, pump-supported K⁺ secretion reports intracellular Na⁺ depletion.
         </li>
         <li>
           <b>OAT:</b> organic anion transporter class; representative members include OAT1 and OAT3<br/>
@@ -4338,7 +4570,7 @@ export default function App() {
         <li>H₂O is not treated as a transported solute concentration. The app reports qualitative water movement tendencies instead of calculating true cell volume or osmolality.</li>
         <li>ECF concentration settings and apical/cell/basolateral osmolality differences do not directly drive water flux.</li>
         <li>Osmotic pull combines net epithelial solute movement with the optional background osmotic pull toward blood. The background setting affects water movement only and does not change solute concentrations.</li>
-        <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes and is scaled by the combined apical/basolateral AQP density; the Cation + Water Pore provides a paracellular water pathway.</li>
+        <li>Water tendency follows the combined osmotic pull when a water pathway is present. A complete transcellular pathway requires AQP on both apical and basolateral membranes and is scaled by the combined apical/basolateral AQP activity; the Cation + Water Pore provides a paracellular water pathway.</li>
         <li>The Cation Pore and the Anion Pore do not provide paracellular water flux in this teaching model.</li>
       </ul>
 
@@ -4355,8 +4587,8 @@ export default function App() {
       <h3 className="text-lg font-semibold mt-4 mb-1">Transepithelial Solute Flux Rules</h3>
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
-        <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide Na⁺ entry tendencies. Completed pump-supported Na⁺ absorption is limited by the smaller of apical Na⁺ entry capacity and Na⁺/K⁺-ATPase extrusion support capacity, and fully balanced Na⁺ absorption also needs K⁺ exit or recycling. The Pathways view can trace pump cycling from Na⁺ entry on either membrane.</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. With Na⁺/K⁺-ATPase present, apical Kir secretion is limited by the smaller of apical K⁺ exit capacity and pump K⁺ loading support capacity.</li>
+        <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide Na⁺ entry tendencies. At Auto activity, compatible entry and Na⁺/K⁺-ATPase extrusion steps are matched; fixed activity settings can constrain pump-supported Na⁺ absorption. Fully balanced Na⁺ absorption also needs K⁺ exit or recycling. The Pathways view can trace pump cycling from Na⁺ entry on either membrane.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. At Auto activity, compatible pump loading and placed Kir are matched; fixed activity settings can constrain completed K⁺ secretion or recycling.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, or CBE can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
@@ -4364,7 +4596,7 @@ export default function App() {
         <li><b>Peptides:</b> PepT on one membrane and AA facilitator on the opposite membrane produce completed peptide-derived nutrient transport in this teaching layer.</li>
         <li><b>Organic anions and cations:</b> Pump-supported OAT and MRP/BCRP on opposite membranes complete organic anion pathways. OCT and MATE on opposite membranes complete organic cation pathways.</li>
         <li><b>H⁺ and HCO₃⁻:</b> A proton extruder (NHE3, H⁺-ATPase, or H⁺/K⁺-ATPase) on one membrane and NBC Efflux or CBE on the opposite membrane can create paired acid/base flux. Same-membrane proton extrusion plus CBE or NBC Efflux can also be annotated as intracellular CO₂/H₂O support without adding net transepithelial acid/base flux. NBC Efflux has no standalone Na⁺/HCO₃⁻ flux with Na⁺/K⁺-ATPase alone; it requires proton extrusion support, modeled as an elevated ICF HCO₃⁻ context. NBC Influx can load HCO₃⁻ for apical CBE- or CFTR-mediated HCO₃⁻ secretion. NHE3 and both NBC options require Na⁺/K⁺-ATPase support; CBE, CFTR, H⁺-ATPase, and H⁺/K⁺-ATPase do not require that support in this teaching rule.</li>
-        <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined density. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
+        <li><b>H₂O:</b> Net transcellular water movement requires AQP on both apical and basolateral membranes and is scaled by their combined activity. Paracellular H₂O movement requires the Cation + Water Pore. When a water pathway is present, H₂O follows the combined osmotic pull in arbitrary teaching units.</li>
       </ul>
       <Button size="sm" variant="outline" onClick={() => setShowAbout(false)} className="mt-4">Close</Button>
     </div>
@@ -4539,7 +4771,7 @@ export default function App() {
     >
       <h2 id="share-layout-title" className="text-xl font-bold mb-2">Share this layout</h2>
       <p className="text-sm text-gray-700 mb-3">
-        This link restores the current transporter placements, densities, tissue, pathways, concentrations, and results view.
+        This link restores the current transporter placements, activity settings, tissue, pathways, concentrations, and results view.
       </p>
       <label htmlFor="share-layout-url" className="block text-sm font-semibold mb-1">Layout link</label>
       <input
@@ -4633,7 +4865,7 @@ export default function App() {
           {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} bulk ECF reservoirs are editable. ICF is determined by the modeled steady-state cell condition; Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present.
         </p>
         <p className="text-gray-500 mb-2">
-          Pump density limits how much Na⁺ extrusion or K⁺ loading it can support. The Pathways view shows pump Na⁺/K⁺ cycling arrows when Na⁺ entry or K⁺ exit pathways let the pump cycle; pump-only layouts establish gradients without Na⁺ or K⁺ flux arrows. Editable ECF concentrations are constrained to physiological teaching ranges.
+          Auto activity matches pump cycling to supported Na⁺ entry and K⁺ exit from transporters the student has placed; fixed activity levels can constrain that support. The Pathways view shows pump Na⁺/K⁺ cycling arrows when Na⁺ entry or K⁺ exit pathways let the pump cycle; pump-only layouts establish gradients without Na⁺ or K⁺ flux arrows. Editable ECF concentrations are constrained to physiological teaching ranges.
         </p>
         <table className="min-w-full table-auto text-left border">
           <caption className="sr-only">Baseline concentration settings. {displayOrientation.apicalShortLabel} and {displayOrientation.basolateralShortLabel} ECF reservoirs are editable; cell ICF values are model-derived and not editable.</caption>
@@ -4722,7 +4954,7 @@ export default function App() {
         case 'PiFacilitator':
           return <><b>Pi Facilitator</b>: generic facilitated inorganic phosphate transporter. This mechanism is not well characterized but may be XPR1.<br/></>;
         case 'AQP':
-          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway, scaled by their combined density.<br/></>;
+          return <><b>AQP water channel class</b>: representative members include AQP2, AQP3, and AQP4; supports transcellular H₂O movement when apical and basolateral AQP form a complete pathway, scaled by their combined activity.<br/></>;
         case 'CFTR':
           return <><b>CFTR regulated anion channel</b>: passive Cl⁻ and smaller HCO₃⁻ movement follow the simplified electrochemical tendency. CFTR can support Cl⁻ secretion or reabsorption when paired with a compatible opposite-membrane Cl⁻ pathway, but it is not treated as an ATP-driven Cl⁻ pump. SALT does not model CFTR gating, cAMP regulation, or detailed bicarbonate selectivity.<br/></>;
         case 'ClCKb':
@@ -4760,7 +4992,7 @@ export default function App() {
         case 'NKCC':
           return <><b>NKCC cotransporter class</b>: representative members include NKCC1 and NKCC2; moves 1 Na⁺, 1 K⁺, and 2 Cl⁻ together using pump-supported coupled transport logic.<br/></>;
         case 'NaKATPase':
-          return <><b>Sodium-potassium pump</b>: moves 3 Na⁺ out and 2 K⁺ in per ATP. Density limits supported Na⁺ extrusion or K⁺ loading. In the Pathways view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
+          return <><b>Sodium-potassium pump</b>: moves 3 Na⁺ out and 2 K⁺ in per ATP. Auto activity matches support to the load from placed pathways; fixed activity levels can constrain supported Na⁺ extrusion or K⁺ loading. In the Pathways view, pump Na⁺ and K⁺ arrows appear when a Na⁺ entry or K⁺ exit pathway lets the pump cycle; pump-only layouts establish gradients without standalone Na⁺ or K⁺ flux. Unmatched K⁺ loading reports K⁺ accumulation, and unmatched Na⁺ extrusion reports Na⁺ depletion.<br/></>;
         case 'OAT':
           return <><b>OAT transporter class</b>: representative members include OAT1 and OAT3; tertiary-active OA⁻ uptake for secretion pathways. Requires Na⁺/K⁺-ATPase support; SALT does not model the exchanged dicarboxylate.<br/></>;
         case 'OCT':

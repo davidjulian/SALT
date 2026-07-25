@@ -7,7 +7,9 @@ export function serializeLayoutState(state) {
     transporters: (state.transporters || []).map(transporter => ({
       id: transporter.id,
       placement: transporter.placement,
-      density: Number(transporter.density) || 1
+      activity: transporter.activity === 'auto'
+        ? 'auto'
+        : Number(transporter.activity) || 1
     })),
     tissuePreset: state.tissuePreset,
     paracellularType: state.paracellularType,
