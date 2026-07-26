@@ -3184,11 +3184,11 @@ export default function App() {
         {rows.map(t => {
           const activity = result?.transporterActivityReport?.find(item => item.uid === t.uid);
           const cardStatus = activity?.status === 'incomplete' || activity?.status === 'unsupported'
-            ? 'problem'
+            ? 'check'
             : activity?.status === 'active'
               ? null
               : activity?.status;
-          const statusClass = cardStatus === 'problem'
+          const statusClass = cardStatus === 'check'
             ? 'border-rose-300 bg-rose-50 text-rose-800'
             : cardStatus === 'constrained'
               ? 'border-amber-300 bg-amber-50 text-amber-900'
