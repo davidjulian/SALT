@@ -4395,6 +4395,9 @@ export default function App() {
       <div className="mb-3 text-sm text-gray-700">
   Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a>
       </div>
+      <p className="mb-3 text-sm text-gray-700">
+        SALT was conceived and developed by David Julian with assistance from OpenAI Codex, which contributed to implementation, testing, debugging, and interface refinement. All scientific content, teaching and design decisions, and responsibility for the application remain with the author.
+      </p>
       <h3 className="text-lg font-semibold mt-4 mb-1">Model Scope</h3>
       <ul className="list-disc ml-6 mb-3 text-sm">
         <li><b>Audience:</b> This About panel is written for instructors and reviewers. A later student-facing version can use less implementation detail.</li>
