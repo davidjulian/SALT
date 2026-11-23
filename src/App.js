@@ -572,7 +572,7 @@ const tissueOptionDisplayLabel = option => option.label + (hasTissueLimitation(o
 
 const APP_MODE_OPTIONS = [
   { value: 'explore', label: 'Explore' },
-  { value: 'demo', label: 'Instructor Demo' }
+  { value: 'demo', label: 'Demo' }
 ];
 
 // Set REACT_APP_ENABLE_INSTRUCTOR_DEMO_MODE=false for student-facing builds.
@@ -4673,6 +4673,39 @@ export default function App() {
 <Button variant="outline" onClick={() => setShowResetConfirm(true)}>Reset</Button>
 </div>
 
+{ENABLE_INSTRUCTOR_DEMO_MODE && (
+  <fieldset className="mt-4 text-sm text-gray-700">
+    <legend className="mb-2 block text-base font-semibold">Mode</legend>
+    <div className="inline-flex rounded border border-gray-300 bg-white p-0.5" aria-label="SALT mode">
+      {APP_MODE_OPTIONS.map(option => {
+        const selected = appMode === option.value;
+        return (
+          <label
+            key={option.value}
+            className={
+              'cursor-pointer rounded px-3 py-1 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
+              (selected ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100')
+            }
+          >
+            <input
+              type="radio"
+              name="salt-mode"
+              value={option.value}
+              checked={selected}
+              onChange={handleAppModeChange}
+              className="sr-only"
+            />
+            {option.label}
+          </label>
+        );
+      })}
+    </div>
+    <p className="mt-1 text-xs text-gray-500">
+      Explore keeps the standard student facing behavior. Demo replaces the current layout with the selected preset's transporter placements, paracellular pathway, and default osmotic pull.
+    </p>
+  </fieldset>
+)}
+
         <div className="mt-4">
   <h2 className="text-base font-semibold mb-2">Tissue</h2>
   <select
@@ -4698,7 +4731,7 @@ export default function App() {
   )}
   <div className="text-xs text-gray-500 mt-1">
     {instructorDemoMode
-      ? 'Places the instructor demo layout for the selected tissue.'
+      ? 'Places the demo layout for the selected tissue.'
       : 'Filters the add-transporter list; already-added transporters remain active.'}
   </div>
 </div>
@@ -4847,38 +4880,6 @@ export default function App() {
     <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh] relative" onClick={e => e.stopPropagation()}>
       <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" onClick={() => setShowSettings(false)}>Close</Button>
       <h2 className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
-      {ENABLE_INSTRUCTOR_DEMO_MODE && (
-        <fieldset className="mb-4 text-sm text-gray-700">
-          <legend className="block mb-2 font-semibold">Mode</legend>
-          <div className="inline-flex rounded border border-gray-300 bg-white p-0.5" aria-label="SALT mode">
-            {APP_MODE_OPTIONS.map(option => {
-              const selected = appMode === option.value;
-              return (
-                <label
-                  key={option.value}
-                  className={
-                    'cursor-pointer rounded px-3 py-1 font-medium focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ' +
-                    (selected ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100')
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="salt-mode"
-                    value={option.value}
-                    checked={selected}
-                    onChange={handleAppModeChange}
-                    className="sr-only"
-                  />
-                  {option.label}
-                </label>
-              );
-            })}
-          </div>
-          <p className="text-gray-500 mt-2">
-            Explore keeps the standard student-facing behavior. Instructor Demo replaces the current layout with the selected preset's transporter placements, paracellular pathway, and default osmotic pull.
-          </p>
-        </fieldset>
-      )}
       <div className="mb-4 text-sm text-gray-700">
         <h3 className="block mb-2 font-semibold">Background Osmotic Pull</h3>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
