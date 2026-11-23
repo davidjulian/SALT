@@ -140,7 +140,7 @@ Note that there is a **Cell balance** card in the Results Snapshot. It should no
 
 ## Mini-Challenge 1: Kir
 
-From a blank canvas, use **Kir** (K⁺ delayed rectifier channel) to generate K⁺ secretion. This layout resembles a simplified **collecting duct principal cell** mechanism.
+From a blank canvas, use **Kir** (an inward rectifier K⁺ channel class) to generate K⁺ secretion. This layout resembles a simplified **collecting duct principal cell** mechanism.
 
 Constraints:
 
@@ -149,7 +149,7 @@ Constraints:
 
 Targets:
 
-- Establish a pump-supported Na⁺/K⁺ gradient state.
+- Establish a pump supported Na⁺/K⁺ gradient state.
 - Produce negative net K⁺ flux.
 - Identify any TEP tendency.
 - Identify any intracellular imbalance clue.
@@ -237,13 +237,13 @@ Observe glucose flux again.
 > [!TIP]
 > Insight 2C: Basolateral GLUT can provide a glucose pathway, but placement determines which compartment it connects to the cell.
 
-## Experiment 2D: SGLT 
+## Experiment 2D: SGLT
 
 GLUT can provide a passive glucose pathway, with the net flux direction depending on the glucose gradient. Therefore, with the current ECF and ICF glucose concentrations, net glucose flux is into the cell regardless of which membrane GLUT is placed on.
 
 Assume that the goal is to increase the intracellular glucose concentration *above* the ECF glucose concentration. This would require uphill glucose transport against its concentration gradient.
 
-This can be achieved with **SGLT** (sodium-glucose-linked transporter, or sodium-glucose cotransporter), which can be added from *Cotransporters* in the transporter menus. This layout models **small intestinal absorptive cells** and **renal proximal tubule cells**, with apical Na⁺-coupled glucose uptake, basolateral glucose exit, and Na⁺ gradient support.
+This can be achieved with **SGLT** (sodium glucose linked transporter, or sodium glucose cotransporter), which can be added from *Cotransporters* in the transporter menus. SALT uses one **SGLT (1:1)** teaching button that moves 1 Na⁺ with 1 glucose, matching SGLT2 stoichiometry. SGLT1 normally moves 2 Na⁺ with 1 glucose and is not modeled as a separate button. The layout illustrates the shared pathway logic of small intestinal absorptive cells and renal proximal tubule cells: apical Na⁺ coupled glucose uptake, basolateral glucose exit, and Na⁺ gradient support.
 
 Keep the transporter layout from the preceding experiment, but add apical SGLT:
 
@@ -259,7 +259,7 @@ Glucose fluxes across the apical and basolateral membranes and net epithelial gl
 Na⁺ fluxes across the apical and basolateral membranes and net epithelial Na⁺ flux.
 
 > [!NOTE]
-> **Result:** Glucose absorption (0.35), Na absorption (0.35). K⁺ accumulation (0.23) and glucose accumulation (6.49). ICF glucose is increased (7.49)
+> **Result:** Glucose and Na⁺ are absorbed. The modeled ICF glucose concentration rises enough to support basolateral GLUT exit. This elevated concentration is part of the completed pathway, not an unmatched glucose accumulation tendency. Cell Balance still reports K⁺ accumulation because Na⁺/K⁺-ATPase loads K⁺ without a K⁺ exit or recycling pathway.
 
 > [!TIP]
 > Insight 2D: SGLT can support glucose uptake against its concentration gradient when coupled to Na⁺ movement and supported by Na⁺/K⁺-ATPase.
@@ -283,10 +283,10 @@ Glucose flux
 Net epithelial glucose flux
 
 > [!NOTE]
-> **Result:** Reverts to conditions of Experiment 2C (GLUT without SGLT or Na/K pump). Negative basolateral glucose flux (-1.14), ICF glucose concentration increased above default (2.14).
+> **Result:** Reverts to the conditions of Experiment 2C because SGLT is unsupported without Na⁺/K⁺-ATPase. Basolateral GLUT still shows negative glucose flux (-1.14), ICF glucose rises above its default concentration (2.14), and Cell Balance lists an unmatched glucose accumulation tendency.
 
 > [!TIP]
-> Insight 2E: Removing Na⁺/K⁺-ATPase removes the pump-supported Na⁺ gradient state needed for SGLT-dependent glucose absorption.
+> Insight 2E: Removing Na⁺/K⁺-ATPase removes the pump supported Na⁺ gradient state needed for SGLT dependent glucose absorption.
 
 ## Mini-Challenge 2: NaPi and Pi facilitator
 
@@ -472,7 +472,7 @@ Your final layout should:
 > Basolateral Kir
 > (Barrier paracellular pathway)
 > ```
-> **Result:** Glucose accumulation (6.49).
+> **Result:** Glucose absorption persists. The modeled ICF glucose concentration remains elevated, but Cell Balance shows no unmatched glucose accumulation tendency. Basolateral Kir removes the K⁺ accumulation tendency by supporting K⁺ recycling.
 >
 > The alternative layout solution with apical Kir also reduces K⁺ accumulation, but it shifts the layout toward K⁺ secretion. That is a useful comparison, but it is not the best answer if the goal is K⁺ recycling while preserving a glucose absorption phenotype.
 
@@ -505,7 +505,7 @@ The answer depends on two requirements:
 
 > Water movement requires an osmotic tendency plus water permeability
 
-Solute movement can create or support the osmotic tendency. However, cell membranes are inherently impermeable to water. Water permeability across a membrane is provided by water channels called aquaporins (AQP).
+Solute movement can create or support the osmotic tendency. Biological membranes have some intrinsic water permeability, and aquaporins can greatly increase it. SALT simplifies this physiology by requiring AQP on both membranes for a complete transcellular water pathway.
 
 ## Setup
 
@@ -526,7 +526,7 @@ The water flux card in the Results Snapshot frame summarizes the osmotic pull ac
 
 > [!NOTE]
 >
-> **Result:** There is a "weak" osmotic pull toward the blood (0.3) but no water flux. Other results are as in experiment 3B: Na⁺ absorption (0.50), basolateral K⁺ flux (0.33), cell balance.
+> **Result:** There is a weak osmotic pull toward the blood (0.25) but no water flux. Other results are as in Experiment 3B: Na⁺ absorption (0.50), basolateral K⁺ recycling flux (0.33), and no unmatched cell imbalance.
 
 > [!TIP]
 > Insight 4A: Solute absorption can create osmotic pull, but osmotic pull alone does not produce water flux.
@@ -552,7 +552,7 @@ Observe:
 The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the **Details** tab under **Water Movement**.
 
 > [!NOTE]
-> **Result:** There is no change from the above results.
+> **Result:** There is still no net water flux because the transcellular water pathway is incomplete. The solute fluxes and osmotic pull are unchanged.
 
 > [!TIP]
 > Insight 4B: Apical AQP alone does not create a complete transcellular water pathway.
@@ -579,7 +579,7 @@ Observe:
 The water flux card in the Results Snapshot frame summarizes the osmotic pull across the epithelium and the net water flux. More detailed results are in the **Details** tab under **Water Movement**.
 
 > [!NOTE]
-> **Result:** Water flux toward blood (0.3). Otherwise no changes from the above results.
+> **Result:** Water flux toward the blood is 0.25, matching the osmotic pull. The solute results are otherwise unchanged.
 
 > [!TIP]
 > Insight 4C: AQP on both membranes allows osmotic pull to become net epithelial water flux.
@@ -605,7 +605,7 @@ Observe:
 - Water & Osmolality outputs
 
 > [!NOTE]
-> **Result:** Na⁺ absorption, osmotic pull, and water flux all cease. K⁺ imbalance switches from accumulation to depletion (from K⁺ exit through Kir).
+> **Result:** Na⁺ absorption, osmotic pull, and water flux cease. Kir and Na⁺/K⁺-ATPase still form a local basolateral K⁺ recycling cycle, but without a Na⁺ entry pathway the model reports an unmatched Na⁺ depletion tendency rather than a K⁺ imbalance.
 
 > [!TIP]
 > Insight 4D: Removing the solute absorption driver removes the osmotic tendency for water absorption.
@@ -721,7 +721,7 @@ For Cl⁻ secretion, the epithelial cell needs two major steps:
 1. Cl⁻ must be loaded into the cell from the blood/interstitial side.
 2. Cl⁻ must exit across the apical membrane into the lumen.
 
-This is the same entry-exit logic you used for absorption, but the direction across the epithelium is reversed. This lessons focuses on **net Cl⁻ flux**.
+This is the same entry and exit logic you used for absorption, but the direction across the epithelium is reversed. This lesson focuses on **net Cl⁻ flux**.
 
 ## Setup
 
@@ -752,7 +752,7 @@ CFTR provides an apical anion pathway. In a secretory epithelium, this can allow
 However, an apical exit pathway alone may not be enough. If the cell does not have a way to load Cl⁻ from the blood/interstitial side, there may not be enough intracellular Cl⁻ movement to support a complete secretory mechanism.
 
 > [!NOTE]
-> **Result:** Positive apical flux for Cl⁻ flux (0.33) and HCO₃⁻ (0.08), with intracellular accumulation for both.
+> **Result:** Positive apical entry tendencies appear for Cl⁻ (0.33) and HCO₃⁻ (0.08), but there is no net epithelial anion flux. Cell Balance reports unmatched Cl⁻ accumulation. The smaller HCO₃⁻ entry raises modeled ICF HCO₃⁻ and produces a cell alkalinization tendency, but it remains below the Cell Balance reporting threshold.
 
 > [!TIP]
 > Insight 5A: Apical CFTR alone provides an anion pathway but not a complete Cl⁻ secretory mechanism.
@@ -813,10 +813,10 @@ Observe:
 This is a simplified **secretory epithelial** layout relevant to tissues such as **intestinal crypt epithelium**, **airway surface epithelium**, and some **exocrine ducts**. The exact transporters and regulation differ by tissue, but the common pattern is basolateral Cl⁻ loading plus apical anion exit.
 
 > [!NOTE]
-> **Result:** Net Cl⁻ secretion appears because basolateral NKCC loading and apical CFTR exit now form a complete pathway. Na⁺/K⁺-ATPase supports the Na⁺ gradient, Kir supports K⁺ recycling, and the TEP is weakly lumen-negative. Use **Cell Balance** to identify any remaining unmatched ion movement.
+> **Result:** Net Cl⁻ secretion is about 0.67 toward the lumen because basolateral NKCC loading and apical CFTR exit now form a complete pathway. Na⁺/K⁺-ATPase supports the Na⁺ gradient, and Kir provides partial K⁺ recycling. TEP is moderately lumen negative (about -0.67). Cell Balance still reports unmatched K⁺ and HCO₃⁻ accumulation tendencies.
 
 > [!TIP]
-> Insight 5C: Na⁺/K⁺-ATPase and Kir support NKCC-dependent Cl⁻ secretion by maintaining Na⁺ and K⁺ gradients
+> Insight 5C: Na⁺/K⁺-ATPase and Kir support NKCC dependent Cl⁻ secretion by maintaining Na⁺ and K⁺ gradients.
 
 ## Electrochemical Context: Why Cl⁻ Can Leave Through CFTR
 
@@ -940,7 +940,7 @@ Observe:
 - TEP in the Results Snapshot and more details in the **Details** tab under **Charge & Polarity**
 
 > [!NOTE]
-> **Result:** Na⁺ absorption (0.50) and a moderate lumen-negative TEP (0.50). Intracellular K⁺ accumulation (0.33).
+> **Result:** Na⁺ absorption (0.50) and a moderate lumen negative TEP (-0.50). Intracellular K⁺ accumulation (0.33).
 
 > [!TIP]
 > Insight 6A: Isolated Na⁺ absorption creates a TEP because positive charge moves toward the blood side.
@@ -963,10 +963,10 @@ Observe:
 
 Basolateral Kir provides a K⁺ pathway on the blood/interstitial side. In this layout, K⁺ movement through basolateral Kir mainly supports K⁺ recycling or Cell balance rather than producing a large net epithelial K⁺ secretory flux.
 
-Compare TEP in this layout with the TEP from Experiment 5A.
+Compare TEP in this layout with the TEP from Experiment 6A.
 
 > [!NOTE]
-> **Result:** Na⁺ absorption (0.50) and positive basolateral K+ flux (0.33), but intracellular K⁺ is balanced. TEP remains lumen-negative (-0.50), and the main epithelial charge movement is still associated with Na⁺ absorption.
+> **Result:** Na⁺ absorption (0.50) and positive basolateral K⁺ recycling flux (0.33), with no unmatched intracellular K⁺ tendency. TEP remains lumen negative (-0.50), and the main epithelial charge movement is still associated with Na⁺ absorption.
 
 > [!TIP]
 > Insight 6B: K⁺ recycling improves Cell balance without substantially changing the dominant TEP source.
@@ -989,10 +989,10 @@ Observe:
 
 In this layout, apical Kir connects the cell to the lumen. This allows K⁺ movement toward the lumen, producing K⁺ secretion.
 
-Compare the TEP in this layout with the TEP from Experiments 5A and 5B.
+Compare the TEP in this layout with the TEP from Experiments 6A and 6B.
 
 > [!NOTE]
-> **Result:** Na⁺ absorption remains (0.50). Apical K⁺ flux produces net K⁺ secretion (-0.29). TEP is still lumen-negative but smaller (-0.21).
+> **Result:** Na⁺ absorption remains (0.50). Apical K⁺ flux produces net K⁺ secretion (-0.29). TEP is still lumen negative but smaller (-0.21).
 
 > [!TIP]
 > Insight 6C: Apical K⁺ secretion partially offsets the TEP created by Na⁺ absorption.
@@ -1018,7 +1018,7 @@ This layout moves K⁺ toward the lumen. K⁺ is positively charged, so K⁺ sec
 Compare this TEP with the TEP from simple Na⁺ absorption.
 
 > [!NOTE]
-> **Result:** This layout produces net K⁺ secretion (-0.29). The TEP is now lumen-positive (0.29). Na⁺ depletion (-0.44).
+> **Result:** This layout produces net K⁺ secretion (-0.29). TEP is now lumen positive (0.29), and Cell Balance reports Na⁺ depletion (-0.44).
 
 > [!TIP]
 > Insight 6D: K⁺ secretion alone creates a TEP opposite in polarity from Na⁺ absorption.
@@ -1060,7 +1060,7 @@ The important comparison is that anion secretion can create an epithelial electr
 Use the TEP output to compare the direction and relative strength of the electrical tendency.
 
 > [!NOTE]
-> **Result:** As in Lesson 5C, the main effect is net Cl⁻ secretion. TEP is weakly lumen-negative (-0.13). 
+> **Result:** As in Lesson 5C, the main effect is net Cl⁻ secretion (about -0.67). TEP is moderately lumen negative (about -0.67).
 
 > [!TIP]
 > Insight 6E: Anion secretion can create a TEP effect similar to cation absorption because negative charge moves toward the lumen.
@@ -1199,7 +1199,7 @@ Observe:
 Note that the "Cation + Water" paracellular setting is a simplified teaching category. It is not a complete model of a specific leaky epithelium. The goal in SALT is to observe how adding a between-cell route can change net epithelial flux.
 
 > [!NOTE]
->  **Result:** Net Na⁺ absorption remains positive but is reduced (0.24) because the cation pathway adds a negative paracellular Na⁺ back-leak (-0.26). A smaller paracellular K⁺ back-leak appears (-0.19). TEP is shunted to a weak lumen-negative value (-0.05), and the water tendency remains weakly toward blood rather than reversing.
+>  **Result:** Net Na⁺ absorption remains positive but is reduced (0.24) because the cation pathway adds a negative paracellular Na⁺ back leak (-0.26). A smaller paracellular K⁺ back leak appears (-0.19). TEP is shunted to a weak lumen negative value (-0.05). The water pore produces only a very small water flux toward the blood (about 0.03), which the snapshot classifies as neutral or weak.
 
 > [!TIP]
 > Insight 7B: A cation + water pore can add paracellular cation and water flux that changes the net epithelial result.
@@ -1234,7 +1234,7 @@ The membrane transporters are still unchanged. The only change is the paracellul
 Because the Anion Pore allows anions rather than cations to move between cells, its effects can differ from the Cation + Water Pore. Cl⁻ and HCO₃⁻ carry negative charge, so their paracellular movement responds differently to epithelial electrical tendency than Na⁺ or K⁺ movement.
 
 > [!NOTE]
->  **Result:** Positive paracellular fluxes for Cl⁻ (0.18) and HCO₃⁻ (0.18) are added to the Na⁺ absorption layout. Net Na⁺ flux remains positive (0.50), net K⁺ flux remains near zero, osmotic pull increases toward blood, and there is no water flux because the Anion Pore does not provide a water pathway. TEP is shunted but remains weakly lumen-negative (-0.14).
+>  **Result:** Positive paracellular fluxes for Cl⁻ (about 0.27) and HCO₃⁻ (about 0.03) are added to the Na⁺ absorption layout. Net Na⁺ flux remains positive (0.50), net K⁺ flux remains near zero, and osmotic pull increases toward the blood (about 0.40). There is no water flux because the Anion Pore does not provide a water pathway. TEP is shunted but remains weakly lumen negative (about -0.20).
 
 > [!TIP]
 > Insight 7C: An anion pore can add paracellular anion flux without providing water permeability.
@@ -1357,7 +1357,7 @@ This layout supports Na⁺ absorption because ENaC provides apical Na⁺ entry a
 However, this layout does not provide a Cl⁻ absorption pathway.
 
 > [!NOTE]
-> **Result:** This is the layout from experiment 3B. Na⁺ absorption (0.50), basolateral K⁺ flux (0.33), cell balance, and moderate, lumen-negative TEP (-0.50). 
+> **Result:** This is the layout from Experiment 3B: Na⁺ absorption (0.50), basolateral K⁺ recycling flux (0.33), no unmatched cell imbalance, and moderately lumen negative TEP (-0.50).
 
 > [!TIP]
 > Insight 8A: Na⁺ absorption alone does not demonstrate NaCl absorption.
@@ -1383,7 +1383,7 @@ Observe:
 - Cell balance
 
 > [!NOTE]
-> **Result:** Na⁺ absorption (0.30) and positive apical Cl⁻ flux (0.30). Accumulation of K⁺ (0.20) and Cl⁻ (0.30). Weak lumen-negative TEP (-0.30).
+> **Result:** Na⁺ absorption (0.30) and positive apical Cl⁻ entry (0.30). Cell Balance reports K⁺ accumulation (0.20) and Cl⁻ accumulation (0.30). TEP is weakly lumen negative (-0.30).
 
 > [!TIP]
 > Insight 8B: NCC provides coupled apical NaCl entry, but apical entry alone is not a complete epithelial pathway.
@@ -1407,7 +1407,7 @@ Observe:
 - Cell balance
 
 > [!NOTE]
-> **Result:** No change to Na⁺ absorption (0.30) or positive apical Cl⁻ flux (0.30). Addition of basolateral K⁺ flux (0.29). Cl⁻ accumulation (0.30). Unchanged weak lumen-negative TEP (-0.30).
+> **Result:** Na⁺ absorption (0.30) and positive apical Cl⁻ entry (0.30) are unchanged. Basolateral K⁺ recycling flux is 0.20, which removes the K⁺ accumulation tendency. Cl⁻ accumulation (0.30) remains, and TEP remains weakly lumen negative (-0.30).
 
 > [!TIP]
 > Insight 8C: K⁺ recycling can improve cell balance without solving the missing Cl⁻ exit step.
@@ -1416,7 +1416,7 @@ Observe:
 
 The chloride channel, **ClC**, transports Cl⁻ passively across the membrane.
 
-Keep the layout from Experiment 8C add ClC to the basolateral membrane:
+Keep the layout from Experiment 8C and add ClC to the basolateral membrane:
 
 ```text
 Apical NCC
@@ -1433,7 +1433,7 @@ Observe:
 - Cell balance
 
 > [!NOTE]
-> **Result:** Cl⁻ absorption (0.06) and no change to Na⁺ absorption (0.30). Positive basolateral K⁺ flux (0.29). Lumen-negative TEP (-0.24). Accumulation of Cl⁻ (0.242).
+> **Result:** Na⁺ and Cl⁻ are both absorbed at 0.30. Basolateral K⁺ recycling flux is 0.20, Cell Balance reports no unmatched accumulation or depletion tendency, and TEP is neutral because the matched Na⁺ and Cl⁻ fluxes are electrically balanced.
 
 > [!TIP]
 > Insight 8D: Basolateral ClC adds the missing Cl⁻ exit step and supports transcellular NaCl absorption.
@@ -1558,7 +1558,7 @@ This reinforces an important principle:
 Na⁺/K⁺-ATPase does not transport glucose, but it supports the Na⁺ gradient that allows SGLT to move glucose.
 
 > [!NOTE]
-> **Result:** Glucose absorption (0.35), Na⁺ absorption (0.35), positive basolateral K⁺ flux (0.29). Slight K⁺ depletion (-0.06) and glucose accumulation (6.49). ICF glucose is increased (7.49). TEP is weakly lumen-negative (-0.35). Osmotic pull is toward the blood (0.3).
+> **Result:** Glucose and Na⁺ are absorbed, and basolateral Kir supports K⁺ recycling. The modeled ICF glucose concentration is elevated enough to support GLUT exit, but Cell Balance reports no unmatched glucose accumulation tendency. TEP is weakly lumen negative, and osmotic pull is toward the blood.
 
 > [!TIP]
 > Insight 9A: Glucose absorption uses apical uptake, basolateral exit, Na⁺ gradient support, and K⁺ recycling.
@@ -1595,7 +1595,7 @@ This layout uses the same functional pattern as glucose absorption:
 The transporters are different, but the epithelial strategy is similar.
 
 > [!NOTE]
-> **Result:** Pi absorption (0.30), Na⁺ absorption (0.60), positive basolateral K⁺ flux (0.15). K⁺ accumulation (0.253). TEP is neutral. Osmotic pull is toward the blood (0.4).
+> **Result:** Pi absorption is 0.30 and Na⁺ absorption is 0.60, preserving the 2:1 Na⁺:Pi stoichiometry. Basolateral K⁺ recycling flux is 0.40, Cell Balance reports no unmatched tendency, TEP is neutral, and osmotic pull is toward the blood (0.45).
 
 > [!TIP]
 > Insight 9B: The glucose absorption pattern can be transferred to phosphate using different transporters with the same functional roles.
@@ -1628,7 +1628,7 @@ Observe:
 
 
 > [!NOTE]
-> **Result:** AA absorption (0.35), Na⁺ absorption (0.35), positive basolateral K⁺ flux (0.15). TEP is weakly lumen-negative (-0.35). Osmotic pull is toward the blood (0.3).
+> **Result:** Amino acid and Na⁺ absorption are both 0.35. Basolateral K⁺ recycling flux is about 0.23, Cell Balance reports no unmatched tendency, TEP is weakly lumen negative (-0.35), and osmotic pull is toward the blood (0.35).
 
 > [!TIP]
 > Insight 9C: Amino acid absorption can use the same apical Na⁺-linked uptake and basolateral exit logic.
@@ -1659,7 +1659,7 @@ Observe:
 This layout combines several Na⁺-linked absorptive pathways in the same epithelial cell.
 
 > [!NOTE]
-> **Result:** Na⁺, Pi, glucose, and amino acids are all absorbed. With Activity at Auto, compatible uptake, exit, recycling, and pump-support steps are matched without treating arbitrary default activities as physiological capacity limits. Each coupled transporter retains its stoichiometry. The combined solute absorption creates osmotic pull toward the blood.
+> **Result:** Na⁺, Pi, glucose, and amino acids are all absorbed. With Activity at Auto, compatible uptake, exit, recycling, and pump support steps are matched without treating arbitrary default activities as physiological capacity limits. Each coupled transporter retains its stoichiometry. The combined solute absorption creates osmotic pull toward the blood.
 
 > [!TIP]
 > Insight 9D: Multiple Na⁺-linked nutrient uptake pathways can operate together and increase the importance of Na⁺ gradient support.
@@ -1734,7 +1734,7 @@ Your final layout should:
 - produce net amino-acid absorption,
 - produce net water absorption,
 - include K⁺ recycling,
-- confirm that both Na⁺-coupled pathways use the same pump-supported Na⁺ gradient.
+- confirm that both Na⁺ coupled pathways use the same pump supported Na⁺ gradient.
 
 > [!NOTE]
 > **Expected solution:**
@@ -1832,7 +1832,7 @@ Keep default settings for **Tissue** (All Transporters), **Paracellular Pathway*
 
 ## Experiment 10A: NHE3
 
-Some nephron **proximal tubular cells** secrete H⁺ and absorb HCO3. In this experiment and the following experiment, you will create a model of this acid/base mechanism.
+Some nephron **proximal tubular cells** secrete H⁺ and absorb HCO₃⁻. In this experiment and the following experiment, you will create a model of this acid/base mechanism.
 
 **NHE3** is a Na⁺/H⁺ exchanger. It moves Na⁺ in one direction while moving H⁺ in the opposite direction.
 
@@ -1859,7 +1859,7 @@ In this layout, apical NHE3 can support Na⁺ movement from the lumen into the c
 This means a Na⁺ absorptive mechanism can also have an acid/base consequence. The CO₂ pathway can support the intracellular acid/base chemistry, but this one-membrane layout is still not completed epithelial acid/base transport.
 
 > [!NOTE]
-> **Result:** Negative apical H⁺ flux (-0.5), Na⁺ absorption (0.5), and basolateral positive K⁺ flux (0.15). ICF HCO₃⁻ rises because proton extrusion is treated as supported by intracellular CO₂/H₂O chemistry. K⁺ and HCO₃⁻ accumulation tendencies may appear, with moderate lumen-negative TEP. No net acid/base flux.
+> **Result:** Negative apical H⁺ flux (-0.50), Na⁺ absorption (0.50), and basolateral K⁺ recycling flux (0.33). ICF HCO₃⁻ rises to the modeled acid/base supported level because proton extrusion is supported by intracellular CO₂/H₂O chemistry. Cell Balance reports HCO₃⁻ accumulation, while K⁺ is balanced. TEP is weakly lumen negative (about -0.50), and there is no net epithelial acid/base flux.
 
 > [!TIP]
 >
@@ -1894,7 +1894,7 @@ Observe:
 - TEP
 
 > [!NOTE]
-> **Result:** H⁺ secretion (-0.50), HCO₃⁻ absorption (0.50), Na⁺ absorption (0.50). The CO₂ pathway supports the intracellular H⁺/HCO₃⁻ source for the paired layout. Accumulation of K⁺ may appear. Moderate lumen-positive TEP (0.50). Net acid secretion.
+> **Result:** H⁺ secretion (-0.50), HCO₃⁻ absorption (0.50), and Na⁺ absorption (0.50) form a completed acid secreting and base absorbing pathway. The CO₂ pathway supplies the paired intracellular H⁺ and HCO₃⁻ source. K⁺ is balanced, but Cell Balance reports an unmatched Na⁺ depletion tendency (about -0.23). TEP is weakly lumen positive (about 0.50).
 
 > [!TIP]
 > Insight 10B: The CO₂ pathway supplies intracellular H⁺ and HCO₃⁻, while transporter polarity determines whether those products become completed epithelial acid/base transport.
@@ -1926,7 +1926,7 @@ Observe:
 - Electrochemical context for CFTR
 
 > [!NOTE]
-> **Result:** Weak base secretion, with NBC Influx loading HCO₃⁻ into the cell and apical CFTR providing HCO₃⁻ exit. Intracellular Na⁺, Cl⁻, and HCO₃⁻ accumulation tendencies may appear, with a K⁺ depletion tendency from the supporting pump/K⁺ pathway. TEP remains weakly lumen-negative.
+> **Result:** Weak base secretion appears, with NBC Influx loading HCO₃⁻ into the cell and apical CFTR providing HCO₃⁻ exit (about -0.13 net HCO₃⁻ flux). Cell Balance reports Na⁺ depletion together with Cl⁻ and HCO₃⁻ accumulation tendencies; K⁺ is balanced. TEP remains weakly lumen negative (about -0.13).
 
 > [!TIP]
 > Insight 10C: Base secretion follows the same loading-and-exit logic as Cl⁻ secretion, but the transported solute has an acid/base effect.
@@ -1955,14 +1955,14 @@ Observe:
 - In Acid/Base & pH, note the message in the Cell card 
 
 > [!NOTE]
-> **Result:** Net base secretion, with H⁺ absorption (0.35) and HCO₃⁻ secretion (-0.35). Positive apical Cl⁻ flux (0.35) and Cl⁻ accumulation. Moderate lumen-negative TEP (-0.70). Message indicates that CO₂ + H₂O is the source of H⁺ and HCO₃⁻.
+> **Result:** Net base secretion, with H⁺ absorption (0.35) and HCO₃⁻ secretion (-0.35). Positive apical Cl⁻ flux (0.35) and Cl⁻ accumulation. TEP is moderately lumen negative (-0.70). The Cell message indicates that CO₂ + H₂O is the source of H⁺ and HCO₃⁻.
 
 > [!TIP]
 > Insight 10D: A β-intercalated-cell-like layout reverses α-cell polarity: apical CBE supports HCO₃⁻ secretion, while basolateral H⁺-ATPase supports acid-side handling toward the blood side.
 
 ## Mini-Challenge 10: Acid Secretion with CBE
 
-In this lesson, you have modeled proximal-tubule-like acid/base handling and two base-secreting epithelial layouts. Now apply the same logic to a different cell type, **α-intercalated-cells**, which are acid-secreting cells in the **cortical collecting duct**.
+In this lesson, you have modeled proximal tubule acid/base handling and two base secreting epithelial layouts. Now apply the same logic to a different cell type, **α intercalated cells**, which are acid secreting cells in the **cortical collecting duct**.
 
 You will now use the same **CBE** activity on the opposite membrane to build an acid-secreting layout.
 
@@ -1978,16 +1978,16 @@ Your final layout should include **CBE** and show both net H⁺ secretion and ne
 > **Solution:**
 >
 > ```
-> Apical H+-ATPase
+> Apical H⁺-ATPase
 > Basolateral CBE
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> This layout models an α-intercalated-cell-like acid-secreting pattern. Apical H+-ATPase moves H+ toward the lumen. Basolateral CBE provides HCO₃⁻ exit toward the blood/interstitial side in exchange for Cl−. The Acid/Base & pH output should indicate when CO₂ is supplying intracellular H+ and HCO₃⁻.
+> This layout models an α intercalated cell acid secreting pattern. Apical H⁺-ATPase moves H⁺ toward the lumen. Basolateral CBE provides HCO₃⁻ exit toward the blood/interstitial side in exchange for Cl⁻. The Acid/Base & pH output should indicate when CO₂ is supplying intracellular H⁺ and HCO₃⁻.
 
 > [!TIP]
 >
-> Insight mini-challenge 10: Acid secretion requires paired polarity: H+ exits apically while HCO₃⁻ exits basolaterally.
+> Insight mini-challenge 10: Acid secretion requires paired polarity: H⁺ exits apically while HCO₃⁻ exits basolaterally.
 >
 
 
@@ -2057,7 +2057,7 @@ Your final layout should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> **Result:** Calcium absorption (0.18). No intracellular imbalance. TEP weakly lumen-negative (-0.36).
+> **Result:** Ca²⁺ absorption is 0.20. There is no unmatched intracellular imbalance, and TEP is weakly lumen negative (-0.40).
 
 > [!TIP]
 > Insight 11A: PMCA can complete Ca²⁺ absorption without requiring Na⁺ gradient support.
@@ -2093,7 +2093,9 @@ Your final layout should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> **Result**: Ca²⁺ is absorbed through apical TRPV5/6 entry and basolateral NCX1 extrusion. NCX1 brings Na⁺ into the cell as it extrudes Ca²⁺, and the Na⁺/K⁺-ATPase supports the Na⁺ gradient. With Activity at Auto, the placed Ca²⁺ entry, extrusion, and gradient-support steps operate together without treating arbitrary default activities as a kinetic bottleneck. NCX1 retains its 3 Na⁺:1 Ca²⁺ stoichiometry.
+> **Result:** Ca²⁺ is absorbed through apical TRPV5/6 entry and basolateral NCX1 extrusion. NCX1 brings Na⁺ into the cell as it extrudes Ca²⁺, and Na⁺/K⁺-ATPase supports the Na⁺ gradient. With Activity at Auto, the placed Ca²⁺ entry, extrusion, and gradient support steps operate together without treating arbitrary default activities as a kinetic bottleneck. NCX1 retains its 3 Na⁺:1 Ca²⁺ stoichiometry.
+>
+> Ca²⁺ absorption is about 0.36, and TEP is moderately lumen negative (about -0.72). Basolateral Kir reduces pump associated K⁺ loading but does not eliminate it at Auto activity, so Cell Balance still reports a K⁺ accumulation tendency (about 0.43).
 
 > [!TIP]
 > Insight 11B: NCX1 can serve as a basolateral Ca²⁺ extrusion pathway, but it requires an apical Ca²⁺ entry transporter, Na⁺ gradient support, and K⁺ balance.
@@ -2123,7 +2125,7 @@ In this lesson, you will work with four transporter classes that produce organic
 
 **OCT** is an organic cation transporter. It facilitates the movement of organic cations across the membrane.
 
-**MATE** is a multidrug and toxin extrusion transporter. It exchanges organic cations and H+ in opposite directions. 
+**MATE** is a multidrug and toxin extrusion transporter. It exchanges organic cations and H⁺ in opposite directions.
 
 **OAT** is an organic anion transporter. It is a tertiary active transporter that can move organic anions against their concentration gradient. In SALT, the tertiary intermediate ion isn't shown, but OAT activity is dependent on a Na⁺/K⁺-ATPase-supported gradient state.
 
@@ -2167,20 +2169,20 @@ Your final layout does not need to achieve cell balance, but it should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> **Result:** Net OC+ secretion (-0.35) but with positive apical H+ flux (0.35). No intracellular imbalance, but with cell acidification.
+> **Result:** Net OC⁺ secretion (-0.35) occurs with positive apical H⁺ flux (0.35). Cell Balance reports no unmatched solute accumulation or depletion, but the Cell pH output indicates acidification.
 
 > [!TIP]
 > Insight 12A: Organic cation secretion requires paired basolateral uptake and apical exit steps, but MATE also causes intracellular acidification.
 
 ## Experiment 12B: Add Acid/Base Support
 
-In Experiment 12A, you built a simplified organic cation secretory pathway. However, MATE is physiologically H+-coupled, so organic cation exit caused intracellular H+ accumulation. 
+In Experiment 12A, you built a simplified organic cation secretory pathway. However, MATE is physiologically H⁺ coupled, so organic cation exit produced a cell acidification tendency.
 
-A more complete layout should therefore include the acid/base transport machinery that helps support the H+ gradient used by MATE.
+A broader proximal tubule layout can place MATE alongside acid/base transport and Na⁺ gradient support. In SALT, adding that context does not guarantee neutral cell pH or eliminate every ion imbalance.
 
 ### Challenge
 
-Build a **proximal-tubule-like organic cation secretion** layout that minimized cell acidification.
+Build a **proximal tubule like organic cation secretion** layout that integrates organic cation secretion with acid/base transport and Na⁺ gradient maintenance.
 
 Start with:
 
@@ -2190,14 +2192,14 @@ Basolateral OCT
 (Barrier paracellular pathway, no background osmotic pull)
 ```
 
-Then add transporters to support proximal-tubule-like acid/base handling and Na⁺ gradient maintenance. Add any combination of the transporters covered thus far in the lesson.
+Then add transporters to support proximal tubule acid/base handling and Na⁺ gradient maintenance. Add any combination of the transporters covered thus far in the lesson.
 
 ### Targets
 
 Your final layout should:
 
 - preserve organic cation secretion,
-- support the H+ gradient context used by MATE,
+- support the H⁺ gradient context used by MATE,
 - use Barrier as the paracellular pathway.
 
 > [!NOTE]
@@ -2213,11 +2215,13 @@ Your final layout should:
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBC Efflux provide the proximal-tubule-like acid/base machinery that helps support the H+ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺-dependent transport, and basolateral Kir supports K⁺ recycling.
+> OCT provides basolateral organic cation uptake. MATE provides apical organic cation exit into the lumen. NHE3 and NBC Efflux provide proximal tubule acid/base machinery that helps support the H⁺ context used by MATE. Na⁺/K⁺-ATPase supports the Na⁺ gradient needed for Na⁺ dependent transport, and basolateral Kir supports K⁺ recycling.
+>
+> **Result:** Organic cation secretion remains 0.35 toward the lumen. The NHE3 and NBC Efflux pathway also produces acid secretion and base absorption, but the Cell pH output still indicates an acidification tendency and Cell Balance reports unmatched Na⁺ depletion. This illustrates that adding support pathways does not automatically make every modeled output balanced.
 >
 
 > [!TIP]
-> Insight 12B: A more complete organic cation secretory layout integrates organic solute transport with acid/base transport and Na⁺ gradient support.
+> Insight 12B: A broader organic cation secretory layout can integrate organic solute transport with acid/base transport and Na⁺ gradient support, while residual imbalances remain useful clues.
 
 ## Mini-Challenge 12: OAT and MRP/BCRP: Organic Anion Secretion
 
@@ -2233,7 +2237,7 @@ In SALT, **OAT** represents organic anion uptake that is indirectly dependent on
 
 ### Challenge
 
-Build a simplified **renal proximal-tubule-like organic anion secretion** layout.
+Build a simplified **renal proximal tubule organic anion secretion** layout.
 
 ### Available transporters
 
@@ -2270,12 +2274,11 @@ Use the Results frame to inspect:
 > ```text
 > Apical MRP/BCRP
 > Basolateral OAT
-> Basolateral Kir
 > Basolateral Na⁺/K⁺-ATPase
 > (Barrier paracellular pathway, no background osmotic pull)
 > ```
 >
-> Basolateral OAT provides organic anion uptake from the blood/interstitial side. Apical MRP/BCRP provides organic anion exit into the lumen. Na⁺/K⁺-ATPase provides the pump-supported gradient state required for OAT in SALT. Basolateral Kir supports K⁺ recycling when Na⁺/K⁺-ATPase is active.
+> Basolateral OAT provides organic anion uptake from the blood/interstitial side. Apical MRP/BCRP provides organic anion exit into the lumen. Na⁺/K⁺-ATPase provides the pump supported gradient state required for OAT in SALT. In this layout, the pump establishes the gradient without a separate Na⁺ entry or K⁺ exit step, so it does not show standalone cycling flux and Kir is not needed. Net organic anion secretion is 0.35 toward the lumen, with no unmatched intracellular imbalance.
 
 > [!TIP]
 > Insight mini-challenge 12: The key transfer is that organic anion secretion uses the same paired-pathway logic as organic cation secretion, but OAT adds a support requirement: uptake depends on Na⁺/K⁺-ATPase-supported gradient logic.
@@ -2350,9 +2353,13 @@ This reference lists the current selectable SALT settings for tissue context, pa
 - CFTR
 - ClC
 - ENaC
-- GLUT
 - Kir
 - TRPV5/6
+
+### Facilitators
+
+- GLUT
+- Pi Facilitator
 
 ### Cotransporters
 
@@ -2364,7 +2371,7 @@ This reference lists the current selectable SALT settings for tissue context, pa
 - NCC
 - NKCC
 - PepT
-- SGLT
+- SGLT (1:1 teaching model)
 
 ### Exchangers
 

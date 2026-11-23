@@ -408,7 +408,7 @@ const INITIAL_TRANSPORTERS = [
   { id: 'MRPBCRP',  name: 'MRP/BCRP',   type: 'carrier',    stoich: { 'OA-': -1 },          kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
   { id: 'PepT',     name: 'PepT',       type: 'symporter',  stoich: { Peptide: 1, 'H+': 1 }, kinetics: { maxRate: 0.7, Km: 1.0 }, placement: 'none', activity: 'auto' },
   { id: 'ROMK',     name: 'Kir',        type: 'channel',    stoich: { 'K+': -1 },           kinetics: { maxRate: 1.0, Km: 1.0 }, placement: 'none', activity: 'auto' },
-  { id: 'SGLT',     name: 'SGLT',       type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', activity: 'auto' }
+  { id: 'SGLT',     name: 'SGLT (1:1)', type: 'symporter',  stoich: { 'Na+': 1, 'Glucose': 1 }, kinetics: { maxRate: 0.8, Km: 1.5 }, placement: 'none', activity: 'auto' }
 ];
 
 const TRANSPORTER_ID_ALIASES = {
@@ -889,7 +889,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   GLUT2: 'Glucose transporter class: passive glucose flux follows the glucose gradient. Includes GLUT1/GLUT2 examples.',
   TRPV56: 'TRPV5/6 Ca2+ channel class: passive Ca2+ flux with reduced teaching conductance; SALT does not model dynamic inhibition by intracellular Ca2+.',
   HATPase: 'Proton-ATPase: moves 1 H+ out per ATP.',
-  HKATPase: 'Proton-potassium ATPase: moves 1 H+ out and 1 K+ in per ATP.',
+  HKATPase: 'Proton-potassium ATPase: moves 1 H+ out and 1 K+ in per ATP. This is a local membrane exchange; net epithelial K+ flux requires a compatible K+ pathway on the opposite membrane.',
   NaPi2: 'NaPi 2:1: sodium-phosphate cotransporter; moves 2 Na+ with 1 Pi. Electroneutral; represents NaPi-IIc.',
   NaPi: 'NaPi 3:1: sodium-phosphate cotransporter; moves 3 Na+ with 1 Pi. Electrogenic; represents NaPi-IIa/IIb.',
   NaAA: 'Na+-AA cotransporter: moves 1 Na+ and 1 neutral amino acid together.',
@@ -907,7 +907,7 @@ const TRANSPORTER_DESCRIPTIONS = {
   MRPBCRP: 'MRP (multidrug resistance-associated protein) and BCRP (breast cancer resistance protein) transporter class: pumps organic anions out using ATP.',
   PepT: 'PepT peptide transporter class: moves 1 H+ and 1 small peptide together. Includes PepT1 and PepT2.',
   ROMK: 'Kir potassium channel class: passive K+ flux. Includes ROMK.',
-  SGLT: 'Sodium-glucose-linked transporter class: moves 1 Na+ and 1 glucose together. Includes SGLT1 and SGLT2.'
+  SGLT: 'SGLT 1:1 teaching model: moves 1 Na+ and 1 glucose together. This simplified rule matches SGLT2 stoichiometry; SGLT1 normally moves 2 Na+ per glucose and is not modeled separately.'
 };
 
 const INITIAL_CONCENTRATIONS = {
@@ -1660,7 +1660,9 @@ function buildTransporterActivityReport({
         : transporter.id === 'ROMK'
           ? 'K+'
           : null;
-      if (gradientDependentChannelIon && !pumpSupportProfile.present) {
+      const hasHkSupportedPotassiumGradient = transporter.id === 'ROMK' &&
+        tList.some(item => item.id === 'HKATPase' && item.placement !== 'none');
+      if (gradientDependentChannelIon && !pumpSupportProfile.present && !hasHkSupportedPotassiumGradient) {
         const ionLabel = ION_LABEL[gradientDependentChannelIon] || gradientDependentChannelIon;
         return {
           uid: transporter.uid,
@@ -2397,16 +2399,19 @@ export function simulateTransport({
   const clTransEpiFlux = transepithelialFlux('Cl-', ['NKCC','NCC','ClCKb','AE1','CFTR'], ['NKCC','NCC','ClCKb','AE1','CFTR'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
   const caTransEpiFlux = transepithelialFlux('Ca2+', ['TRPV56'], ['PMCA','NCX1'], false, apicalFlux, basolateralFlux, tList, hasNaKATPase);
 
-  // K+ logic (HKATPase or other)
-  const hkAtpaseSides = placementsForTick('HKATPase', tList);
-  let kTransEpiFlux = 0;
-  if (hkAtpaseSides.length > 0) {
-    const apicalHK = tList.some(t => t.id === 'HKATPase' && t.placement === 'apical');
-    const basolateralHK = tList.some(t => t.id === 'HKATPase' && t.placement === 'basolateral');
-    if (apicalHK) kTransEpiFlux += apicalFlux['K+'] ?? 0;
-    if (basolateralHK) kTransEpiFlux += basolateralFlux['K+'] ?? 0;
-  }
-  if (kTransEpiFlux === 0) {
+  // H+/K+-ATPase is a local exchange step. Net epithelial K+ movement requires
+  // compatible K+ exit through Kir on the opposite membrane.
+  let kTransEpiFlux = transepithelialFlux(
+    'K+',
+    ['HKATPase'],
+    ['ROMK'],
+    false,
+    apicalFlux,
+    basolateralFlux,
+    tList,
+    hasNaKATPase
+  );
+  if (Math.abs(kTransEpiFlux) < DIRECTIONAL_FLUX_GRAPH_EPSILON) {
     kTransEpiFlux = supportedKSecretion > 0
       ? -supportedKSecretion
       : transepithelialFlux('K+', ['NKCC','ROMK'], ['ROMK','NaKATPase'], true, completionApicalFlux, completionBasolateralFlux, tList, hasNaKATPase);
@@ -2799,12 +2804,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const handleTooltipEscape = event => {
-      if (event.key === 'Escape') setActiveTransporterTooltip(null);
+    const handleEscape = event => {
+      if (event.key !== 'Escape') return;
+      setActiveTransporterTooltip(null);
+      setShowAbout(false);
+      setShowInfoModal(false);
+      setModalTransporterId(null);
+      setShowSettings(false);
+      setShowResetConfirm(false);
+      setShowShareLayout(false);
+      setShowParaInfo(false);
+      setZoomedConcentrationIon(null);
     };
-    document.addEventListener('keydown', handleTooltipEscape);
+    document.addEventListener('keydown', handleEscape);
     return () => {
-      document.removeEventListener('keydown', handleTooltipEscape);
+      document.removeEventListener('keydown', handleEscape);
       if (tooltipHideTimerRef.current) clearTimeout(tooltipHideTimerRef.current);
     };
   }, []);
@@ -3057,7 +3071,6 @@ export default function App() {
     );
   };
 
-// For H⁺/K⁺-ATPase, K⁺ flux can occur with HKATPase on either membrane (no exit needed).
 // Parallel/mirrored H⁺ and HCO₃⁻ TE flux logic uses pathway completion rules rather than buffered pH kinetics.
   const transepiFluxData = result?.transepiFluxData || [];
   const soluteTransepiFluxData = transepiFluxData.filter(row => row.ion !== 'H2O');
@@ -3197,14 +3210,27 @@ export default function App() {
             <div key={t.uid} className="border rounded p-2 bg-white">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <div className="font-semibold text-sm">{t.name}</div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={'Remove ' + t.name + ' from ' + placementMembraneLabel}
-                  onClick={() => removeTransporter(t.uid)}
-                >
-                  Remove
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={'Information about ' + t.name}
+                    onClick={() => {
+                      setModalTransporterId(t.id);
+                      setShowInfoModal(true);
+                    }}
+                  >
+                    Info
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={'Remove ' + t.name + ' from ' + placementMembraneLabel}
+                    onClick={() => removeTransporter(t.uid)}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </div>
               {cardStatus && (
                 <div className="mb-2 text-xs">
@@ -3332,7 +3358,7 @@ export default function App() {
     ? null
     : hasCoupledMismatch
       ? 'Review pathway completion'
-      : 'No major intracellular imbalance';
+      : 'No unmatched accumulation or depletion tendency';
   const cellBalanceTendencies = hasIntracellularImbalance
     ? topCellImbalanceRows.map(row => row.label + ' ' + compactImbalanceDirection(row.direction))
     : null;
@@ -3568,7 +3594,7 @@ export default function App() {
     return (
       <div className="mt-2" role="img" aria-label={indicator.ariaLabel}>
         {indicator.label && (
-          <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+          <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
             <span className="font-semibold text-gray-700">{indicator.label}</span>
             <span className="font-semibold text-gray-700">{indicator.status}</span>
           </div>
@@ -3590,27 +3616,27 @@ export default function App() {
   };
   const SnapshotTile = ({ tile }) => (
     <li className={snapshotTileClass(tile)}>
-      <h3 className="text-xs font-semibold text-gray-600">{tile.title}</h3>
+      <h3 className="text-sm font-semibold text-gray-700">{tile.title}</h3>
       {tile.status && (
         <div className={'mt-1 text-sm font-semibold leading-snug ' + snapshotStatusClass(tile.state)}>{tile.status}</div>
       )}
       {tile.detail && (
         <div
           className={tile.detailBadge
-            ? 'mt-1 inline-flex rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium leading-snug text-indigo-800'
-            : 'mt-1 text-xs leading-snug text-gray-600'}
+            ? 'mt-1 inline-flex rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-sm font-medium leading-snug text-indigo-800'
+            : 'mt-1 text-sm leading-snug text-gray-600'}
           aria-label={tile.detailAriaLabel}
         >
           {tile.detail}
         </div>
       )}
       {tile.secondaryDetail && (
-        <div className="mt-1 text-xs font-medium leading-snug text-teal-800">
+        <div className="mt-1 text-sm font-medium leading-snug text-teal-800">
           Cell: {tile.secondaryDetail}
         </div>
       )}
       {tile.tendencyRows && (
-        <div className="mt-1 text-xs leading-snug text-gray-700">
+        <div className="mt-1 text-sm leading-snug text-gray-700">
           {tile.extraTendencyCount > 0 && (
             <div className="font-semibold text-gray-700">Top tendencies</div>
           )}
@@ -3625,7 +3651,7 @@ export default function App() {
         </div>
       )}
       {tile.fluxSections && (
-        <div className="mt-1.5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="mt-1.5 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
           {tile.fluxSections.map(section => (
             <div key={section.label}>
               <div className="mb-1 font-semibold text-gray-700">{section.label}</div>
@@ -4388,10 +4414,10 @@ export default function App() {
   )}
   {/* About Modal */}
   {showAbout && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowAbout(false)}>
-    <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh] relative" onClick={e => e.stopPropagation()}>
-      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close About window" onClick={() => setShowAbout(false)}>Close</Button>
-      <h2 className="text-2xl font-bold mb-4 pr-20">About the Secretion and Absorption Learning Tool</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4" role="presentation" onClick={() => setShowAbout(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-2xl shadow-lg overflow-y-auto max-h-[80vh] relative" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={e => e.stopPropagation()}>
+      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close About window" autoFocus onClick={() => setShowAbout(false)}>Close</Button>
+      <h2 id="about-title" className="text-2xl font-bold mb-4 pr-20">About the Secretion and Absorption Learning Tool</h2>
       <div className="mb-3 text-sm text-gray-700">
   Developed by David Julian &middot; <a href="mailto:djulian@ufl.edu" className="underline text-blue-600">djulian@ufl.edu</a>
       </div>
@@ -4417,7 +4443,7 @@ export default function App() {
         <li><b>Water:</b> H₂O is represented as solute-linked epithelial water movement tendency. The app does not calculate true cell volume or quantitative osmolality-driven water flux.</li>
         <li><b>pH:</b> H⁺ is not plotted with bulk solutes. Acid/base behavior is shown as pH tendency and net acid/base flux rather than as a buffered quantitative pH calculation.</li>
         <li><b>Flux-only cargo:</b> Amino acids, peptides, organic anions, and organic cations are shown in flux outputs only. They are excluded from concentration graphs, Settings concentration controls, and charge/polarity calculations.</li>
-        <li><b>Class-level transporters:</b> AQP, GLUT, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NBC Efflux, NBC Influx, NKCC, TRPV5/6, CBE, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule.</li>
+        <li><b>Class-level transporters:</b> AQP, GLUT, SGLT, NaPi 2:1, NaPi 3:1, Pi Facilitator, NBC Efflux, NBC Influx, NKCC, TRPV5/6, CBE, OAT, OCT, MATE, MRP/BCRP, and PepT represent transporter classes. Isoform-specific regulation is simplified unless it is central to the teaching rule. The SGLT button uses a 1 Na⁺:1 glucose teaching stoichiometry, matching SGLT2; SGLT1 normally uses 2 Na⁺:1 glucose and is not modeled separately.</li>
         <li><b>Organic ion transport:</b> Organic ion transport is simplified in SALT. OAT represents tertiary-active organic anion uptake used in secretion pathways. In real proximal tubule cells, OAT exchange is supported indirectly by the Na⁺ gradient and intracellular dicarboxylates, but SALT does not model those exchanged solutes. Therefore, OAT requires Na⁺/K⁺-ATPase support in the model. MRP/BCRP represents simplified organic anion efflux, while OCT and MATE provide a simplified organic cation secretion pathway.</li>
         <li><b>Special teaching rules:</b> Na⁺/K⁺-ATPase establishes steady-state Na⁺ and K⁺ gradients when present. At Auto activity, pump cycling matches the supported Na⁺ and K⁺ load created by transporters the student has placed; fixed Low, Medium, or High activity can constrain that support. The Pathways view shows Na⁺ extrusion and K⁺ loading arrows when any modeled Na⁺ entry or K⁺ exit pathway gives the pump a pathway to cycle; pump-only layouts establish gradients without showing Na⁺ or K⁺ flux arrows. A fully balanced pump-supported Na⁺ absorption layout also needs a K⁺ exit or recycling pathway; otherwise K⁺ loading is reported as an intracellular accumulation tendency. A pump-supported K⁺ secretion layout also needs Na⁺ entry; otherwise Na⁺ extrusion is reported as an intracellular depletion tendency. Apical Kir-mediated K⁺ recycling can add a lumen-positive TEP tendency when paired with apical K⁺ loading. NBC Efflux requires a proton extrusion context, modeled as raising ICF HCO₃⁻ toward 18 mM, so Na⁺/K⁺-ATPase alone does not create standalone Na⁺/HCO₃⁻ efflux. NaPi 2:1 and NaPi 3:1 pair with Pi Facilitator on the opposite membrane for completed phosphate transport and preserve their Na⁺:Pi stoichiometry in completed epithelial flux. CFTR is represented as a regulated anion pathway with a smaller HCO₃⁻ tendency. TRPV5/6 uses a reduced teaching conductance so Ca²⁺ absorption remains smaller than bulk NaCl transport; dynamic inhibition by intracellular Ca²⁺ is not modeled.</li>
       </ul>
@@ -4503,7 +4529,7 @@ export default function App() {
         <li>
           <b>H⁺/K⁺-ATPase:</b> proton-potassium ATPase<br/>
           <i>Action:</i> Proton-potassium pump; moves 1 H⁺ out and 1 K⁺ in per ATP.<br/>
-          <i>Rule:</i> Can create K⁺ transepithelial flux in this teaching model. For acid/base flux, it is treated as a proton extruder that pairs with NBC Efflux or CBE on the opposite membrane.
+          <i>Rule:</i> This is a local membrane exchange. Completed K⁺ movement requires a compatible K⁺ pathway on the opposite membrane. For acid/base flux, it is treated as a proton extruder that pairs with NBC Efflux or CBE on the opposite membrane.
         </li>
         <li>
           <b>Kir:</b> inward-rectifier potassium channel class<br/>
@@ -4596,8 +4622,8 @@ export default function App() {
           <i>Rule:</i> Can complete Ca²⁺ flux when paired with TRPV5/6 on the opposite membrane.
         </li>
         <li>
-          <b>SGLT:</b> sodium-glucose cotransporter class; representative members include SGLT1 and SGLT2<br/>
-          <i>Action:</i> Na⁺-glucose symporter; co-transports 1 Na⁺ and 1 glucose together.<br/>
+          <b>SGLT (1:1):</b> simplified sodium-glucose cotransporter teaching model<br/>
+          <i>Action:</i> Co-transports 1 Na⁺ and 1 glucose together. This matches SGLT2 stoichiometry; SGLT1 normally transports 2 Na⁺ per glucose and is not modeled separately.<br/>
           <i>Rule:</i> Requires Na⁺/K⁺ ATPase present; for net glucose flux, SGLT and GLUT must be on opposite membranes. Pump-supported Na⁺ gradient logic dominates; the implicit cell-negative context provides only small bounded support and does not create routine reversal.
         </li>
         <li>
@@ -4638,7 +4664,7 @@ export default function App() {
       <ul className="list-disc ml-6 text-sm">
         <li><b>Glucose:</b> SGLT on one membrane and GLUT on the opposite membrane, with Na⁺/K⁺ ATPase support present.</li>
         <li><b>Na⁺:</b> SGLT, NaPi 2:1, NaPi 3:1, ENaC, NCC, or NKCC can provide Na⁺ entry tendencies. At Auto activity, compatible entry and Na⁺/K⁺-ATPase extrusion steps are matched; fixed activity settings can constrain pump-supported Na⁺ absorption. Fully balanced Na⁺ absorption also needs K⁺ exit or recycling. The Pathways view can trace pump cycling from Na⁺ entry on either membrane.</li>
-        <li><b>K⁺:</b> H⁺/K⁺-ATPase can create modeled K⁺ transepithelial flux. Kir can provide passive K⁺ membrane flux; basolateral Kir can balance pump-derived K⁺ loading during Na⁺ absorption, while additional unbalanced K⁺-moving pathways can still create K⁺ accumulation or depletion tendencies. At Auto activity, compatible pump loading and placed Kir are matched; fixed activity settings can constrain completed K⁺ secretion or recycling.</li>
+        <li><b>K⁺:</b> H⁺/K⁺-ATPase provides a local K⁺ entry step; it contributes to completed epithelial K⁺ movement only when Kir provides compatible K⁺ exit on the opposite membrane. Kir can also provide passive K⁺ membrane flux and basolateral K⁺ recycling during Na⁺ absorption. At Auto activity, compatible pump loading and placed Kir are matched; fixed activity settings can constrain completed K⁺ secretion or recycling.</li>
         <li><b>Cl⁻:</b> NKCC, NCC, ClC, CFTR, or CBE can provide Cl⁻ membrane movement. Completed Cl⁻ flux requires compatible movement on opposite membranes.</li>
         <li><b>Ca²⁺:</b> TRPV5/6 provides passive Ca²⁺ entry. Completed Ca²⁺ movement requires PMCA or NCX1 on the opposite membrane; otherwise intracellular Ca²⁺ imbalance is reported.</li>
         <li><b>Phosphate:</b> NaPi 2:1 or NaPi 3:1 on one membrane and Pi Facilitator on the opposite membrane, with Na⁺/K⁺-ATPase support present, produce completed phosphate transport with the selected Na⁺:Pi stoichiometry.</li>
@@ -4653,8 +4679,8 @@ export default function App() {
   </div>
 )}
 
-<div className="flex h-screen">
-<div className="w-1/3 p-4 border-r overflow-auto">
+<div className="flex min-h-screen flex-col xl:h-screen xl:flex-row">
+<div className="w-full shrink-0 border-b p-4 xl:w-1/3 xl:overflow-auto xl:border-b-0 xl:border-r">
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
   </div><div className="flex flex-wrap items-center gap-2 mb-4">
@@ -4738,14 +4764,11 @@ export default function App() {
 
         <div className="mt-4">
   <h2 className="text-base font-semibold mb-2">Paracellular Pathway</h2>
-  <table className="min-w-full table-auto text-left mb-2">
-    <tbody>
-      <tr>
-        <td className="px-2 py-1">
+  <div className="mb-2 flex min-w-0 items-center gap-2">
          <select
            value={paracellularType}
            onChange={e => setParacellularType(e.target.value)}
-           className="w-full border rounded p-1"
+           className="min-w-0 flex-1 border rounded p-1"
            aria-label="Paracellular pathway"
          >
   <option value="none">Barrier</option>
@@ -4753,14 +4776,8 @@ export default function App() {
   <option value="cationOnly">Cation Pore</option>
   <option value="anion">Anion Pore</option>
 </select>
-
-        </td>
-        <td className="px-2 py-1">
-          <Button size="sm" variant="outline" onClick={() => setShowParaInfo(true)}>Info</Button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+    <Button size="sm" variant="outline" onClick={() => setShowParaInfo(true)}>Info</Button>
+  </div>
 </div>
 
         <div className="mt-4 space-y-4">
@@ -4768,9 +4785,9 @@ export default function App() {
           {renderMembraneBuilder('basolateral', displayOrientation.basolateralLabel)}
         </div>
 {showParaInfo && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-lg w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]">
-      <h2 className="text-xl font-bold mb-2">Paracellular Pathway Settings</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4" role="presentation" onClick={() => setShowParaInfo(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-lg w-[92vw] shadow-lg overflow-y-auto max-h-[85vh]" role="dialog" aria-modal="true" aria-labelledby="paracellular-info-title" onClick={event => event.stopPropagation()}>
+      <h2 id="paracellular-info-title" className="text-xl font-bold mb-2">Paracellular Pathway Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
         <p className="mb-2"><b>Paracellular pathway:</b> Movement of solutes and water between cells.</p>
         <ul className="list-disc ml-6 space-y-1">
@@ -4810,13 +4827,13 @@ export default function App() {
           </div>
         </>
       )}
-      <Button className="mt-2" onClick={() => setShowParaInfo(false)}>Close</Button>
+      <Button className="mt-2" autoFocus onClick={() => setShowParaInfo(false)}>Close</Button>
     </div>
   </div>
 )}
 {showResetConfirm && (
   <div
-    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4"
     role="presentation"
     onClick={() => setShowResetConfirm(false)}
   >
@@ -4833,7 +4850,7 @@ export default function App() {
         This clears all transporters and restores mode, tissue, paracellular pathway, water movement, baseline concentrations, and results view defaults.
       </p>
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(false)}>Cancel</Button>
+        <Button size="sm" variant="outline" autoFocus onClick={() => setShowResetConfirm(false)}>Cancel</Button>
         <Button size="sm" onClick={resetAllSettings}>Reset</Button>
       </div>
     </div>
@@ -4841,7 +4858,7 @@ export default function App() {
 )}
 {showShareLayout && (
   <div
-    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+    className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4"
     role="presentation"
     onClick={() => setShowShareLayout(false)}
   >
@@ -4869,17 +4886,17 @@ export default function App() {
         <div className="mt-2 text-sm text-gray-700" role="status">{shareLayoutStatus}</div>
       )}
       <div className="mt-4 flex justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={() => setShowShareLayout(false)}>Close</Button>
+        <Button size="sm" variant="outline" autoFocus onClick={() => setShowShareLayout(false)}>Close</Button>
         <Button size="sm" onClick={copyShareLayoutUrl}>Copy link</Button>
       </div>
     </div>
   </div>
 )}
 {showSettings && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowSettings(false)}>
-    <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh] relative" onClick={e => e.stopPropagation()}>
-      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" onClick={() => setShowSettings(false)}>Close</Button>
-      <h2 className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4" role="presentation" onClick={() => setShowSettings(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-3xl w-[92vw] shadow-lg overflow-y-auto max-h-[85vh] relative" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}>
+      <Button size="sm" variant="outline" className="absolute top-3 right-3" aria-label="Close Settings window" autoFocus onClick={() => setShowSettings(false)}>Close</Button>
+      <h2 id="settings-title" className="text-xl font-bold mb-4 pr-20">Model Settings</h2>
       <div className="mb-4 text-sm text-gray-700">
         <h3 className="block mb-2 font-semibold">Background Osmotic Pull</h3>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
@@ -4991,9 +5008,9 @@ export default function App() {
 )}
 
 {showInfoModal && modalTransporter && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 max-w-md shadow-lg">
-      <h2 className="text-xl font-bold mb-2">{modalTransporter.name}</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4" role="presentation" onClick={() => setShowInfoModal(false)}>
+    <div className="bg-white rounded-lg p-6 max-w-md shadow-lg" role="dialog" aria-modal="true" aria-labelledby="transporter-info-title" onClick={event => event.stopPropagation()}>
+      <h2 id="transporter-info-title" className="text-xl font-bold mb-2">{modalTransporter.name}</h2>
      <div className="mb-2 text-sm">
   <div>
     {(() => {
@@ -5019,7 +5036,7 @@ export default function App() {
         case 'HATPase':
           return <><b>Proton-ATPase (V-type)</b>: moves 1 H⁺ out per ATP.<br/></>;
         case 'HKATPase':
-          return <><b>Proton-potassium ATPase</b>: moves 1 H⁺ out and 1 K⁺ in per ATP.<br/></>;
+          return <><b>Proton-potassium ATPase</b>: moves 1 H⁺ out and 1 K⁺ in per ATP at its membrane. This local exchange does not create net epithelial K⁺ flux by itself; completed K⁺ movement requires compatible K⁺ exit through Kir on the opposite membrane.<br/></>;
         case 'MATE':
           return <><b>MATE transporter class</b>: representative members include MATE1 and MATE2-K; exchanges 1 H⁺ and 1 organic cation in opposite directions.<br/></>;
         case 'MRPBCRP':
@@ -5057,7 +5074,7 @@ export default function App() {
         case 'ROMK':
           return <><b>Kir potassium channel class</b>: passive K⁺ movement follows the simplified electrochemical tendency. ROMK is a member of this inward-rectifier K⁺ channel class.<br/></>;
         case 'SGLT':
-          return <><b>SGLT cotransporter class</b>: representative members include SGLT1 and SGLT2; moves 1 Na⁺ and 1 glucose together using pump-supported Na⁺ gradient logic with small bounded implicit electrical support.<br/></>;
+          return <><b>SGLT 1:1 teaching model</b>: moves 1 Na⁺ and 1 glucose together using pump-supported Na⁺ gradient logic with small bounded implicit electrical support. This stoichiometry matches SGLT2. SGLT1 normally transports 2 Na⁺ per glucose and is not modeled separately.<br/></>;
         default:
           return null;
       }
@@ -5072,21 +5089,21 @@ export default function App() {
   </div>
 </div>
 
-      <Button className="mt-2" onClick={() => setShowInfoModal(false)}>Close</Button>
+      <Button className="mt-2" autoFocus onClick={() => setShowInfoModal(false)}>Close</Button>
     </div>
   </div>
 )
 }
 
       </div>
-      <div className="flex-1 p-4 flex flex-col">
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col p-4">
        
  {result && (
-          <div className="mt-2 space-y-3 overflow-auto">
+          <div className="mt-2 flex-1 space-y-3 overflow-visible xl:overflow-auto">
             <section className="border rounded p-2 bg-white" aria-labelledby="results-snapshot-title">
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
                 <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
-                <div className="text-xs text-gray-600">Interpreted model outputs</div>
+                <div className="text-sm text-gray-600">Interpreted model outputs</div>
               </div>
               <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5 items-stretch" aria-label="Results Snapshot output tiles">
                 {resultsSnapshotTiles.map(tile => <SnapshotTile key={tile.key} tile={tile} />)}
@@ -5203,6 +5220,9 @@ export default function App() {
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold">Solute Concentrations</h3>
+                  <div className="my-2 rounded border border-blue-200 bg-blue-50 p-2 text-sm text-blue-950">
+                    A modeled ICF concentration may be elevated or reduced as part of a supported pathway. It represents an unmatched accumulation or depletion tendency only when that solute is listed in the Intracellular Balance table below.
+                  </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2" aria-label="Concentration graph legend">
                     {concentrationCompartments.map(compartment => (
                       <div key={compartment.key} className="inline-flex items-center gap-1">
@@ -5237,15 +5257,22 @@ export default function App() {
                     </BarChart>
                   </ResponsiveContainer>
                   {zoomedConcentrationRow && (
-                    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40" onClick={() => setZoomedConcentrationIon(null)}>
-                      <section className="bg-white rounded-lg p-4 shadow-lg w-[92vw] max-w-xl" onClick={e => e.stopPropagation()}>
+                    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40 p-4" role="presentation" onClick={() => setZoomedConcentrationIon(null)}>
+                      <section
+                        className="bg-white rounded-lg p-4 shadow-lg w-[92vw] max-w-xl"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="concentration-zoom-title"
+                        onClick={e => e.stopPropagation()}
+                      >
                         <div className="flex items-center justify-between gap-3 mb-2">
-                          <h4 className="font-semibold">Concentration Zoom: {zoomedConcentrationRow.ion}</h4>
+                          <h4 id="concentration-zoom-title" className="font-semibold">Concentration Zoom: {zoomedConcentrationRow.ion}</h4>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => setZoomedConcentrationIon(null)}
                             aria-label="Close concentration zoom"
+                            autoFocus
                           >
                             Close
                           </Button>
@@ -5285,7 +5312,7 @@ export default function App() {
                 />
                 {chargeReport && (
                   <AccessibleTable
-                    caption="Intracellular Balance. Intracellular accumulation or depletion tendencies compared with the modeled starting cell condition."
+                  caption="Intracellular Balance. Only unmatched accumulation or depletion tendencies are listed here; an elevated or reduced modeled ICF concentration alone is not an imbalance."
                     captionClassName="text-left font-semibold mb-2"
                     columns={[
                       { key: 'label', label: 'Ion or solute' },
@@ -5382,11 +5409,11 @@ export default function App() {
 
           </div>
         )}
+        <footer className="shrink-0 py-2 text-center text-xs text-gray-500">
+          &copy; {new Date().getFullYear()} David Julian. All rights reserved.
+        </footer>
       </div>
     </div>
-  <div className="absolute bottom-1 left-0 w-full text-center text-xs text-gray-400 pb-1">
-    &copy; {new Date().getFullYear()} David Julian. All rights reserved.
-  </div>
 </>
   );
 }

@@ -54,7 +54,7 @@ describe('SALT simulation scenarios', () => {
       'AQP',
       'GLUT',
       'Na⁺/K⁺-ATPase',
-      'SGLT'
+      'SGLT (1:1)'
     ]);
   });
 
@@ -236,6 +236,34 @@ describe('SALT simulation scenarios', () => {
     expect(withKir.cellImbalanceReport.find(row => row.ion === 'K+')).toBeUndefined();
   });
 
+  test('H+/K+ ATPase alone cannot create net epithelial potassium flux', () => {
+    const result = simulateTransport({
+      tList: layout([['HKATPase', 'apical']])
+    });
+
+    expect(epithelialFlux(result, 'K+')).toBeCloseTo(0, 6);
+  });
+
+  test('H+/K+ ATPase needs Kir on the opposite membrane for epithelial potassium flux', () => {
+    const sameMembrane = simulateTransport({
+      tList: layout([
+        ['HKATPase', 'apical'],
+        ['ROMK', 'apical']
+      ])
+    });
+    const oppositeMembranes = simulateTransport({
+      tList: layout([
+        ['HKATPase', 'apical'],
+        ['ROMK', 'basolateral']
+      ])
+    });
+    const kirActivity = oppositeMembranes.transporterActivityReport.find(row => row.id === 'ROMK');
+
+    expect(epithelialFlux(sameMembrane, 'K+')).toBeCloseTo(0, 6);
+    expect(epithelialFlux(oppositeMembranes, 'K+')).toBeGreaterThan(0);
+    expect(kirActivity.status).toBe('active');
+  });
+
   test('Auto activity matches placed SGLT and GLUT glucose fluxes', () => {
     const result = simulateTransport({
       tList: layout([
@@ -272,6 +300,19 @@ describe('SALT simulation scenarios', () => {
 
     expect(epithelialFlux(result, 'HCO3-')).toBeLessThanOrEqual(nbcCapacity + 1e-6);
     expect(Math.abs(epithelialFlux(result, 'H+'))).toBeLessThanOrEqual(nbcCapacity + 1e-6);
+  });
+
+  test('organic anion secretion uses pump gradient support without unnecessary Kir cycling', () => {
+    const result = simulateTransport({
+      tList: layout([
+        ['MRPBCRP', 'apical'],
+        ['OAT', 'basolateral'],
+        ['NaKATPase', 'basolateral']
+      ])
+    });
+
+    expect(epithelialFlux(result, 'OA-')).toBeLessThan(0);
+    expect(result.cellImbalanceReport).toHaveLength(0);
   });
 
   test.each([
@@ -317,6 +358,7 @@ describe('SALT simulation scenarios', () => {
       assertResult: result => {
         expect(epithelialFlux(result, 'Na+')).toBeGreaterThan(0);
         expect(epithelialFlux(result, 'Cl-')).toBeGreaterThan(0);
+        expect(result.cellImbalanceReport).toHaveLength(0);
       }
     },
     {
