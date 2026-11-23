@@ -571,8 +571,8 @@ const hasTissueLimitation = optionOrValue => {
 const tissueOptionDisplayLabel = option => option.label + (hasTissueLimitation(option) ? ' ' + TISSUE_LIMITATION_SYMBOL : '');
 
 const APP_MODE_OPTIONS = [
-  { value: 'explore', label: 'Explore' },
-  { value: 'demo', label: 'Demo' }
+  { value: 'explore', label: 'Explore mode' },
+  { value: 'demo', label: 'Demo mode' }
 ];
 
 // Set REACT_APP_ENABLE_INSTRUCTOR_DEMO_MODE=false for student-facing builds.
@@ -4679,8 +4679,8 @@ export default function App() {
   </div>
 )}
 
-<div className="flex min-h-screen flex-col xl:h-screen xl:flex-row">
-<div className="w-full shrink-0 border-b p-4 xl:w-1/3 xl:overflow-auto xl:border-b-0 xl:border-r">
+<div className="flex min-h-screen flex-col lg:h-screen lg:flex-row">
+<div className="w-full shrink-0 border-b p-4 lg:w-[38%] lg:overflow-auto lg:border-b-0 lg:border-r xl:w-1/3">
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
   </div><div className="flex flex-wrap items-center gap-2 mb-4">
@@ -4700,8 +4700,8 @@ export default function App() {
 </div>
 
 {ENABLE_INSTRUCTOR_DEMO_MODE && (
-  <fieldset className="mt-4 text-sm text-gray-700">
-    <legend className="mb-2 block text-base font-semibold">Mode</legend>
+  <fieldset className="text-sm text-gray-700">
+    <legend className="sr-only">Mode</legend>
     <div className="inline-flex rounded border border-gray-300 bg-white p-0.5" aria-label="SALT mode">
       {APP_MODE_OPTIONS.map(option => {
         const selected = appMode === option.value;
@@ -4726,9 +4726,6 @@ export default function App() {
         );
       })}
     </div>
-    <p className="mt-1 text-xs text-gray-500">
-      Explore keeps the standard student facing behavior. Demo replaces the current layout with the selected preset's transporter placements, paracellular pathway, and default osmotic pull.
-    </p>
   </fieldset>
 )}
 
@@ -5099,7 +5096,7 @@ export default function App() {
       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col p-4">
        
  {result && (
-          <div className="mt-2 flex-1 space-y-3 overflow-visible xl:overflow-auto">
+          <div className="mt-2 flex-1 space-y-3 overflow-visible lg:overflow-auto">
             <section className="border rounded p-2 bg-white" aria-labelledby="results-snapshot-title">
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
                 <h2 id="results-snapshot-title" className="font-semibold">Results Snapshot</h2>
