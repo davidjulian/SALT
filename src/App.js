@@ -4692,7 +4692,7 @@ export default function App() {
   href="SALT_Lessons.html"
   target="_blank"
   rel="noopener noreferrer"
-  className="whitespace-nowrap rounded border border-gray-400 bg-white px-2 py-0.5 text-xs text-gray-900 no-underline"
+  className="inline-flex items-center whitespace-nowrap rounded border border-gray-400 bg-white px-2 py-1 text-xs text-gray-900 no-underline"
   aria-label="Open SALT lessons in a new window"
 >
   Lessons
