@@ -3193,7 +3193,7 @@ export default function App() {
     }
 
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {rows.map(t => {
           const activity = result?.transporterActivityReport?.find(item => item.uid === t.uid);
           const cardStatus = activity?.status === 'incomplete' || activity?.status === 'unsupported'
@@ -3207,9 +3207,16 @@ export default function App() {
               ? 'border-amber-300 bg-amber-50 text-amber-900'
               : 'border-gray-300 bg-gray-100 text-gray-700';
           return (
-            <div key={t.uid} className="border rounded p-2 bg-white">
+            <div key={t.uid} className="border rounded px-2 py-1.5 bg-white">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="font-semibold text-sm">{t.name}</div>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <div className="font-semibold text-sm">{t.name}</div>
+                  {cardStatus && (
+                    <span className={'inline-block border rounded px-1.5 py-0.5 text-xs font-semibold capitalize ' + statusClass}>
+                      {cardStatus}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1">
                   <Button
                     size="sm"
@@ -3232,27 +3239,23 @@ export default function App() {
                   </Button>
                 </div>
               </div>
-              {cardStatus && (
-                <div className="mb-2 text-xs">
-                  <span className={'inline-block border rounded px-1.5 py-0.5 font-semibold capitalize ' + statusClass}>
-                    {cardStatus}
-                  </span>
+              <fieldset className="text-xs">
+                <legend className="sr-only">Activity for {t.name}</legend>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-medium text-gray-600" aria-hidden="true">Activity:</span>
+                  {ACTIVITY_OPTIONS.map(option => (
+                    <label key={option.label} className="inline-flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name={'activity-' + t.uid}
+                        value={option.value}
+                        checked={t.activity === option.value}
+                        onChange={() => updateTransporter(t.uid, 'activity', option.value)}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
                 </div>
-              )}
-              <fieldset className="flex items-center gap-2 text-xs">
-                <legend className="text-gray-600 mr-1">Activity</legend>
-                {ACTIVITY_OPTIONS.map(option => (
-                  <label key={option.label} className="inline-flex items-center gap-1">
-                    <input
-                      type="radio"
-                      name={'activity-' + t.uid}
-                      value={option.value}
-                      checked={t.activity === option.value}
-                      onChange={() => updateTransporter(t.uid, 'activity', option.value)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
               </fieldset>
             </div>
           );
@@ -4149,8 +4152,8 @@ export default function App() {
     const hasPump = transporters.some(t => t.id === SUPPORT_PUMP_ID && t.placement !== 'none');
     return (
       <section className="border rounded p-3 bg-white" aria-label="Pathways diagram">
-        <div className="overflow-x-auto">
-          <svg viewBox="0 0 900 430" role="img" aria-label="Epithelial mechanism diagram showing transporter placement and solute pathway arrows." className="min-w-[760px] w-full h-auto">
+        <div className="overflow-x-auto lg:flex lg:justify-center">
+          <svg viewBox="50 0 900 430" role="img" aria-label="Epithelial mechanism diagram showing transporter placement and solute pathway arrows." className="min-w-[760px] w-full h-auto">
             <defs>
               <marker id="mechanism-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
@@ -4683,20 +4686,20 @@ export default function App() {
 <div className="w-full shrink-0 border-b p-4 lg:w-[38%] lg:overflow-auto lg:border-b-0 lg:border-r xl:w-1/3">
   <div className="text-xl font-bold mb-4 tracking-tight text-blue-800">
     SALT: <span className="font-normal text-gray-700">Secretion &amp; Absorption Learning Tool</span>
-  </div><div className="flex flex-wrap items-center gap-2 mb-4">
-<Button variant="outline" onClick={() => setShowAbout(true)}>About</Button>
+  </div><div className="flex flex-wrap items-center gap-1 mb-4">
+<Button size="sm" variant="outline" className="whitespace-nowrap !px-2" onClick={() => setShowAbout(true)}>About</Button>
 <a
   href="SALT_Lessons.html"
   target="_blank"
   rel="noopener noreferrer"
-  className="rounded px-3 py-1 border border-gray-400 bg-white text-gray-900 no-underline"
+  className="whitespace-nowrap rounded border border-gray-400 bg-white px-2 py-0.5 text-xs text-gray-900 no-underline"
   aria-label="Open SALT lessons in a new window"
 >
   Lessons
 </a>
-<Button variant="outline" onClick={openShareLayout}>Share layout</Button>
-<Button variant="outline" onClick={() => setShowSettings(true)}>Settings</Button>
-<Button variant="outline" onClick={() => setShowResetConfirm(true)}>Reset</Button>
+<Button size="sm" variant="outline" className="whitespace-nowrap !px-2" onClick={openShareLayout}>Share layout</Button>
+<Button size="sm" variant="outline" className="whitespace-nowrap !px-2" onClick={() => setShowSettings(true)}>Settings</Button>
+<Button size="sm" variant="outline" className="whitespace-nowrap !px-2" onClick={() => setShowResetConfirm(true)}>Reset</Button>
 </div>
 
 {ENABLE_INSTRUCTOR_DEMO_MODE && (
